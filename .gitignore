@@ -1,0 +1,51 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Simulation outputs
+run/
+build/
+lint/
+*.vcd
+*.fst
+*.vvp
+*.out
+*.log
+*.yslog
+*.nplog
+
+# Synthesis outputs
+*.json
+*.svg
+*.pdf
+*.dot
+*.rpt
+*.asc
+*.bin
+
+# Formal verification outputs
+*_bmc/
+*_prove/
+*_cover/
+.sby/
+
+# Editor/IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Results
+results.json
+
+# Keep directory structure
+!.gitkeep
