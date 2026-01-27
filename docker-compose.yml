@@ -1,0 +1,56 @@
+version: '3.8'
+
+services:
+  rtl-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ml-audio-dev
+    volumes:
+      # Mount the project directory
+      - .:/workspace
+      # Persist bash history
+      - ml-audio-bash-history:/root/.bash_history_dir
+    working_dir: /workspace
+    stdin_open: true
+    tty: true
+    # For GUI apps like GTKWave (requires X11 forwarding setup on host)
+    environment:
+      - DISPLAY=${DISPLAY:-:0}
+    # Uncomment for X11 forwarding on Linux
+    # volumes:
+    #   - /tmp/.X11-unix:/tmp/.X11-unix:rw
+    # network_mode: host
+
+  # Service for running all tests
+  test:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - .:/workspace
+    working_dir: /workspace
+    command: make test-all
+
+  # Service for linting
+  lint:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - .:/workspace
+    working_dir: /workspace
+    command: make lint-all
+
+  # Service for synthesis
+  synth:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - .:/workspace
+    working_dir: /workspace
+    command: make synth-all
+
+volumes:
+  ml-audio-bash-history:

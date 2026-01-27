@@ -1,0 +1,56 @@
+# Git
+.git
+.gitignore
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Simulation outputs
+run/
+build/
+lint/
+*.vcd
+*.fst
+*.vvp
+*.out
+*.log
+*.yslog
+*.nplog
+
+# Synthesis outputs (except needed configs)
+*.svg
+*.pdf
+*.dot
+*.rpt
+*.asc
+*.bin
+
+# Formal verification outputs
+*_bmc/
+*_prove/
+*_cover/
+.sby/
+
+# Editor/IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Results
+results.json
+
+# Docker files (don't need to copy into image)
+Dockerfile
+docker-compose.yml
+.dockerignore
