@@ -28,9 +28,6 @@ test-cocotb:          ; pytest -rA --tb=short
 test-cocotb-icarus:   ; COCOTB_SIMULATOR=icarus pytest -rA --tb=short
 test-cocotb-verilator:; COCOTB_SIMULATOR=verilator pytest -rA --tb=short
 
-wave-cocotb:
-	@VCD=$$(find $(RUN_DIR) -name "*.vcd" -o -name "*.fst" 2>/dev/null | head -1); \
-	[ -n "$$VCD" ] && $(GTKWAVE) $$VCD || echo "No waveform found"
 
 # Linting
 lint:
@@ -44,7 +41,7 @@ clean: sim-clean
 
 # Help
 help:
-	@echo "Simulation: test-sv | wave-sv | test-cocotb | test-cocotb-icarus | test-cocotb-verilator | wave-cocotb"
+	@echo "Simulation: test-sv | test-cocotb | test-cocotb-icarus | test-cocotb-verilator | wave-cocotb"
 	@echo "Linting:    lint"
 	@echo "Cleanup:    sim-clean"
 

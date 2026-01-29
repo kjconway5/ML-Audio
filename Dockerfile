@@ -1,23 +1,21 @@
-# Dockerfile for ML-Audio RTL Development Environment
-# Includes: Icarus Verilog, Verilator, Yosys, Cocotb, and Python tools
+# Dockerfile.slim - Minimal RTL Development Environment
+# Includes only: Icarus Verilog, Cocotb, and essential Python tools
 
 FROM ubuntu:22.04
 
 LABEL maintainer="ML-Audio Project"
-LABEL description="RTL development environment for ASIC design with Cocotb testing"
+LABEL description="Minimal RTL environment for Cocotb testing"
 
 # Prevent interactive prompts during package installation
 ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=America/Los_Angeles
 
-# Install system dependencies and EDA tools
+# Install minimal system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    # Build essentials
+    # Build essentials (minimal)
     build-essential \
     git \
     make \
-    cmake \
-    autoconf \
     g++ \
     flex \
     bison \
@@ -25,44 +23,27 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 \
     python3-pip \
     python3-dev \
-    python3-venv \
-    # EDA Tools
+    # EDA Tools (Icarus only)
     iverilog \
-    verilator \
-    yosys \
-    gtkwave \
-    # Utilities
-    tree \
-    vim \
-    nano \
-    wget \
-    curl \
-    ca-certificates \
-    graphviz \
-    # For waveform export
-    imagemagick \
-    # Audio dependencies
+    # Audio I/O (for soundfile package)
     libsndfile1 \
-    portaudio19-dev \
     # Clean up
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 
-# Upgrade pip and install Python dependencies (lightweight packages only)
-# ML/Audio packages are installed via postCreateCommand to keep image small
+# Install minimal Python dependencies
 RUN pip3 install --no-cache-dir --upgrade pip setuptools wheel && \
     pip3 install --no-cache-dir \
-    # Cocotb and testing
     cocotb==1.9.2 \
     cocotb-test \
     pytest \
-    pytest-xdist \
-    pytest-json-report \
-    pytest-timeout \
-    # Utilities
-    gitpython
+    gitpython \
+    # For reference model and audio processing
+    numpy \
+    scipy \
+    soundfile
 
-# Create non-root user for development (matches VSCode Dev Container pattern)
+# Create non-root user for development
 ARG USERNAME=vscode
 ARG USER_UID=1000
 ARG USER_GID=$USER_UID
@@ -70,7 +51,7 @@ ARG USER_GID=$USER_UID
 RUN groupadd --gid $USER_GID $USERNAME \
     && useradd --uid $USER_UID --gid $USER_GID -m $USERNAME \
     && apt-get update \
-    && apt-get install -y sudo \
+    && apt-get install -y --no-install-recommends sudo \
     && echo $USERNAME ALL=\(root\) NOPASSWD:ALL > /etc/sudoers.d/$USERNAME \
     && chmod 0440 /etc/sudoers.d/$USERNAME \
     && rm -rf /var/lib/apt/lists/*
@@ -78,22 +59,11 @@ RUN groupadd --gid $USER_GID $USERNAME \
 # Set working directory
 WORKDIR /workspace
 
-# Set Python to not buffer output (useful for seeing logs in real-time)
+# Environment setup
 ENV PYTHONUNBUFFERED=1
-
-# Add workspace to PYTHONPATH for imports
 ENV PYTHONPATH=/workspace:/workspace/util:$PYTHONPATH
-
-# Verify installations
-RUN echo "=== Tool Versions ===" && \
-    iverilog -V | head -1 && \
-    verilator --version | head -1 && \
-    yosys -V && \
-    python3 --version && \
-    pip3 list | grep cocotb
 
 # Switch to non-root user
 USER $USERNAME
 
-# Default command
 CMD ["/bin/bash"]
