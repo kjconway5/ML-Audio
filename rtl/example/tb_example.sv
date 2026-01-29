@@ -16,7 +16,7 @@ module tb_example;
     logic [WIDTH-1:0] count_o;
 
     // Instantiate DUT
-    counter #(
+    example #(
         .width_p(WIDTH)
     ) dut (
         .clk_i   (clk_i),
@@ -33,8 +33,8 @@ module tb_example;
 
     // Waveform dumping
     initial begin
-        $dumpfile("tb_counter.vcd");
-        $dumpvars(0, tb_counter);
+        $dumpfile("tb_example.vcd");
+        $dumpvars(0, tb_example);
     end
 
     // Test sequence
