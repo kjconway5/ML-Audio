@@ -22,7 +22,6 @@ lint/
 *.nplog
 
 # Synthesis outputs
-*.json
 *.svg
 *.pdf
 *.dot
