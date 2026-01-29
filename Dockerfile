@@ -48,7 +48,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 
-# Upgrade pip and install Python dependencies
+# Upgrade pip and install Python dependencies (lightweight packages only)
+# ML/Audio packages are installed via postCreateCommand to keep image small
 RUN pip3 install --no-cache-dir --upgrade pip setuptools wheel && \
     pip3 install --no-cache-dir \
     # Cocotb and testing
@@ -59,20 +60,7 @@ RUN pip3 install --no-cache-dir --upgrade pip setuptools wheel && \
     pytest-json-report \
     pytest-timeout \
     # Utilities
-    gitpython \
-    jupyter \
-    # ML and Scientific computing
-    torch>=2.0 \
-    torchaudio>=2.0 \
-    numpy>=1.24.0 \
-    scipy \
-    matplotlib \
-    pyyaml>=6.0 \
-    tqdm>=4.65.0 \
-    # Audio processing
-    librosa>=0.10.0 \
-    soundfile>=0.12.0 \
-    sounddevice>=0.4.6
+    gitpython
 
 # Create non-root user for development (matches VSCode Dev Container pattern)
 ARG USERNAME=vscode
