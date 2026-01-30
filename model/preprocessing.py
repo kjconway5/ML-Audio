@@ -516,10 +516,10 @@ def process_audio_file(input_wav,
 # demo
 def main():
     print("\nChoose test signal:")
-    print("1. Chirp (frequency sweep)")
-    print("2. Multitone (discrete frequencies)")
+    print("1. Chirp")
+    print("2. Multitone")
     print("3. Load existing WAV file")
-    choice = input("Enter choice (1/2/3) [default=2]: ").strip()
+    choice = input("Enter choice (1/2/3): ").strip()
     
     if choice == "1":
         print("\nGenerating chirp test signal...")
@@ -546,14 +546,6 @@ def main():
         save_outputs=True,
         generate_test_vectors=True
     )
-    
-    print("\nML Model Interface")
-    print(f"Features shape (low-order): {results['features_low'].shape}")
-    print(f"Features shape (high-order): {results['features_high'].shape}")
-    print(f"Features ready to pass to ML model!")
-    print(f"\nExample usage:")
-    print(f"features = results['features_low']  # Shape: (n_mels, n_frames)")
-    print(f"prediction = model(features)  # Your KWS model here")
 
 
 if __name__ == "__main__":
