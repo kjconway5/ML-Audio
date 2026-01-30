@@ -1,5 +1,6 @@
 # Python
 __pycache__/
+*.pyc
 *.py[cod]
 *$py.class
 *.so
@@ -8,6 +9,11 @@ __pycache__/
 .pytest_cache/
 .coverage
 htmlcov/
+
+# Python venv
+dsp-venv/
+.venv/
+venv/
 
 # Simulation outputs
 run/
