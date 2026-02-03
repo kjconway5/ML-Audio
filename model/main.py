@@ -1,7 +1,6 @@
 import numpy as np
 from pathlib import Path
 
-# Import from your package
 from pipeline import Preprocessing
 from utils import (
     load_wav, save_wav, 
@@ -11,8 +10,7 @@ from utils import (
 
 
 def process_audio_file(input_wav, output_dir='output', hpf_order_low=2, lpf_order_low=4,
-        hpf_order_high=8, lpf_order_high=8, visualize=True, 
-        save_outputs=True, generate_test_vectors_flag=True):
+        hpf_order_high=8, lpf_order_high=8, visualize=True, save_outputs=True, generate_test_vectors_flag=True):
     output_dir = Path(output_dir)
     output_dir.mkdir(exist_ok=True)
 
