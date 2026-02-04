@@ -23,7 +23,6 @@ from utilities import clock_start_sequence, reset_sequence
 async def basic_counter_test(dut):
     """Test basic counter functionality"""
     
-    dut._log.info("=== Basic Counter Test Starting ===")
     
     # Start clock (1ns period = 1GHz)
     await clock_start_sequence(dut.clk_i, period=1, unit='ns')
@@ -37,7 +36,7 @@ async def basic_counter_test(dut):
     # Check counter is at 0
     await RisingEdge(dut.clk_i)
     assert dut.count_o.value == 0, f"Counter should be 0 after reset, got {dut.count_o.value}"
-    dut._log.info("✓ Reset test passed")
+    dut._log.info("Reset test passed")
     
     # Enable counter (count up)
     await FallingEdge(dut.clk_i)
@@ -54,7 +53,6 @@ async def basic_counter_test(dut):
         dut._log.info(f"Cycle {i}: count_o = {actual}")
         assert actual == expected, f"Expected {expected}, got {actual}"
     
-    dut._log.info("✓ Counting test passed")
     
     # Disable counter
     await FallingEdge(dut.clk_i)
@@ -65,16 +63,13 @@ async def basic_counter_test(dut):
     await ClockCycles(dut.clk_i, 5)
     await RisingEdge(dut.clk_i)
     assert int(dut.count_o.value) == held_value, "Counter should hold value when disabled"
-    dut._log.info("✓ Hold test passed")
     
-    dut._log.info("=== Basic Counter Test Complete ===")
 
 
 @cocotb.test()
 async def overflow_test(dut):
     """Test counter overflow behavior"""
     
-    dut._log.info("=== Overflow Test Starting ===")
     
     # Start clock
     await clock_start_sequence(dut.clk_i, period=1, unit='ns')
@@ -100,22 +95,18 @@ async def overflow_test(dut):
 
     # Verify we're at max
     assert int(dut.count_o.value) == max_val, f"Expected max value {max_val}"
-    dut._log.info(f"✓ Reached max value: {max_val}")
     
     # One more clock should overflow to 0
     await RisingEdge(dut.clk_i)
     await FallingEdge(dut.clk_i)
     assert int(dut.count_o.value) == 0, "Counter should overflow to 0"
-    dut._log.info("✓ Overflow test passed")
     
-    dut._log.info("=== Overflow Test Complete ===")
 
 
 @cocotb.test()
 async def reset_during_count_test(dut):
     """Test reset assertion during counting"""
     
-    dut._log.info("=== Reset During Count Test Starting ===")
     
     # Start clock
     await clock_start_sequence(dut.clk_i, period=1, unit='ns')
@@ -145,13 +136,10 @@ async def reset_during_count_test(dut):
     # Verify reset
     await RisingEdge(dut.clk_i)
     assert int(dut.count_o.value) == 0, "Counter should reset to 0"
-    dut._log.info("✓ Reset during count passed")
     
     # Verify it continues counting after reset
     await ClockCycles(dut.clk_i, 5)
     assert int(dut.count_o.value) == 5, "Counter should resume counting"
-    dut._log.info("✓ Resume counting after reset passed")
     
-    dut._log.info("=== Reset During Count Test Complete ===")
 
 

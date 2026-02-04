@@ -7,6 +7,7 @@ GTKWAVE ?= gtkwave
 PYTHON ?= python3
 
 SIM_SOURCES = $(addprefix $(REPO_ROOT)/,$(shell $(PYTHON) $(REPO_ROOT)/util/get_filelist.py))
+LINT_SOURCES = $(foreach f,$(SIM_SOURCES),$(if $(findstring /tb_,$(f)),,$(f)))
 SIM_TOP = $(shell $(PYTHON) $(REPO_ROOT)/util/get_top.py)
 TB_MODULE ?= tb_$(SIM_TOP)
 RUN_DIR := run
@@ -31,7 +32,7 @@ test-cocotb-verilator:; COCOTB_SIMULATOR=verilator pytest -rA --tb=short
 
 # Linting
 lint:
-	$(VERILATOR) --lint-only -Wall -Wno-DECLFILENAME --top-module $(SIM_TOP) $(SIM_SOURCES)
+	$(VERILATOR) --lint-only -Wall -Wno-DECLFILENAME --top-module $(SIM_TOP) $(LINT_SOURCES)
 
 # Cleanup
 sim-clean:
