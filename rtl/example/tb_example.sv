@@ -1,21 +1,19 @@
 
-// Run with: make test-sv
-
 `timescale 1ns/1ps
 
 module tb_example;
 
-    // Parameters
+    
     parameter WIDTH = 8;
-    parameter CLK_PERIOD = 10;  // 10ns = 100MHz
+    parameter CLK_PERIOD = 10;  
+   
 
-    // Signals
     logic             clk_i;
     logic             rst_i;
     logic             en_i;
     logic [WIDTH-1:0] count_o;
 
-    // Instantiate DUT
+    
     example #(
         .width_p(WIDTH)
     ) dut (
@@ -25,23 +23,23 @@ module tb_example;
         .count_o (count_o)
     );
 
-    // Clock generation
+    
     initial begin
         clk_i = 0;
         forever #(CLK_PERIOD/2) clk_i = ~clk_i;
     end
 
-    // Waveform dumping
+    
     initial begin
         $dumpfile("tb_example.vcd");
         $dumpvars(0, tb_example);
     end
 
-    // Test sequence
+   
     initial begin
-        $display("=== Counter Testbench Starting ===");
+        $display("Counter Testbench Starting");
         
-        // Initialize
+      
         rst_i = 1;
         en_i  = 0;
         
@@ -78,15 +76,15 @@ module tb_example;
         rst_i = 0;
         
         if (count_o == 0) begin
-            $display("✓ PASS: Reset works correctly");
+            $display("PASS: Reset works correctly");
         end else begin
-            $display("✗ FAIL: Counter not reset to 0");
+            $display("FAIL: Counter not reset to 0");
         end
         
         // Continue counting
         repeat(10) @(posedge clk_i);
         
-        $display("=== Counter Testbench Complete ===");
+        $display(" Counter Testbench Complete");
         $finish;
     end
 
