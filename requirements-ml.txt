@@ -1,0 +1,13 @@
+# ML and Audio Processing Dependencies
+# These are installed after container creation to keep the Docker image small
+
+torch>=2.0
+torchaudio>=2.0
+librosa>=0.10.0
+soundfile>=0.12.0
+numpy>=1.24.0
+pyyaml>=6.0
+tqdm>=4.65.0
+sounddevice>=0.4.6
+scipy
+matplotlib

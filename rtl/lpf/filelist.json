@@ -1,0 +1,6 @@
+{
+    "top": "lpf",
+    "files": [
+        "rtl/lpf/lpf.sv"
+    ]
+}
