@@ -1,8 +1,5 @@
 #!/usr/bin/env python3
-"""
-Cocotb testbench for counter module
-Run with: make test-cocotb
-"""
+
 
 import sys
 import os
