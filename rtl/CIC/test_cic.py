@@ -1,142 +1,487 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
+"""
 
+Copyright (c) 2015 Alex Forencich
 
-import sys
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+
+"""
+
+from myhdl import *
 import os
-from pathlib import Path
 
-# Add util directory to path for utilities
-sys.path.insert(0, str(Path(__file__).parent.parent.parent / "util"))
+try:
+    from queue import Queue
+except ImportError:
+    from Queue import Queue
 
-import cocotb
-from cocotb.clock import Clock
-from cocotb.triggers import RisingEdge, FallingEdge, ClockCycles, Timer
-from cocotb.regression import TestFactory
+import numpy as np
+import math
 
-from utilities import clock_start_sequence, reset_sequence
+import axis_ep
 
+module = 'cic_decimator'
 
-@cocotb.test()
-async def basic_counter_test(dut):
-    """Test basic counter functionality"""
-    
-    
-    # Start clock (1ns period = 1GHz)
-    await clock_start_sequence(dut.clk_i, period=1, unit='ns')
-    
-    # Initialize
-    dut.en_i.value = 0
+srcs = []
 
-    # Apply reset
-    await reset_sequence(dut.clk_i, dut.reset_i, cycles=2, active_level=True)
-    
-    # Check counter is at 0
-    await RisingEdge(dut.clk_i)
-    assert dut.count_o.value == 0, f"Counter should be 0 after reset, got {dut.count_o.value}"
-    dut._log.info("Reset test passed")
-    
-    # Enable counter (count up)
-    await FallingEdge(dut.clk_i)
-    dut.en_i.value = 1
+srcs.append("../rtl/%s.v" % module)
+srcs.append("test_%s.v" % module)
 
-    # Count for 10 cycles and verify
-    # Counter increments on rising edge, so we need to wait for the edge
-    # then sample on the falling edge (or after some delay)
-    for i in range(1, 11):
-        await RisingEdge(dut.clk_i)
-        await FallingEdge(dut.clk_i)
-        expected = i
-        actual = int(dut.count_o.value)
-        dut._log.info(f"Cycle {i}: count_o = {actual}")
-        assert actual == expected, f"Expected {expected}, got {actual}"
-    
-    
-    # Disable counter
-    await FallingEdge(dut.clk_i)
-    dut.en_i.value = 0
-    
-    # Verify counter holds value
-    held_value = int(dut.count_o.value)
-    await ClockCycles(dut.clk_i, 5)
-    await RisingEdge(dut.clk_i)
-    assert int(dut.count_o.value) == held_value, "Counter should hold value when disabled"
-    
+src = ' '.join(srcs)
 
+build_cmd = "iverilog -o test_%s.vvp %s" % (module, src)
 
-@cocotb.test()
-async def overflow_test(dut):
-    """Test counter overflow behavior"""
-    
-    
-    # Start clock
-    await clock_start_sequence(dut.clk_i, period=1, unit='ns')
-    
-    # Reset
-    dut.en_i.value = 0
-    await reset_sequence(dut.clk_i, dut.reset_i, cycles=2, active_level=True)
+def dut_cic_decimator(clk,
+                      rst,
+                      current_test,
+                      input_tdata,
+                      input_tvalid,
+                      input_tready,
+                      output_tdata,
+                      output_tvalid,
+                      output_tready,
+                      rate):
 
-    # Enable and count to overflow
-    await FallingEdge(dut.clk_i)
-    dut.en_i.value = 1
+    if os.system(build_cmd):
+        raise Exception("Error running build command")
+    return Cosimulation("vvp -m myhdl test_%s.vvp -lxt2" % module,
+                clk=clk,
+                rst=rst,
+                current_test=current_test,
+                input_tdata=input_tdata,
+                input_tvalid=input_tvalid,
+                input_tready=input_tready,
+                output_tdata=output_tdata,
+                output_tvalid=output_tvalid,
+                output_tready=output_tready,
+                rate=rate)
 
-    # Get the max value based on width_p parameter
-    width = int(dut.width_p.value)
-    max_val = (1 << width) - 1
-    
-    dut._log.info(f"Counter width: {width}, max value: {max_val}")
-    
-    # Count up to max value
-    for _ in range(max_val):
-        await RisingEdge(dut.clk_i)
-    await FallingEdge(dut.clk_i)
+def bench():
 
-    # Verify we're at max
-    assert int(dut.count_o.value) == max_val, f"Expected max value {max_val}"
-    
-    # One more clock should overflow to 0
-    await RisingEdge(dut.clk_i)
-    await FallingEdge(dut.clk_i)
-    assert int(dut.count_o.value) == 0, "Counter should overflow to 0"
-    
+    # Parameters
+    WIDTH = 16
+    RMAX = 4
+    M = 1
+    N = 2
+    REG_WIDTH = WIDTH+math.ceil(math.log10((RMAX*M)**N)/math.log10(2))
 
+    # Inputs
+    clk = Signal(bool(0))
+    rst = Signal(bool(0))
+    current_test = Signal(intbv(0)[8:])
 
-@cocotb.test()
-async def reset_during_count_test(dut):
-    """Test reset assertion during counting"""
-    
-    
-    # Start clock
-    await clock_start_sequence(dut.clk_i, period=1, unit='ns')
-    
-    # Initial reset
-    dut.en_i.value = 0
-    await reset_sequence(dut.clk_i, dut.reset_i, cycles=2, active_level=True)
+    input_tdata = Signal(intbv(0)[WIDTH:])
+    input_tvalid = Signal(bool(0))
+    output_tready = Signal(bool(0))
+    rate = Signal(intbv(0)[math.ceil(math.log10(RMAX+1)/math.log10(2)):])
 
-    # Enable and count
-    await FallingEdge(dut.clk_i)
-    dut.en_i.value = 1
-    
-    # Count for a bit
-    await ClockCycles(dut.clk_i, 15)
-    
-    current_val = int(dut.count_o.value)
-    dut._log.info(f"Counter at {current_val} before reset")
-    assert current_val > 0, "Counter should have incremented"
-    
-    # Apply reset mid-count
-    await FallingEdge(dut.clk_i)
-    dut.reset_i.value = 1
-    await RisingEdge(dut.clk_i)
-    await FallingEdge(dut.clk_i)
-    dut.reset_i.value = 0
-    
-    # Verify reset
-    await RisingEdge(dut.clk_i)
-    assert int(dut.count_o.value) == 0, "Counter should reset to 0"
-    
-    # Verify it continues counting after reset
-    await ClockCycles(dut.clk_i, 5)
-    assert int(dut.count_o.value) == 5, "Counter should resume counting"
-    
+    # Outputs
+    input_tready = Signal(bool(0))
+    output_tdata = Signal(intbv(0)[REG_WIDTH:])
+    output_tvalid = Signal(bool(0))
 
+    # sources and sinks
+    input_source_queue = Queue()
+    input_source_pause = Signal(bool(0))
+    output_sink_queue = Queue()
+    output_sink_pause = Signal(bool(0))
+    
+    input_source = axis_ep.AXIStreamSource(clk,
+                                           rst,
+                                           tdata=input_tdata,
+                                           tvalid=input_tvalid,
+                                           tready=input_tready,
+                                           fifo=input_source_queue,
+                                           pause=input_source_pause,
+                                           name='input_source')
 
+    output_sink = axis_ep.AXIStreamSink(clk,
+                                        rst,
+                                        tdata=output_tdata,
+                                        tvalid=output_tvalid,
+                                        tready=output_tready,
+                                        fifo=output_sink_queue,
+                                        pause=output_sink_pause,
+                                        name='output_sink')
+
+    # DUT
+    dut = dut_cic_decimator(clk,
+                            rst,
+                            current_test,
+                            input_tdata,
+                            input_tvalid,
+                            input_tready,
+                            output_tdata,
+                            output_tvalid,
+                            output_tready,
+                            rate)
+
+    @always(delay(4))
+    def clkgen():
+        clk.next = not clk
+
+    @instance
+    def check():
+        yield delay(100)
+        yield clk.posedge
+        rst.next = 1
+        yield clk.posedge
+        rst.next = 0
+        yield clk.posedge
+        yield delay(100)
+        yield clk.posedge
+
+        # testbench stimulus
+
+        rate.next = 2
+
+        yield clk.posedge
+        print("test 1: impulse response")
+        current_test.next = 1
+
+        y = [1, 0, 0, 0, 0]
+        ref = cic_decimate(y, N, M, rate)
+
+        test_frame = axis_ep.AXIStreamFrame()
+        test_frame.data = y + [0]*10
+
+        input_source_queue.put(test_frame)
+        
+        yield clk.posedge
+        yield clk.posedge
+
+        while input_tvalid:
+            yield clk.posedge
+
+        yield clk.posedge
+
+        lst = []
+
+        while not output_sink_queue.empty():
+            lst += output_sink_queue.get(False).data
+
+        print(lst)
+        print(ref)
+        assert contains(ref, lst)
+
+        yield delay(100)
+
+        yield clk.posedge
+        print("test 2: ramp")
+        current_test.next = 2
+
+        # reset integrator
+        rst.next = 1
+        yield clk.posedge
+        rst.next = 0
+        yield clk.posedge
+
+        y = list(range(100)) + [0,0,0,0,0]
+        ref = cic_decimate(y, N, M, rate)
+
+        test_frame = axis_ep.AXIStreamFrame()
+        test_frame.data = y + [0]*10
+        
+        input_source_queue.put(test_frame)
+        
+        yield clk.posedge
+        yield clk.posedge
+
+        while input_tvalid:
+            yield clk.posedge
+
+        yield clk.posedge
+
+        lst = []
+
+        while not output_sink_queue.empty():
+            lst += output_sink_queue.get(False).data
+
+        print(lst)
+        print(ref)
+        assert contains(ref, lst)
+
+        yield delay(100)
+
+        yield clk.posedge
+        print("test 3: source pause")
+        current_test.next = 3
+
+        # reset integrator
+        rst.next = 1
+        yield clk.posedge
+        rst.next = 0
+        yield clk.posedge
+
+        y = list(range(100)) + [0,0,0,0,0]
+        ref = cic_decimate(y, N, M, rate)
+
+        test_frame = axis_ep.AXIStreamFrame()
+        test_frame.data = y + [0]*10
+        
+        input_source_queue.put(test_frame)
+        
+        yield clk.posedge
+        yield clk.posedge
+
+        while input_tvalid:
+            input_source_pause.next = True
+            yield clk.posedge
+            yield clk.posedge
+            yield clk.posedge
+            input_source_pause.next = False
+            yield clk.posedge
+
+        yield clk.posedge
+
+        lst = []
+
+        while not output_sink_queue.empty():
+            lst += output_sink_queue.get(False).data
+
+        print(lst)
+        print(ref)
+        assert contains(ref, lst)
+
+        yield delay(100)
+
+        yield clk.posedge
+        print("test 4: sink pause")
+        current_test.next = 4
+
+        # reset integrator
+        rst.next = 1
+        yield clk.posedge
+        rst.next = 0
+        yield clk.posedge
+
+        y = list(range(100)) + [0,0,0,0,0]
+        ref = cic_decimate(y, N, M, rate)
+
+        test_frame = axis_ep.AXIStreamFrame()
+        test_frame.data = y + [0]*10
+        
+        input_source_queue.put(test_frame)
+        
+        yield clk.posedge
+        yield clk.posedge
+
+        while input_tvalid:
+            output_sink_pause.next = True
+            yield clk.posedge
+            yield clk.posedge
+            yield clk.posedge
+            output_sink_pause.next = False
+            yield clk.posedge
+
+        yield clk.posedge
+
+        lst = []
+
+        while not output_sink_queue.empty():
+            lst += output_sink_queue.get(False).data
+
+        print(lst)
+        print(ref)
+        assert contains(ref, lst)
+
+        yield delay(100)
+
+        yield clk.posedge
+        print("test 5: sinewave")
+        current_test.next = 5
+
+        # reset integrator
+        rst.next = 1
+        yield clk.posedge
+        rst.next = 0
+        yield clk.posedge
+
+        x = np.arange(0,100)
+        y = np.r_[(np.sin(2*np.pi*x/50)*1024).astype(int), [0,0,0,0]]
+        ref = cic_decimate(y, N, M, rate)
+
+        ys = y
+        ys[y < 0] += 2**WIDTH
+
+        refs = ref
+        refs[ref < 0] += 2**REG_WIDTH
+
+        test_frame = axis_ep.AXIStreamFrame()
+        test_frame.data = list(map(int, ys)) + [0]*10
+
+        input_source_queue.put(test_frame)
+        
+        yield clk.posedge
+        yield clk.posedge
+
+        while input_tvalid:
+            yield clk.posedge
+
+        yield clk.posedge
+
+        lst = []
+
+        while not output_sink_queue.empty():
+            lst += output_sink_queue.get(False).data
+
+        print(lst)
+        print(ref)
+        assert contains(ref, lst)
+
+        yield delay(100)
+
+        yield clk.posedge
+        print("test 6: rate of 4")
+        current_test.next = 6
+
+        # reset integrator
+        rst.next = 1
+        yield clk.posedge
+        rst.next = 0
+        yield clk.posedge
+
+        rate.next = 4
+
+        yield clk.posedge
+
+        x = np.arange(0,100)
+        y = np.r_[(np.sin(2*np.pi*x/50)*1024).astype(int), [0]*10]
+        ref = cic_decimate(y, N, M, rate)
+
+        ys = y
+        ys[y < 0] += 2**WIDTH
+
+        refs = ref
+        refs[ref < 0] += 2**REG_WIDTH
+
+        test_frame = axis_ep.AXIStreamFrame()
+        test_frame.data = list(map(int, ys)) + [0]*10
+        
+        input_source_queue.put(test_frame)
+        
+        yield clk.posedge
+        yield clk.posedge
+
+        while input_tvalid:
+            yield clk.posedge
+
+        yield clk.posedge
+
+        lst = []
+
+        while not output_sink_queue.empty():
+            lst += output_sink_queue.get(False).data
+
+        print(lst)
+        print(ref)
+        assert contains(ref, lst)
+
+        yield delay(100)
+
+        yield clk.posedge
+        print("test 7: DC")
+        current_test.next = 7
+
+        # reset integrator
+        rst.next = 1
+        yield clk.posedge
+        rst.next = 0
+        yield clk.posedge
+
+        rate.next = 2
+
+        yield clk.posedge
+
+        y = np.r_[np.ones(1000).astype(int)*1000, [0]*10]
+        ref = cic_decimate(y, N, M, rate)
+
+        ys = y
+        ys[y < 0] += 2**WIDTH
+
+        refs = ref
+        refs[ref < 0] += 2**REG_WIDTH
+
+        test_frame = axis_ep.AXIStreamFrame()
+        test_frame.data = list(map(int, ys)) + [0]*10
+        
+        input_source_queue.put(test_frame)
+        
+        yield clk.posedge
+        yield clk.posedge
+
+        while input_tvalid:
+            yield clk.posedge
+
+        yield clk.posedge
+
+        lst = []
+
+        while not output_sink_queue.empty():
+            lst += output_sink_queue.get(False).data
+
+        print(lst)
+        print(ref)
+        assert contains(ref, lst)
+
+        yield delay(100)
+
+        raise StopSimulation
+
+    return instances()
+
+def cic_decimate(y, N=2, M=1, R=2):
+    y = np.array(y)
+
+    # integrate
+    for i in range(N):
+        s = 0
+        for j in range(len(y)):
+            s += y[j]
+            y[j] = s
+
+    # pipeline delay
+    y = np.r_[[0]*N, y]
+
+    # upconvert
+    y = y[0::R]
+
+    # comb stage
+    for i in range(N):
+        for j in range(len(y)-1, M-1, -1):
+            y[j] = y[j] - y[j-M]
+
+    return y
+
+def contains(small, big):
+    for i in range(len(big)-len(small)+1):
+        for j in range(len(small)):
+            if big[i+j] != small[j]:
+                break
+        else:
+            return i, i+len(small)
+    return False
+
+def test_bench():
+    sim = Simulation(bench())
+    sim.run()
+
+if __name__ == '__main__':
+    print("Running test...")
+    test_bench()
