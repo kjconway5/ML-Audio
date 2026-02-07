@@ -1,6 +1,9 @@
-# Python
+# Git
+.git
+.gitignore
+
+# Python cache
 __pycache__/
-*.pyc
 *.py[cod]
 *$py.class
 *.so
@@ -9,11 +12,6 @@ __pycache__/
 .pytest_cache/
 .coverage
 htmlcov/
-
-# Python venv
-dsp-venv/
-.venv/
-venv/
 
 # Simulation outputs
 run/
@@ -27,7 +25,7 @@ lint/
 *.yslog
 *.nplog
 
-# Synthesis outputs
+# Synthesis outputs (except needed configs)
 *.svg
 *.pdf
 *.dot
@@ -51,9 +49,8 @@ lint/
 
 # Results
 results.json
-/processed_features/
-/data/
-/output/
 
-# Keep directory structure
-!.gitkeep
+# Docker files (don't need to copy into image)
+Dockerfile
+docker-compose.yml
+.dockerignore

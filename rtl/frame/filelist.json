@@ -1,0 +1,6 @@
+{
+    "top": "frame",
+    "files": [
+        "rtl/frame/frame.sv"
+    ]
+}
