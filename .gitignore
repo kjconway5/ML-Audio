@@ -51,6 +51,9 @@ lint/
 
 # Results
 results.json
+/processed_features/
+/data/
+/output/
 
 # Keep directory structure
 !.gitkeep

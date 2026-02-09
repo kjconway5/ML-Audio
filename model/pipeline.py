@@ -136,3 +136,81 @@ class Pipeline:
             'fifo': self.fifo.get_config(),
             'preprocessor': self.preprocessor.get_config()
         }
+    
+
+# simplified pipeline to take in WAV files, skipping PDM/CIC
+# and optionally applying filters, then straight to log-mel
+class SimplePipeline:
+    def __init__(self, sample_rate=16000,
+                 use_filters=True,
+                 hpf_order=2,
+                 lpf_order=4,
+                 cutoff_hpf=150,
+                 cutoff_lpf=4000,
+                 n_mels=64,
+                 n_fft=512,
+                 hop_length=160):
+        """
+        Args:
+            sample_rate: Input rate, 16 kHz for Speech Commands
+            use_filters: If False, skip filtering 
+            hpf_order: must be even
+            lpf_order: must be even
+            cutoff_hpf: HPF cutoff frequency in Hz
+            cutoff_lpf: LPF cutoff frequency in Hz
+            n_mels: Number of mel bins
+            n_fft: FFT size
+            hop_length: Hop between frames
+        """
+        self.sample_rate = sample_rate
+        self.use_filters = use_filters
+        
+        # create filter only if enabled
+        if use_filters:
+            self.filter = CascadedBiquadFilter(
+                sample_rate=sample_rate,
+                hpf_order=hpf_order,
+                lpf_order=lpf_order,
+                cutoff_hpf=cutoff_hpf,
+                cutoff_lpf=cutoff_lpf
+            )
+        else:
+            self.filter = None
+        
+        # features
+        self.feature_extractor = LogMelExtractor(
+            sample_rate=sample_rate,
+            n_mels=n_mels,
+            n_fft=n_fft,
+            hop_length=hop_length
+        )
+    
+    def process(self, audio_input):
+        """
+        Args:
+            audio_input: Complete audio as np.int16 array (from load_wav)
+            
+        Returns:
+            features: Log-mel features (n_mels x n_frames)
+            filtered_audio: Filtered audio (or original if no filters)
+        """
+        # apply filters if enabled
+        if self.use_filters:
+            filtered_audio = self.filter.process(audio_input)
+        else:
+            filtered_audio = audio_input
+        
+        # extract
+        features, _ = self.feature_extractor.extract(filtered_audio)
+        
+        return features, filtered_audio
+    
+    def get_config(self):
+        config = {
+            'sample_rate': self.sample_rate,
+            'use_filters': self.use_filters,
+            'feature_extractor': self.feature_extractor.get_config()
+        }
+        if self.use_filters:
+            config['filter'] = self.filter.get_config()
+        return config
