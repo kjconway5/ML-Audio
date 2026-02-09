@@ -1,0 +1,7 @@
+{
+    "top": "cic",
+    "files": [
+        "rtl/example/cic.sv",
+        "rtl/example/tb_cic.sv"
+    ]
+}
