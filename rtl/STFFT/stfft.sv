@@ -2,7 +2,7 @@ module stfft #(
     parameter IW = 16,
     parameter OW = 18,
     parameter FFT_SIZE = 256,
-    parameter HOP_SIZE = 128  // 50% overlap
+    parameter HOP_SIZE = 128 
 )(
     input  wire             i_clk,
     input  wire             i_reset,
@@ -11,6 +11,10 @@ module stfft #(
     output wire [2*OW-1:0]  o_fft_result,
     output wire             o_fft_sync
 );
+
+/*
+Delay Buffer -> Framing -> Windowing -> FFT
+*/
 
     wire [IW-1:0] o_sample;
     logic o_ce, o_frame;
@@ -21,7 +25,7 @@ module stfft #(
 
     delaybuffer #(
         .width_p(IW),
-        .delay_p(256)
+        .delay_p(FFT_SIZE)
     ) sample_buf (
         .clk_i    (i_clk),
         .reset_i  (i_reset),
@@ -35,27 +39,25 @@ module stfft #(
         .ready_i  (1'b1)
     );
 
-    // Frame / hop controller
-    logic [7:0] sample_cnt;
 
-    always_ff @(posedge clk) begin
-        if (reset) begin
-        sample_cnt <= 0;
-        end else if (i_ce) begin
-        if (sample_cnt == 8'd255)
-            sample_cnt <= 8'd128;   // hop size
-        else
-            sample_cnt <= sample_cnt + 1'b1;
-        end
-    end
+    logic frame_start;
+    logic frame_ce;
 
-    assign o_frame  = (sample_cnt == 0) & i_ce;
-    assign o_ce     = buf_valid;
-    assign o_sample = buf_sample;
+    frame_hop_ctrl #(
+        .FFT_SIZE(FFT_SIZE),
+        .HOP_SIZE(HOP_SIZE)
+    ) ctrl (
+        .clk_i        (i_clk),
+        .reset_i      (i_reset),
+        .ce_i         (i_ce),
+        .frame_start_o(frame_start),
+        .frame_ce_o   (frame_ce)
+    );
+
 
 
     wire [IW-1:0] win_sample;
-    logic          win_ce, frame_start;
+    logic win_ce;
 
     // Windowing
     windowfn #(
@@ -68,9 +70,9 @@ module stfft #(
         .i_reset(i_reset),
         .i_tap_wr(1'b0),
         .i_tap({IW{1'b0}}),
-        .i_ce(frame_ready),
+        .i_ce(frame_ce),
         .i_alt_ce(1'b1),
-        .i_sample(frame_buf[write_ptr]),
+        .i_sample(buf_sample),
         .o_sample(win_sample),
         .o_ce(win_ce),
         .o_frame(frame_start)
