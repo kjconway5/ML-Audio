@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """
-Processes all Data from Speech Command Dataset (assumes data/speec_commands_v0.02 directory)
-Outputs train,val and test  features amd labels as npy files
+Processes all Data from Speech Command Dataset.
+Reads all settings from config.yaml.
+Outputs train, val and test features and labels as npy files.
 """
 import json
+import yaml
 import numpy as np
 import torch
 import torchaudio
@@ -13,24 +15,31 @@ from tqdm import tqdm
 import random
 from pipeline import SimplePipeline
 
-# To Configure
-DATA_ROOT = Path(__file__).parent / "data" / "speech_commands_v0.02"
-OUTPUT_DIR = Path(__file__).parent / "output"
-N_MELS = 64
-N_FFT = 512
-HOP_LENGTH = 160
-USE_FILTERS = True
+# Load configuration from config.yaml
+CONFIG_PATH = Path(__file__).parent / "config.yaml"
+with open(CONFIG_PATH, 'r') as f:
+    _config = yaml.safe_load(f)
+
+# Data settings
+DATA_ROOT = Path(_config["dataset"]["data_dir"])
+OUTPUT_DIR = Path(_config["data"]["output_dir"])
+
+# Preprocessing settings
+_preproc = _config["preprocessing"]
+N_MELS = _preproc["n_mels"]
+N_FFT = _preproc["n_fft"]
+HOP_LENGTH = _preproc["hop_length"]
+USE_FILTERS = _preproc["use_filters"]
 N_SAMPLES = None
 
-TARGET_KEYWORDS = {"no"}
-#Include background noise for silence
-INCLUDE_SILENCE = True
-#Number of 1 second silence clips
-SILENCE_COUNT = 1000
-#Set none for no cap
-UNKNOWN_MAX_PER_SPLIT = 4000
-
-RANDOM_SEED = 42
+# Data processing settings
+_data = _config["data"]
+_target_kw_list = _data.get("target_keywords", None)
+TARGET_KEYWORDS = set(_target_kw_list) if _target_kw_list else None
+INCLUDE_SILENCE = _data.get("include_silence", True)
+SILENCE_COUNT = _data.get("num_silence_samples", 1000)
+UNKNOWN_MAX_PER_SPLIT = _data.get("unknown_max_per_split", None)
+RANDOM_SEED = _data.get("random_seed", 42)
 
 
 @dataclass(frozen=True)
@@ -151,11 +160,15 @@ def process_and_save():
 
     # Feature Extractor
     pipeline = SimplePipeline(
-        sample_rate=16_000,
+        sample_rate=_preproc.get("sample_rate", 16_000),
         use_filters=USE_FILTERS,
         n_mels=N_MELS,
         n_fft=N_FFT,
         hop_length=HOP_LENGTH,
+        hpf_order=_preproc.get("hpf_order", 2),
+        lpf_order=_preproc.get("lpf_order", 4),
+        cutoff_hpf=_preproc.get("cutoff_hpf", 150),
+        cutoff_lpf=_preproc.get("cutoff_lpf", 4000),
     )
 
     # Collect examples and optionally remap labels

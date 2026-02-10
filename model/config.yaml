@@ -6,7 +6,7 @@ dataset:
   data_dir: "/home/dnocera/ML-Audio/ml/data/speech_commands"
   
 data:
-  output_dir: "/CSE127/ML-Audio/model/output"
+  output_dir: "/workspace/ML-Audio/model/output"
   
   # 3 classes: yes, silence, unknown
   classes:
@@ -14,33 +14,19 @@ data:
     - "silence"
     - "unknown"
   
-  # Words to use for "unknown" class (all words except "yes")
-  unknown_words:
+  # Target keywords to detect (everything else becomes "unknown")
+  target_keywords:
     - "no"
-    - "up"
-    - "down"
-    - "left"
-    - "right"
-    - "stop"
-    - "go"
-    # Add more words here if you want more variety for "unknown"
-  
-  # Data split ratios
-  train_ratio: 0.8
-  val_ratio: 0.1
-  test_ratio: 0.1
-  
-  # Sampling settings
-  yes_sample_ratio: 0.5        # Use 50% of "yes" files (change this to use more/fewer)
-  unknown_sample_ratio: 0.3    # Use 30% of "unknown" files per word
-  
-  # Audio settings
-  sample_rate: 16000
-  audio_length: 1.0  # seconds (most files are ~1 second)
-  
+
   # Silence generation (from background noise)
-  silence_length: 1.0  # seconds
-  num_silence_samples: 2000  # How many silence clips to generate
+  include_silence: true
+  num_silence_samples: 1000
+
+  # Cap on "unknown" examples per split (null for no cap)
+  unknown_max_per_split: 4000
+
+  # Reproducibility
+  random_seed: 42
 
 # Preprocessing settings
 preprocessing:
