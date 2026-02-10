@@ -1,7 +1,9 @@
 {
-    "top": "example",
+    "top": "stfft",
     "files": [
-        "rtl/example/example.sv",
-        "rtl/example/tb_example.sv"
+        "rtl/STFFT/stfft.sv",
+        "rtl/STFFT/delaybuffer/delaybuffer.sv",
+        "rtl/STFFT/FFT/fftmain.v",
+        "rlt/STFFT/FFT/windowfn.v"
     ]
 }

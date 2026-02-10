@@ -1,0 +1,33 @@
+[tasks]
+one
+two
+three
+
+[options]
+mode prove
+depth	22
+
+[engines]
+smtbmc
+
+[script]
+read_verilog -formal -DHWBFLY abs_mpy.v
+read_verilog -formal -DHWBFLY convround.v
+read_verilog -formal -DHWBFLY hwbfly.v
+--pycode-begin--
+cmd = "hierarchy -top hwbfly"
+if ("one" in tags):
+	cmd += " -chparam CKPCE 1 -chparam IWIDTH 4 -chparam CWIDTH 6"
+elif ("two" in tags):
+	cmd += " -chparam CKPCE 2 -chparam IWIDTH 4 -chparam CWIDTH 6"
+elif ("three" in tags):
+	cmd += " -chparam CKPCE 3 -chparam IWIDTH 4 -chparam CWIDTH 6"
+output(cmd)
+--pycode-end--
+proc -norom
+prep -top hwbfly
+
+[files]
+abs_mpy.v
+../../rtl/convround.v
+../../rtl/hwbfly.v

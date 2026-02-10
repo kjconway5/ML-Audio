@@ -1,7 +1,7 @@
 {
-    "top": "example",
+    "top": "fir",
     "files": [
-        "rtl/example/example.sv",
-        "rtl/example/tb_example.sv"
+        "rtl/fir/fir.sv",
+        "rtl/fir/tb_fir.sv"
     ]
 }
