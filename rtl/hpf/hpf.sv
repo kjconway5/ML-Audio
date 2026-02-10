@@ -1,3 +1,5 @@
+// Author: Kye Conway
+
 module hpf 
     #(parameter WIDTH = 16) (
       input logic clk,

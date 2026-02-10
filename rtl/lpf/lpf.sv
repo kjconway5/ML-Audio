@@ -1,3 +1,5 @@
+// Author: Kye Conway
+
 module lpf 
     #(parameter WIDTH = 16) (
       input logic clk,
