@@ -8,12 +8,15 @@ import json
 import yaml
 import numpy as np
 import torch
-import torchaudio
+import soundfile as sf
+from scipy import signal
 from dataclasses import dataclass
 from pathlib import Path
 from tqdm import tqdm
 import random
 from pipeline import SimplePipeline
+
+print("Using soundfile for audio I/O (Docker-compatible)")
 
 # Load configuration from config.yaml
 CONFIG_PATH = Path(__file__).parent / "config.yaml"
@@ -60,11 +63,24 @@ def _read_list(p: Path) -> set:
 
 #creates data set, assigns labels and splits. Groups non target words to unknowns
 def collect_examples_speech_commands(root: Path):
+    import glob
+
+    print(f"\n[DEBUG] Starting to collect examples from: {root}")
     val_set = _read_list(root / "validation_list.txt")
     test_set = _read_list(root / "testing_list.txt")
+    print(f"[DEBUG] Loaded validation set: {len(val_set)} files, test set: {len(test_set)} files")
+
+    print(f"[DEBUG] Scanning for .wav files (this may take 1-2 minutes)...")
+    print(f"[DEBUG] Finding all .wav files...")
+
+    # Use glob.glob which is faster than Path.rglob for large directories
+    wav_pattern = str(root / "**" / "*.wav")
+    all_wavs = glob.glob(wav_pattern, recursive=True)
+    print(f"[DEBUG] Found {len(all_wavs)} total .wav files, now processing...")
 
     out = []
-    for wav in root.rglob("*.wav"):
+    for wav_str in tqdm(all_wavs, desc="Collecting examples"):
+        wav = Path(wav_str)
         rel = wav.relative_to(root).as_posix()
         # Skip background noise (handled separately) and hidden files
         if rel.startswith("_background_noise_/") or "/." in rel:
@@ -77,29 +93,41 @@ def collect_examples_speech_commands(root: Path):
 
         split = "val" if rel in val_set else "test" if rel in test_set else "train"
         out.append(Example(wav_path=str(wav.resolve()), label=label, split=split))
+
+    print(f"[DEBUG] Collected {len(out)} valid audio files")
     return out
 
 #Chop background noise files into 1-second clips and return as Example objects
 def generate_silence_examples(root: Path, count: int, target_len: int = 16000):
-    
+    print(f"\n[DEBUG] Generating {count} silence examples from background noise...")
     noise_dir = root / "_background_noise_"
     if not noise_dir.exists():
         print(" _background_noise_ directory not found, skipping silence class")
         return []
 
     # Load and concatenate all background noise files
+    print(f"[DEBUG] Loading background noise files from: {noise_dir}")
     noise_chunks = []
     for wav_path in noise_dir.glob("*.wav"):
-        waveform, sr = torchaudio.load(str(wav_path))
+        print(f"[DEBUG] Loading: {wav_path.name}")
+        waveform, sr = sf.read(str(wav_path), dtype='float32')
+
+        # Convert to mono if stereo
+        if waveform.ndim > 1:
+            waveform = waveform.mean(axis=1)
+
+        # Resample if necessary
         if sr != 16000:
-            waveform = torchaudio.functional.resample(waveform, sr, 16000)
+            waveform = resample_audio(waveform, sr, 16000)
+
         noise_chunks.append(waveform)
 
     if not noise_chunks:
         return []
 
-    all_noise = torch.cat(noise_chunks, dim=1)
-    total_samples = all_noise.shape[1]
+    # Concatenate all noise
+    all_noise = np.concatenate(noise_chunks)
+    total_samples = len(all_noise)
 
     # Save individual 1 second clips to a temp directory
     silence_dir = root / "_generated_silence_"
@@ -109,9 +137,9 @@ def generate_silence_examples(root: Path, count: int, target_len: int = 16000):
     examples = []
     for i in range(count):
         start = rng.randint(0, total_samples - target_len)
-        clip = all_noise[:, start : start + target_len]
+        clip = all_noise[start : start + target_len]
         clip_path = silence_dir / f"silence_{i:05d}.wav"
-        torchaudio.save(str(clip_path), clip, 16000)
+        sf.write(str(clip_path), clip, 16000)
 
         # Distribute across splits 
         r = rng.random()
@@ -120,7 +148,16 @@ def generate_silence_examples(root: Path, count: int, target_len: int = 16000):
 
     return examples
 
-    #Cap the number of 'unknown' examples in each split.
+    #Resample audio using scipy
+def resample_audio(waveform: np.ndarray, orig_sr: int, target_sr: int) -> np.ndarray:
+    """Resample audio from orig_sr to target_sr using scipy."""
+    if orig_sr == target_sr:
+        return waveform
+    # Calculate number of samples after resampling
+    num_samples = int(len(waveform) * target_sr / orig_sr)
+    return signal.resample(waveform, num_samples)
+
+#Cap the number of 'unknown' examples in each split.
 def subsample_unknown(examples: list, max_per_split: int) -> list:
     rng = random.Random(RANDOM_SEED)
     kept = []
@@ -134,17 +171,28 @@ def subsample_unknown(examples: list, max_per_split: int) -> list:
 
 #Adjusts input wav to ensure they match our sample rate and duration
 def load_wav_fixed(wav_path: Path, sr: int = 16_000, seconds: float = 1.0) -> torch.Tensor:
-    w, in_sr = torchaudio.load(str(wav_path))
-    if w.shape[0] > 1:
-        w = w.mean(dim=0, keepdim=True)
+    # Load audio with soundfile
+    w, in_sr = sf.read(str(wav_path), dtype='float32')
+
+    # Convert to mono if stereo (average channels)
+    if w.ndim > 1:
+        w = w.mean(axis=1)
+
+    # Resample if necessary
     if in_sr != sr:
-        w = torchaudio.functional.resample(w, in_sr, sr)
+        w = resample_audio(w, in_sr, sr)
+
+    # Ensure correct length
     N = int(sr * seconds)
-    if w.shape[1] < N:
-        w = torch.nn.functional.pad(w, (0, N - w.shape[1]))
+    if len(w) < N:
+        # Pad with zeros
+        w = np.pad(w, (0, N - len(w)), mode='constant')
     else:
-        w = w[:, :N]
-    return w.to(torch.float32)
+        # Truncate
+        w = w[:N]
+
+    # Convert to torch tensor with shape (1, N) to match original format
+    return torch.from_numpy(w).unsqueeze(0).float()
 
 
 #Converts torch tensor to int16 numpy array
@@ -155,10 +203,15 @@ def torch_to_int16_np(waveform: torch.Tensor) -> np.ndarray:
 
 #Process examples and save as .npy files.
 def process_and_save():
-    
+    print("\n" + "="*60)
+    print("STARTING DATA PROCESSING")
+    print("="*60)
+
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    print(f"[DEBUG] Output directory: {OUTPUT_DIR}")
 
     # Feature Extractor
+    print(f"[DEBUG] Initializing pipeline with: n_mels={N_MELS}, n_fft={N_FFT}, hop_length={HOP_LENGTH}")
     pipeline = SimplePipeline(
         sample_rate=_preproc.get("sample_rate", 16_000),
         use_filters=USE_FILTERS,
@@ -170,18 +223,26 @@ def process_and_save():
         cutoff_hpf=_preproc.get("cutoff_hpf", 150),
         cutoff_lpf=_preproc.get("cutoff_lpf", 4000),
     )
+    print(f"[DEBUG] Pipeline initialized successfully")
 
     # Collect examples and optionally remap labels
+    print(f"\n[DEBUG] Target keywords: {TARGET_KEYWORDS}")
     examples = collect_examples_speech_commands(DATA_ROOT)
 
     # Optionally add silence class
     if INCLUDE_SILENCE:
+        print(f"[DEBUG] Include silence is enabled, generating {SILENCE_COUNT} silence samples...")
         silence_examples = generate_silence_examples(DATA_ROOT, SILENCE_COUNT)
         examples.extend(silence_examples)
+        print(f"[DEBUG] Total examples after adding silence: {len(examples)}")
+    else:
+        print(f"[DEBUG] Silence generation is disabled")
 
     # Optionally subsample "unknown" to reduce imbalance
     if TARGET_KEYWORDS is not None and UNKNOWN_MAX_PER_SPLIT is not None:
+        print(f"[DEBUG] Subsampling unknown class to max {UNKNOWN_MAX_PER_SPLIT} per split...")
         examples = subsample_unknown(examples, UNKNOWN_MAX_PER_SPLIT)
+        print(f"[DEBUG] Total examples after subsampling: {len(examples)}")
 
     # Build label mapping
     labels = sorted({ex.label for ex in examples})
@@ -193,9 +254,15 @@ def process_and_save():
 
     # Loop over splits and generate arrays
     for split in ["train", "val", "test"]:
+        print(f"\n{'='*60}")
+        print(f"PROCESSING {split.upper()} SPLIT")
+        print(f"{'='*60}")
+
         split_examples = [ex for ex in examples if ex.split == split]
         if N_SAMPLES:
             split_examples = split_examples[:N_SAMPLES]
+
+        print(f"[DEBUG] {split} split has {len(split_examples)} examples")
 
         # Print per-class counts for this split
         from collections import Counter
@@ -204,6 +271,7 @@ def process_and_save():
 
         features_list, labels_list = [], []
         # Process waveforms
+        print(f"[DEBUG] Starting audio processing for {split} split...")
         for ex in tqdm(split_examples, desc=f"Processing {split}"):
             wav = load_wav_fixed(Path(ex.wav_path))
             audio_i16 = torch_to_int16_np(wav)

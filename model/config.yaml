@@ -3,23 +3,31 @@
 
 # Dataset paths and settings
 dataset:
-  data_dir: "/home/dnocera/ML-Audio/ml/data/speech_commands"
+  data_dir: "/workspace/model/data/speech_commands_v0.02"
   
 data:
-  output_dir: "/workspace/ML-Audio/model/output"
+  output_dir: "/workspace/model/output"
   
-  # 3 classes: yes, silence, unknown
+  #
   classes:
     - "no"
-    - "silence"
+    - "yes"
+    - "stop"
+    - "go"
+    - "happy"
+ #   - "silence"
     - "unknown"
   
   # Target keywords to detect (everything else becomes "unknown")
   target_keywords:
     - "no"
+    - "yes"
+    - "stop"
+    - "go"
+    - "happy"
 
   # Silence generation (from background noise)
-  include_silence: true
+  include_silence: false
   num_silence_samples: 1000
 
   # Cap on "unknown" examples per split (null for no cap)
@@ -45,7 +53,7 @@ preprocessing:
 
 # Model architecture
 model:
-  n_classes: 3  # yes, silence, unknown
+  n_classes: 6  # no, yes, stop, go, happy, unknown
   
   # First convolution layer
   first_conv:
@@ -62,7 +70,7 @@ model:
 
 # Training settings
 training:
-  n_epochs: 20
+  n_epochs: 200
   batch_size: 64
   
   # Optimizer: SGD with momentum
