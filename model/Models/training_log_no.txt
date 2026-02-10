@@ -1,0 +1,29 @@
+Training started at 2026-02-10 08:09:32.258994
+Configuration: config.yaml
+
+Epoch  1 | Train Loss: 0.5527 | Train Acc: 71.83%
+Epoch  2 | Train Loss: 0.2854 | Train Acc: 88.61%
+Epoch  3 | Train Loss: 0.2202 | Train Acc: 91.21%
+Epoch  4 | Train Loss: 0.2098 | Train Acc: 92.14%
+Epoch  5 | Train Loss: 0.1825 | Train Acc: 93.12% | Val Loss: 0.8293 | Val Acc: 72.22%
+Epoch  6 | Train Loss: 0.1573 | Train Acc: 94.04%
+Epoch  7 | Train Loss: 0.1371 | Train Acc: 94.92%
+Epoch  8 | Train Loss: 0.1222 | Train Acc: 95.28%
+Epoch  9 | Train Loss: 0.1146 | Train Acc: 95.68%
+Epoch 10 | Train Loss: 0.1140 | Train Acc: 95.73% | Val Loss: 0.1319 | Val Acc: 95.31%
+Epoch 11 | Train Loss: 0.1021 | Train Acc: 96.34%
+Epoch 12 | Train Loss: 0.1075 | Train Acc: 95.88%
+Epoch 13 | Train Loss: 0.0991 | Train Acc: 96.23%
+Epoch 14 | Train Loss: 0.1000 | Train Acc: 96.16%
+Epoch 15 | Train Loss: 0.1013 | Train Acc: 96.25% | Val Loss: 0.1116 | Val Acc: 96.00%
+Epoch 16 | Train Loss: 0.1021 | Train Acc: 96.08%
+Epoch 17 | Train Loss: 0.1034 | Train Acc: 96.22%
+Epoch 18 | Train Loss: 0.0965 | Train Acc: 96.51%
+Epoch 19 | Train Loss: 0.1012 | Train Acc: 96.10%
+Epoch 20 | Train Loss: 0.0961 | Train Acc: 96.49% | Val Loss: 0.1189 | Val Acc: 95.67%
+
+======================================================================
+Training completed at 2026-02-10 08:10:33.980639
+Best validation accuracy: 96.00%
+Final test accuracy: 95.38%
+Final test loss: 0.1279
