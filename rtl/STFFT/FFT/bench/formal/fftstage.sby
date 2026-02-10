@@ -1,0 +1,35 @@
+[tasks]
+s2
+s3
+s4
+s5
+s6
+
+[options]
+mode prove
+depth	9
+
+[engines]
+smtbmc
+
+[script]
+read -formal fftstage.v
+--pycode-begin--
+cmd = "hierarchy -top fftstage"
+if ("s2" in tags):
+	cmd += " -chparam LGSPAN 2"
+elif ("s3" in tags):
+	cmd += " -chparam LGSPAN 3"
+elif ("s4" in tags):
+	cmd += " -chparam LGSPAN 4"
+elif ("s5" in tags):
+	cmd += " -chparam LGSPAN 5"
+elif ("s6" in tags):
+	cmd += " -chparam LGSPAN 6"
+output(cmd)
+--pycode-end--
+proc -norom
+prep -top fftstage
+
+[files]
+../../rtl/fftstage.v

@@ -1,0 +1,66 @@
+[tasks]
+ck1
+ck2_r0 ck2
+ck2_r1 ck2
+ck3_r0 ck3
+ck3_r1 ck3
+ck3_r2 ck3
+
+[options]
+mode prove
+depth	23
+ck1: depth 22
+ck2: depth 22
+# ck3_r0 succeeds in 35-8 steps in 17min (induction only)
+# ck3_r1 succeeds in 35-5 steps in 38min (induction only)
+# ck3_r2 succeeds in 35-1 steps in 40min (induction only)
+ck3_r0: depth 26
+ck3_r0: depth 28
+ck3_r1: depth 30
+ck3_r2: depth 34
+
+[engines]
+# smtbmc boolector
+smtbmc yices	# Actually runs faster than boolector, perhaps b/c less mem
+# smtbmc z3
+# abc pdr
+# ck1
+# ck2_r0: smtbmc yices	# 11 minutes or so
+# ck2_r1: smtbmc yices  # 3 minutes
+# ck3_r0: smtbmc yices  # 5 minutes
+# ck3_r1 ck3
+# ck3_r2: smtbmc yices  # 59 minutes
+
+
+[script]
+read -formal -DBUTTERFLY convround.v
+read -formal -DBUTTERFLY bimpy.v
+read -formal -DBUTTERFLY longbimpy.v
+read -formal -DBUTTERFLY butterfly.v
+# While I'd love to change the width of the inputs and the coefficients,
+# doing so would adjust the width of the firmware multiplies, and so defeat
+# our purpose here.
+--pycode-begin--
+cmd = "hierarchy -top butterfly"
+if ("ck1" in tags):
+	cmd += " -chparam CKPCE 1 -chparam CWIDTH 19 -chparam IWIDTH 15"
+elif ("ck2_r0" in tags):
+	cmd += " -chparam CKPCE 2 -chparam CWIDTH 20 -chparam IWIDTH 12 -chparam F_CHECK 1"
+elif ("ck2_r1" in tags):
+	cmd += " -chparam CKPCE 2 -chparam CWIDTH 16 -chparam IWIDTH  6 -chparam F_CHECK 0"
+elif ("ck3_r0" in tags):
+	cmd += " -chparam CKPCE 3 -chparam CWIDTH 16 -chparam IWIDTH 12 -chparam F_CHECK 0"
+elif ("ck3_r1" in tags):
+	cmd += " -chparam CKPCE 3 -chparam CWIDTH 18 -chparam IWIDTH 14 -chparam F_CHECK 1"
+elif("ck_r2" in tags):
+	cmd += " -chparam CKPCE 3 -chparam CWIDTH 20 -chparam IWIDTH 16 -chparam F_CHECK 2"
+output(cmd)
+--pycode-end--
+proc -norom
+prep -top butterfly
+
+[files]
+../../rtl/bimpy.v
+../../rtl/longbimpy.v
+../../rtl/convround.v
+../../rtl/butterfly.v
