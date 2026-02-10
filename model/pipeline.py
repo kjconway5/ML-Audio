@@ -149,7 +149,8 @@ class SimplePipeline:
                  cutoff_lpf=4000,
                  n_mels=64,
                  n_fft=512,
-                 hop_length=160):
+                 hop_length=160,
+                 window_length=None):
         """
         Args:
             sample_rate: Input rate, 16 kHz for Speech Commands
@@ -182,7 +183,8 @@ class SimplePipeline:
             sample_rate=sample_rate,
             n_mels=n_mels,
             n_fft=n_fft,
-            hop_length=hop_length
+            hop_length=hop_length,
+            window_length=window_length or n_fft
         )
     
     def process(self, audio_input):

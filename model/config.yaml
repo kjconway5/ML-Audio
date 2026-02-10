@@ -15,7 +15,7 @@ data:
     - "stop"
     - "go"
     - "happy"
- #   - "silence"
+    - "silence"
     - "unknown"
   
   # Target keywords to detect (everything else becomes "unknown")
@@ -27,7 +27,7 @@ data:
     - "happy"
 
   # Silence generation (from background noise)
-  include_silence: false
+  include_silence: true
   num_silence_samples: 1000
 
   # Cap on "unknown" examples per split (null for no cap)
@@ -40,7 +40,7 @@ data:
 preprocessing:
   sample_rate: 16000
   n_mels: 40        # Number of mel frequency bins
-  n_fft: 512        # FFT size
+  n_fft: 256        # FFT size
   hop_length: 160   # 10ms hop at 16kHz
   window_length: 512
   
@@ -53,7 +53,7 @@ preprocessing:
 
 # Model architecture
 model:
-  n_classes: 6  # no, yes, stop, go, happy, unknown
+  n_classes: 7  # no, yes, stop, go, happy, unknown
   
   # First convolution layer
   first_conv:
@@ -70,7 +70,7 @@ model:
 
 # Training settings
 training:
-  n_epochs: 200
+  n_epochs: 100
   batch_size: 64
   
   # Optimizer: SGD with momentum

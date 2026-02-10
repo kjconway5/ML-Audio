@@ -38,13 +38,23 @@ class AudioClassifier:
 
         # Get config and labels
         self.config = checkpoint['config']
-        self.labels = self.config.get('labels', ['no', 'silence', 'unknown'])
+        # Try multiple locations for labels (compatibility with different checkpoint formats)
+        self.labels = (
+            self.config.get('labels') or
+            self.config.get('data', {}).get('classes') or
+            ['no', 'silence', 'unknown']
+        )
         self.label_to_id = self.config.get('label_to_id', {l: i for i, l in enumerate(self.labels)})
 
-        # Get pipeline config
+        # Get pipeline config (try multiple locations for compatibility)
         pipeline_cfg = self.config.get('pipeline', {})
         feature_cfg = pipeline_cfg.get('feature_extractor', {})
         filter_cfg = pipeline_cfg.get('filter', {})
+
+        # Also check preprocessing config
+        preproc_cfg = self.config.get('preprocessing', {})
+        if not feature_cfg:
+            feature_cfg = preproc_cfg
 
         # Build model from config
         model_cfg = self.config.get('model', {})
@@ -68,14 +78,15 @@ class AudioClassifier:
         # Initialize preprocessor (same config as training)
         self.pipeline = SimplePipeline(
             sample_rate=feature_cfg.get('sample_rate', 16000),
-            use_filters=pipeline_cfg.get('use_filters', True),
-            n_mels=feature_cfg.get('n_mels', 64),
+            use_filters=feature_cfg.get('use_filters', False),
+            n_mels=feature_cfg.get('n_mels', 40),
             n_fft=feature_cfg.get('n_fft', 512),
             hop_length=feature_cfg.get('hop_length', 160),
-            hpf_order=filter_cfg.get('hpf_order', 2),
-            lpf_order=filter_cfg.get('lpf_order', 4),
-            cutoff_hpf=filter_cfg.get('cutoff_hpf', 150),
-            cutoff_lpf=filter_cfg.get('cutoff_lpf', 4000),
+            window_length=feature_cfg.get('window_length', 512),
+            hpf_order=feature_cfg.get('hpf_order', 2),
+            lpf_order=feature_cfg.get('lpf_order', 4),
+            cutoff_hpf=feature_cfg.get('cutoff_hpf', 150),
+            cutoff_lpf=feature_cfg.get('cutoff_lpf', 4000),
         )
 
         self.sample_rate = 16000
