@@ -1,3 +1,4 @@
+import json
 import yaml
 import torch
 import torch.nn as nn
@@ -6,6 +7,7 @@ from tqdm import tqdm
 from datetime import datetime
 from model import create_model
 import numpy as np
+from pathlib import Path
 from torch.utils.data import Dataset, DataLoader
 
 class NpyDataset(Dataset):
@@ -130,6 +132,19 @@ def main():
     with open(config_path, 'r') as f:
         config = yaml.safe_load(f)
     
+    # Load processed data config (has correct sorted labels and pipeline settings)
+    data_config_path = Path(config["data"]["output_dir"]) / "config.json"
+    if data_config_path.exists():
+        with open(data_config_path, 'r') as f:
+            data_config = json.load(f)
+        print(f"Loaded data config from {data_config_path}")
+        print(f"  Labels: {data_config['labels']}")
+        print(f"  Label mapping: {data_config['label_to_id']}")
+    else:
+        print(f"WARNING: {data_config_path} not found! Run process_data.py first.")
+        print("  Falling back to config.yaml classes (may cause label mismatch at inference)")
+        data_config = None
+
     # Setup device
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"\nDevice: {device}")
@@ -243,15 +258,23 @@ def main():
         f.write(f"Final test accuracy: {test_acc:.2f}%\n")
         f.write(f"Final test loss: {test_loss:.4f}\n")
     
-    # Save final model
-    save_path = config["output"]["model_save_path"]
-    torch.save({
+    # Build checkpoint with correct labels and pipeline config from processed data
+    checkpoint = {
         'model_state_dict': model.state_dict(),
         'config': config,
         'test_accuracy': test_acc,
         'test_loss': test_loss,
         'best_val_accuracy': best_val_acc,
-    }, save_path)
+    }
+
+    # Embed the correct sorted labels and pipeline settings from process_data output
+    if data_config is not None:
+        checkpoint['labels'] = data_config['labels']
+        checkpoint['label_to_id'] = data_config['label_to_id']
+        checkpoint['pipeline'] = data_config.get('pipeline', {})
+
+    save_path = config["output"]["model_save_path"]
+    torch.save(checkpoint, save_path)
     
     print(f"\n{'='*70}")
     print(f" Training Complete!")

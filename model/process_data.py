@@ -218,6 +218,7 @@ def process_and_save():
         n_mels=N_MELS,
         n_fft=N_FFT,
         hop_length=HOP_LENGTH,
+        window_length=_preproc.get("window_length", N_FFT),
         hpf_order=_preproc.get("hpf_order", 2),
         lpf_order=_preproc.get("lpf_order", 4),
         cutoff_hpf=_preproc.get("cutoff_hpf", 150),

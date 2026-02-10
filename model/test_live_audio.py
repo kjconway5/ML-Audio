@@ -38,20 +38,30 @@ class AudioClassifier:
 
         # Get config and labels
         self.config = checkpoint['config']
-        # Try multiple locations for labels (compatibility with different checkpoint formats)
+
+        # Priority: checkpoint top-level labels > config.labels > config.data.classes
+        # checkpoint['labels'] comes from process_data.py's sorted label list (correct order)
         self.labels = (
+            checkpoint.get('labels') or
             self.config.get('labels') or
             self.config.get('data', {}).get('classes') or
             ['no', 'silence', 'unknown']
         )
-        self.label_to_id = self.config.get('label_to_id', {l: i for i, l in enumerate(self.labels)})
+        self.label_to_id = (
+            checkpoint.get('label_to_id') or
+            self.config.get('label_to_id') or
+            {l: i for i, l in enumerate(self.labels)}
+        )
 
-        # Get pipeline config (try multiple locations for compatibility)
-        pipeline_cfg = self.config.get('pipeline', {})
+        # Get pipeline config - prefer checkpoint-level pipeline settings (actual training params)
+        pipeline_cfg = (
+            checkpoint.get('pipeline') or
+            self.config.get('pipeline', {})
+        )
         feature_cfg = pipeline_cfg.get('feature_extractor', {})
         filter_cfg = pipeline_cfg.get('filter', {})
 
-        # Also check preprocessing config
+        # Also check preprocessing config as fallback
         preproc_cfg = self.config.get('preprocessing', {})
         if not feature_cfg:
             feature_cfg = preproc_cfg
@@ -75,18 +85,20 @@ class AudioClassifier:
         self.device = torch.device(device)
         self.model = self.model.to(self.device)
 
-        # Initialize preprocessor (same config as training)
+        # Initialize preprocessor using the SAME settings as training
+        # feature_cfg comes from the pipeline that process_data.py actually used
         self.pipeline = SimplePipeline(
             sample_rate=feature_cfg.get('sample_rate', 16000),
-            use_filters=feature_cfg.get('use_filters', False),
+            use_filters=pipeline_cfg.get('use_filters', False),
             n_mels=feature_cfg.get('n_mels', 40),
             n_fft=feature_cfg.get('n_fft', 512),
             hop_length=feature_cfg.get('hop_length', 160),
-            window_length=feature_cfg.get('window_length', 512),
-            hpf_order=feature_cfg.get('hpf_order', 2),
-            lpf_order=feature_cfg.get('lpf_order', 4),
-            cutoff_hpf=feature_cfg.get('cutoff_hpf', 150),
-            cutoff_lpf=feature_cfg.get('cutoff_lpf', 4000),
+            window_length=feature_cfg.get('window_length',
+                                          feature_cfg.get('n_fft', 512)),
+            hpf_order=filter_cfg.get('hpf_order', 2),
+            lpf_order=filter_cfg.get('lpf_order', 4),
+            cutoff_hpf=filter_cfg.get('cutoff_hpf', 150),
+            cutoff_lpf=filter_cfg.get('cutoff_lpf', 4000),
         )
 
         self.sample_rate = 16000
@@ -94,6 +106,10 @@ class AudioClassifier:
 
         print(f"Model loaded on {self.device}")
         print(f"Classes: {self.labels}")
+        print(f"Label mapping: {self.label_to_id}")
+        print(f"Pipeline config: n_fft={feature_cfg.get('n_fft')}, "
+              f"window_length={feature_cfg.get('window_length')}, "
+              f"n_mels={feature_cfg.get('n_mels')}")
         print(f"Test accuracy: {checkpoint.get('test_accuracy', 'N/A'):.2%}" if isinstance(checkpoint.get('test_accuracy'), float) else "")
 
     def preprocess_audio(self, audio):
