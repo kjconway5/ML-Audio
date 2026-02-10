@@ -43,6 +43,11 @@ RUN pip3 install --no-cache-dir --upgrade pip setuptools wheel && \
     scipy \
     soundfile
 
+# Install ML dependencies (torch, torchaudio, pyyaml, tqdm, etc.)
+COPY requirements-ml.txt /tmp/requirements-ml.txt
+RUN pip3 install --no-cache-dir -r /tmp/requirements-ml.txt && \
+    rm /tmp/requirements-ml.txt
+
 # Create non-root user for development
 ARG USERNAME=vscode
 ARG USER_UID=1000
