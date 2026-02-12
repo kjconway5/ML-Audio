@@ -1,0 +1,17 @@
+[options]
+mode prove
+depth	11
+
+[engines]
+smtbmc yices
+
+[script]
+read_verilog -formal -DLASTSTAGE convround.v
+read_verilog -formal -DLASTSTAGE laststage.v
+hierarchy -top laststage -chparam IWIDTH 3 -chparam OWIDTH 4
+proc -norom
+prep -top laststage
+
+[files]
+../../rtl/laststage.v
+../../rtl/convround.v
