@@ -1,4 +1,4 @@
-module frame_hop_counter #(
+module frame_hop_ctrl #(
     parameter FFT_SIZE = 256,
     parameter HOP_SIZE = 128
 )(

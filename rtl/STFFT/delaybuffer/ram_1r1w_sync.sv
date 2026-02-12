@@ -4,7 +4,7 @@
 module ram_1r1w_sync
   #(parameter [31:0] width_p = 8
   ,parameter [31:0] depth_p = 512
-  ,parameter string filename_p = "memory_init_file.bin")
+  ,parameter filename_p = "memory_init_file.bin")
   (input [0:0] clk_i
   ,input [0:0] reset_i
 

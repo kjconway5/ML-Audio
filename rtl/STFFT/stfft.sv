@@ -75,7 +75,7 @@ Delay Buffer -> Framing -> Windowing -> FFT
         .i_sample(buf_sample),
         .o_sample(win_sample),
         .o_ce(win_ce),
-        .o_frame(frame_start)
+        .o_frame()
     );
 
     // FFT
