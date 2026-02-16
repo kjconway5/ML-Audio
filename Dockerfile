@@ -23,13 +23,21 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 \
     python3-pip \
     python3-dev \
-    # EDA Tools (Icarus only)
+    # EDA Tools
     iverilog \
+    yosys \
+    # Synthesis visualization
+    nodejs \
+    npm \
+    librsvg2-bin \
     # Audio I/O (for soundfile package)
     libsndfile1 \
     # Clean up
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
+
+# Install netlistsvg for synthesis netlist visualization
+RUN npm install -g netlistsvg
 
 # Install minimal Python dependencies
 RUN pip3 install --no-cache-dir --upgrade pip setuptools wheel && \
