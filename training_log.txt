@@ -1,0 +1,28 @@
+QAT Training started at 2026-02-10 17:51:52.664346
+
+Epoch  1 | Train Loss: 0.6300 | Train Acc: 70.37%
+Epoch  2 | Train Loss: 0.4286 | Train Acc: 82.53%
+Epoch  3 | Train Loss: 0.2733 | Train Acc: 89.44%
+Epoch  4 | Train Loss: 0.2184 | Train Acc: 91.84%
+Epoch  5 | Train Loss: 0.1790 | Train Acc: 93.20% | Val Loss: 0.0942 | Val Acc: 96.69%
+Epoch  6 | Train Loss: 0.1376 | Train Acc: 95.07%
+Epoch  7 | Train Loss: 0.1277 | Train Acc: 95.35%
+Epoch  8 | Train Loss: 0.1215 | Train Acc: 95.66%
+Epoch  9 | Train Loss: 0.1175 | Train Acc: 95.82%
+Epoch 10 | Train Loss: 0.1137 | Train Acc: 96.08% | Val Loss: 0.0955 | Val Acc: 96.64%
+Epoch 11 | Train Loss: 0.1089 | Train Acc: 96.32%
+Epoch 12 | Train Loss: 0.1102 | Train Acc: 95.98%
+Epoch 13 | Train Loss: 0.1087 | Train Acc: 96.13%
+Epoch 14 | Train Loss: 0.1020 | Train Acc: 96.39%
+Epoch 15 | Train Loss: 0.1018 | Train Acc: 96.40% | Val Loss: 0.0638 | Val Acc: 98.14%
+Epoch 16 | Train Loss: 0.1017 | Train Acc: 96.53%
+Epoch 17 | Train Loss: 0.1019 | Train Acc: 96.42%
+Epoch 18 | Train Loss: 0.1016 | Train Acc: 96.44%
+Epoch 19 | Train Loss: 0.1017 | Train Acc: 96.45%
+Epoch 20 | Train Loss: 0.1017 | Train Acc: 96.45% | Val Loss: 0.0639 | Val Acc: 98.04%
+
+======================================================================
+Training completed at 2026-02-10 17:56:00.209210
+Best validation accuracy  : 98.14%
+Final INT8 test accuracy  : 97.85%
+Final INT8 test loss      : 0.1890
