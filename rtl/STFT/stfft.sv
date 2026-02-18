@@ -12,67 +12,25 @@ module stfft #(
     output wire             o_fft_sync
 );
 
-/*
-Delay Buffer -> Framing -> Windowing -> FFT
-*/
+    // Add i_alt_ce logic
 
-    wire [IW-1:0] o_sample;
-    logic o_ce, o_frame;
-
-    // Delay buffer
-    logic [IW-1:0] buf_sample;
-    logic          buf_valid;
-
-    delaybuffer #(
-        .width_p(IW),
-        .delay_p(FFT_SIZE)
-    ) sample_buf (
-        .clk_i    (i_clk),
-        .reset_i  (i_reset),
-
-        .data_i   (i_sample),
-        .valid_i  (i_ce),
-        .ready_o  (),          // always ready
-
-        .valid_o  (buf_valid),
-        .data_o   (buf_sample),
-        .ready_i  (1'b1)
-    );
-
-
-    logic frame_start;
-    logic frame_ce;
-
-    frame_hop_ctrl #(
-        .FFT_SIZE(FFT_SIZE),
-        .HOP_SIZE(HOP_SIZE)
-    ) ctrl (
-        .clk_i        (i_clk),
-        .reset_i      (i_reset),
-        .ce_i         (i_ce),
-        .frame_start_o(frame_start),
-        .frame_ce_o   (frame_ce)
-    );
-
-
-
-    wire [IW-1:0] win_sample;
-    logic win_ce;
-
+    wire [IW-1:0]    win_sample,
     // Windowing
     windowfn #(
         .IW(IW),
         .OW(OW),
         .TW(IW),
         .LGNFFT($clog2(FFT_SIZE))
+        /*TODO*/
+        /* hanning.hex */
     ) win (
         .i_clk(i_clk),
         .i_reset(i_reset),
         .i_tap_wr(1'b0),
         .i_tap({IW{1'b0}}),
-        .i_ce(frame_ce),
-        .i_alt_ce(1'b1),
-        .i_sample(buf_sample),
+        .i_ce(i_ce),
+        .i_alt_ce(/*TODO*/),
+        .i_sample(i_sample),
         .o_sample(win_sample),
         .o_ce(win_ce),
         .o_frame()
