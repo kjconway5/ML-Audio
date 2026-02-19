@@ -2,10 +2,6 @@
     "top": "stfft",
     "files": [
         "rtl/STFFT/stfft.sv",
-        "rtl/STFFT/frame_hop.sv",
-        "rtl/STFFT/delaybuffer/delaybuffer.sv",
-        "rtl/STFFT/delaybuffer/counter.sv",
-        "rtl/STFFT/delaybuffer/ram_1r1w_sync.sv",
         "rtl/STFFT/FFT/fftmain.v",
         "rtl/STFFT/FFT/windowfn.v",
         "rtl/STFFT/FFT/fftstage.v",
