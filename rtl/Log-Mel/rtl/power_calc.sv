@@ -17,10 +17,10 @@ module power_calc #(
     logic [2*IW-1:0] real_sq, imag_sq;
     logic [2*IW:0]   sum_full;
 
-    // Instantiate two squarers — speed set here as parameter
+    // squarers for real and imaginary components
     SqrSgn #(
         .width(IW),
-        .speed(lau_pkg::FAST)   // <-- this is where you choose
+        .speed(lau_pkg::FAST)
     ) u_re_sq (
         .X(real_il),
         .P(real_sq)
@@ -28,18 +28,22 @@ module power_calc #(
 
     SqrSgn #(
         .width(IW),
-        .speed(lau_pkg::FAST)   // <-- same here
+        .speed(lau_pkg::FAST)
     ) u_im_sq (
         .X(imag_il),
         .P(imag_sq)
     );
 
     // Sum and scale
+    // MAY NEED TO CHANGE LATER: it all depends on matching the model, 
+    // some implementations divide by FFT_SIZE but ours doesnt
+    // this shift is purely for reducing size so our accumulators later
+    // aren't crazy wide
     assign sum_full  = {1'b0, real_sq} + {1'b0, imag_sq};  // 37-bit
-    assign power_out = sum_full[2*IW:SHIFT];            // drop bottom SHIFT bits
+    assign power_ol = sum_full[2*IW:SHIFT];  // drop bottom SHIFT bits to get to 31 bit width
 
     always_ff @(posedge clk) begin
-        valid_out <= valid_in;
+        valid_ol <= valid_il;
     end
 
 endmodule
