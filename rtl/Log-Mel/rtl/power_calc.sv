@@ -38,7 +38,7 @@ module power_calc #(
     // MAY NEED TO CHANGE LATER: it all depends on matching the model, 
     // some implementations divide by FFT_SIZE but ours doesnt
     // this shift is purely for reducing size so our accumulators later
-    // aren't crazy wide
+    // aren't crazy wide but we'll prob need to test this against python model
     assign sum_full  = {1'b0, real_sq} + {1'b0, imag_sq};  // 37-bit
     assign power_ol = sum_full[2*IW:SHIFT];  // drop bottom SHIFT bits to get to 31 bit width
 
