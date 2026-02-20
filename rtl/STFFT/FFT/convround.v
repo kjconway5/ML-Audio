@@ -49,7 +49,9 @@
 module	convround(i_clk, i_ce, i_val, o_val);
 	parameter	IWID=16, OWID=8, SHIFT=0;
 	input	wire				i_clk, i_ce;
+	/* verilator lint_off UNUSED */
 	input	wire	signed	[(IWID-1):0]	i_val;
+	/* verilator lint_on UNUSED */
 	output	reg	signed	[(OWID-1):0]	o_val;
 
 	// Let's deal with three cases to be as general as we can be here

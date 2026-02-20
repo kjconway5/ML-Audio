@@ -47,11 +47,13 @@ module stfft #(
         .i_tap_wr(1'b0),
         .i_tap({IW{1'b0}}),
         .i_ce(i_ce),
-        .i_alt_ce(i_alt_ce),
+        .i_alt_ce(alt_ce),
         .i_sample(i_sample),
         .o_sample(win_sample),
         .o_ce(win_ce),
+        /* verilator lint_off PINCONNECTEMPTY */
         .o_frame()
+        /* verilator lint_on PINCONNECTEMPTY */
     );
 
     // FFT
