@@ -1,8 +1,9 @@
 module stfft #(
-    parameter IW = 16,
+    parameter IW = 14,
     parameter OW = 18,
-    parameter FFT_SIZE = 256,
-)(
+    parameter FFT_SIZE = 256
+)
+(
     input  wire             i_clk,
     input  wire             i_reset,
     input  wire             i_ce,
@@ -11,24 +12,42 @@ module stfft #(
     output wire             o_fft_sync
 );
 
-    // Add i_alt_ce logic
+	reg		alt_ce;
+	reg	[4:0]	alt_countdown;
 
-    wire [IW-1:0]    win_sample,
+    initial	alt_countdown = 0;
+
+	always @(posedge i_clk) begin
+	    if (i_reset) begin
+		    alt_ce <= 1'b0;
+		    alt_countdown <= 5'd22;
+	    end else if (i_ce) begin
+		    alt_countdown <= 5'd22;
+		    alt_ce <= 1'b0;
+	    end else if (alt_countdown > 0) begin
+		    alt_countdown <= alt_countdown - 1'b1;
+		    alt_ce <= (alt_countdown <= 1);
+	    end else
+		    alt_ce <= 1'b0;
+    end
+
+    wire [IW-1:0]    win_sample;
+    wire win_ce;
+
     // Windowing
     windowfn #(
         .IW(IW),
-        .OW(OW),
+        .OW(IW),
         .TW(IW),
-        .LGNFFT($clog2(FFT_SIZE))
-        /*TODO*/
-        /* hanning.hex */
+        .LGNFFT($clog2(FFT_SIZE)),
+        .INITIAL_COEFFS("hanning.hex")
     ) win (
         .i_clk(i_clk),
         .i_reset(i_reset),
         .i_tap_wr(1'b0),
         .i_tap({IW{1'b0}}),
         .i_ce(i_ce),
-        .i_alt_ce(/*TODO*/),
+        .i_alt_ce(i_alt_ce),
         .i_sample(i_sample),
         .o_sample(win_sample),
         .o_ce(win_ce),
