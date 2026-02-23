@@ -12,25 +12,6 @@ module stfft #(
     output wire             o_fft_sync
 );
 
-	reg		alt_ce;
-	reg	[4:0]	alt_countdown;
-
-    initial	alt_countdown = 0;
-
-	always @(posedge i_clk) begin
-	    if (i_reset) begin
-		    alt_ce <= 1'b0;
-		    alt_countdown <= 5'd22;
-	    end else if (i_ce) begin
-		    alt_countdown <= 5'd22;
-		    alt_ce <= 1'b0;
-	    end else if (alt_countdown > 0) begin
-		    alt_countdown <= alt_countdown - 1'b1;
-		    alt_ce <= (alt_countdown <= 1);
-	    end else
-		    alt_ce <= 1'b0;
-    end
-
     wire [IW-1:0]    win_sample;
     wire win_ce;
 
@@ -47,7 +28,7 @@ module stfft #(
         .i_tap_wr(1'b0),
         .i_tap({IW{1'b0}}),
         .i_ce(i_ce),
-        .i_alt_ce(alt_ce),
+		.i_alt_ce(1'b0),
         .i_sample(i_sample),
         .o_sample(win_sample),
         .o_ce(win_ce),
