@@ -15,18 +15,27 @@ module stfft #(
     wire [IW-1:0]    win_sample;
     wire win_ce;
 	
-	logic phase;
+	logic phase_d, phase_q;
 
 	always @(posedge i_clk) begin
 		if (i_reset) begin
-	    	phase <= 1'b0;
-		end else if (i_ce) begin
-	    	phase <= ~phase;
+	    	phase_q <= 1'b0;
+		end else begin
+	    	phase_q <= phase_d;
+		end
+	end
+
+	always_comb begin
+		phase_d = phase_q;
+		if (i_ce) begin
+			phase_d = ~phase_q;
+		end else begin
+			phase_d = phase_q;
 		end
 	end
 	
-	wire primary_ce  =  i_ce & ~phase;
-	wire alternate_ce = i_ce &  phase;
+	wire primary_ce  =  i_ce & ~phase_q;
+	wire alternate_ce = i_ce &  phase_q;
 
     // Windowing
     windowfn #(
