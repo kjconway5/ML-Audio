@@ -63,27 +63,3 @@ async def test_stfft_basic(dut):
     cocotb.log.info("Test completed successfully")
 
 
-@pytest.mark.parametrize("parameters", [{}])
-def test_stfft_basic(parameters):
-    """Run cocotb test with pytest"""
-    run(
-        verilog_sources=[
-            "/workspace/rtl/STFFT/stfft.sv",
-            "/workspace/rtl/STFFT/FFT/windowfn.v",
-            "/workspace/rtl/STFFT/FFT/fftmain.v",
-            "/workspace/rtl/STFFT/FFT/fftstage.v",
-            "/workspace/rtl/STFFT/FFT/qtrstage.v",
-            "/workspace/rtl/STFFT/FFT/laststage.v",
-            "/workspace/rtl/STFFT/FFT/bitreverse.v",
-            "/workspace/rtl/STFFT/FFT/hwbfly.v",
-            "/workspace/rtl/STFFT/FFT/butterfly.v",
-            "/workspace/rtl/STFFT/FFT/longbimpy.v",
-            "/workspace/rtl/STFFT/FFT/bimpy.v",
-            "/workspace/rtl/STFFT/FFT/convround.v"
-        ],
-        toplevel="stfft",
-        module="test_stfft",
-        parameters=parameters,
-        sim_build="sim_build",
-        waves=True 
-    )
