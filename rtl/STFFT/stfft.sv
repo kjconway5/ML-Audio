@@ -14,6 +14,19 @@ module stfft #(
 
     wire [IW-1:0]    win_sample;
     wire win_ce;
+	
+	logic phase;
+
+	always @(posedge i_clk) begin
+		if (i_reset) begin
+	    	phase <= 1'b0;
+		end else if (i_ce) begin
+	    	phase <= ~phase;
+		end
+	end
+	
+	wire primary_ce  =  i_ce & ~phase;
+	wire alternate_ce = i_ce &  phase;
 
     // Windowing
     windowfn #(
@@ -27,8 +40,8 @@ module stfft #(
         .i_reset(i_reset),
         .i_tap_wr(1'b0),
         .i_tap({IW{1'b0}}),
-        .i_ce(i_ce),
-		.i_alt_ce(1'b0),
+        .i_ce(primary_ce),
+		.i_alt_ce(alternate_ce),
         .i_sample(i_sample),
         .o_sample(win_sample),
         .o_ce(win_ce),
