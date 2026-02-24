@@ -15,13 +15,10 @@
 // Multiplier for unsigned numbers (Brown) using carry-save adder and
 // final adder.
 // P = X*Y
-import lau_pkg::*;
-
-
 module MulUns #(
 	parameter int widthX = 16,  // word width of X (X <= Y)
 	parameter int widthY = 16,  // word width of Y
-	parameter lau_pkg::speed_e speed = lau_pkg::FAST  // performance parameter
+	parameter int speed = 2  // performance parameter
 ) (
 	input logic [widthX-1:0] X,  // multiplier
 	input logic [widthY-1:0] Y,  // multiplicand
@@ -62,18 +59,4 @@ module MulUns #(
 		.S(P)
 	);
 
-endmodule
-
-
-
-module behavioural_MulUns #(
-	parameter int widthX = 16,  // word width of X (X <= Y)
-	parameter int widthY = 16,  // word width of Y
-	parameter lau_pkg::speed_e speed = lau_pkg::FAST  // performance parameter
-) (
-	input logic [widthX-1:0] X,  // multiplier
-	input logic [widthY-1:0] Y,  // multiplicand
-	output logic [widthX+widthY-1:0] P  // product
-);
-	assign P = unsigned'(X) * unsigned'(Y);
 endmodule

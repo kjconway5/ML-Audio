@@ -162,7 +162,7 @@ def runner(simulator, timescale, tbpath, params, defs=[], testname=None,
     
     # Verilator-specific settings
     if simulator.startswith("verilator"):
-        compile_args = ["-Wno-fatal", "-DVM_TRACE_FST=1", "-DVM_TRACE=1", "--timing"]
+        compile_args = ["-Wno-fatal", "-DVM_TRACE_FST=1", "-DVM_TRACE=1"]
         plus_args = ["--trace", "--trace-fst"]
         if not os.path.exists(work_dir):
             os.makedirs(work_dir)

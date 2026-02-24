@@ -20,7 +20,7 @@ def test_example_cocotb():
         params={},
         defs=[],
         testname=None,
-        pymodule="test_example",
+        pymodule="test_power_calc",
         jsonpath=str(test_dir),
         root=get_repo_root()
     )
