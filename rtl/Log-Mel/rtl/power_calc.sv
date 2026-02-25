@@ -1,12 +1,12 @@
+
 /*
 Calculate Power/Magnitude = real^2 + imag^2 from STFT output
 */
-import lau_pkg::*;
-
 module power_calc #(
     parameter int IW = 18, // input width from STFT
     parameter int SHIFT = 6
 )(
+    input  logic                clk,
     input  logic [IW-1:0]       real_il, // fft_data[35:18]
     input  logic [IW-1:0]       imag_il, // fft_data[17:0]
     input  logic                valid_il,
@@ -20,7 +20,7 @@ module power_calc #(
     // squarers for real and imaginary components
     SqrSgn #(
         .width(IW),
-        .speed(lau_pkg::FAST)
+        .speed(2)
     ) u_re_sq (
         .X(real_il),
         .P(real_sq)
@@ -28,7 +28,7 @@ module power_calc #(
 
     SqrSgn #(
         .width(IW),
-        .speed(lau_pkg::FAST)
+        .speed(2)
     ) u_im_sq (
         .X(imag_il),
         .P(imag_sq)

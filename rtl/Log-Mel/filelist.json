@@ -1,6 +1,13 @@
 {
-    "top": "log",
+    "top": "power_calc",
     "files": [
-        "rtl/Log-Mel/log.sv"
+        "rtl/Log-Mel/ip/Add.sv",
+        "rtl/Log-Mel/ip/Cpr.sv",
+        "rtl/Log-Mel/ip/FullAdder.sv",
+        "rtl/Log-Mel/ip/PrefixAndOr.sv",
+        "rtl/Log-Mel/ip/AddMopCsv.sv",
+        "rtl/Log-Mel/ip/SqrPPGenSgn.sv",
+        "rtl/Log-Mel/ip/SqrSgn.sv",
+        "rtl/Log-Mel/rtl/power_calc.sv"
     ]
 }

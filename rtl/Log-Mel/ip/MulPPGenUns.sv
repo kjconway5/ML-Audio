@@ -24,6 +24,7 @@
 //   p(7)      p(6)      p(5)      p(4)      p(3)      p(2)      p(1)      p(0)
 ////////////////////////////////////////////////////////////////////////////////
 
+
 module MulPPGenUns #(
 	parameter widthX = 8,  // word width of X
 	parameter widthY = 8

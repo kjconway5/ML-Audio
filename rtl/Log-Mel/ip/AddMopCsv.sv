@@ -17,13 +17,10 @@
 // of the implemented tree because operands are commutative and can be added in
 // different parts of the tree, contributing either to S or C. 
 // The only guarantee is that S+C is the same.
-import lau_pkg::*;
-
-
 module AddMopCsv #(
 	parameter int              width = 8,             // word width
 	parameter int              depth = 4,             // number of operands
-	parameter lau_pkg::speed_e speed = lau_pkg::FAST  // performance parameter
+	parameter int              speed = 2  // performance parameter
 ) (
 	input  logic [(depth*width)-1:0] A,  // operands
 	output logic [        width-1:0] S,  // sum
