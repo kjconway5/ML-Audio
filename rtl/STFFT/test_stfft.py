@@ -17,7 +17,7 @@ async def feed_samples(dut, samples):
             await ClockCycles(dut.i_clk, 22)
 
 @cocotb.test()
-async def test_stfft_basic(dut):
+async def stfft_basic_test(dut):
     """Test basic STFFT functionality with 50% overlap"""
     
     dut._log.setLevel(logging.INFO)
@@ -34,7 +34,7 @@ async def test_stfft_basic(dut):
 
     FFT_SIZE = 256
     HOP_SIZE = 128  # 50% overlap
-    SAMPLE_RATE = 10000  # Hz
+    SAMPLE_RATE = 16000  # Hz
     TEST_FREQ = 1000  # Hz
     
     # Generate 3 frames worth of samples
@@ -130,7 +130,7 @@ async def test_stfft_basic(dut):
     dut._log.info("Test completed successfully")
 
 @cocotb.test()
-async def test_stfft_sine_analysis(dut):
+async def stfft_sine_analysis_test(dut):
     """Test STFFT with sine wave and verify frequency content"""
     
     # Setup logging
@@ -210,4 +210,3 @@ async def test_stfft_sine_analysis(dut):
     
     dut._log.info("Sine wave analysis test completed")
 
-# Note: No pytest function here - the test runner will handle this
