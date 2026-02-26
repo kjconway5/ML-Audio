@@ -1,0 +1,16 @@
+{
+    "top": "mel_filterbank",
+    "files": [
+        "rtl/Log-Mel/ip/FullAdder.sv",
+        "rtl/Log-Mel/ip/Cpr.sv",
+        "rtl/Log-Mel/ip/PrefixAndOr.sv",
+        "rtl/Log-Mel/ip/Add.sv",
+        "rtl/Log-Mel/ip/AddMopCsv.sv",
+        "rtl/Log-Mel/ip/MulPPGenUns.sv",
+        "rtl/Log-Mel/ip/MulUns.sv",
+        "rtl/Log-Mel/rtl/mel_coeff_rom.sv",
+        "rtl/Log-Mel/rtl/mac_unit.sv",
+        "rtl/Log-Mel/rtl/mel_filterbank/mel_filterbank.sv",
+        "rtl/Log-Mel/rtl/mel_filterbank/tb_mel_filterbank.sv"
+    ]
+}
