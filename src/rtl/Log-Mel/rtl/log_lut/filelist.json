@@ -1,0 +1,6 @@
+{
+    "top": "log_lut",
+    "files": [
+        "rtl/Log-Mel/rtl/log_lut.sv"
+    ]
+}

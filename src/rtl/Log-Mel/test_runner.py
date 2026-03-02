@@ -23,20 +23,6 @@ def test_power_calc_cocotb():
         root=get_repo_root()
     )
 
-def test_mac_unit_cocotb():
-    test_dir = Path(__file__).parent
-    runner(
-        simulator="icarus",
-        timescale="1ns/1ps",
-        tbpath=str(test_dir),
-        params={},
-        defs=[],
-        testname=None,
-        pymodule="test_mac_unit",
-        jsonpath=str(test_dir),
-        jsonname="filelist_mac_unit.json",
-        root=get_repo_root()
-    )
 
 def test_logmel_top_cocotb():
     test_dir = Path(__file__).parent

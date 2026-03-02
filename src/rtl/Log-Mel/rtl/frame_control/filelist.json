@@ -1,0 +1,6 @@
+{
+    "top": "frame_control",
+    "files": [
+        "rtl/Log-Mel/rtl/frame_control.sv"
+    ]
+}
