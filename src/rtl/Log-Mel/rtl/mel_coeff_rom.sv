@@ -20,9 +20,9 @@ module mel_coeff_rom #(
     // for simulation this should work and i think should also synthesize to combinational logic
     // something to thinka about
     initial begin
-        $readmemh("../data/mel_coeffs.hex", coeff_mem);
-        $readmemh("../data/mel_starts.hex", start_bins);
-        $readmemh("../data/mel_ends.hex",   end_bins);
+        $readmemh("mel_coeffs.hex", coeff_mem);
+        $readmemh("mel_starts.hex", start_bins);
+        $readmemh("mel_ends.hex",   end_bins);
     end
 
     assign weight_out = coeff_mem[mel_idx * MAX_COEFFS + coeff_idx];

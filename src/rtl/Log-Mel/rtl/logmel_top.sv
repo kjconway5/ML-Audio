@@ -84,7 +84,7 @@ module logmel_top #(
     // frame_controller
     // FSM to sequence log compression and output stages
     // filterbank manages its own accumulation so FSM just waits for done
-    frame_controller #(
+    frame_control #(
         .MEL_BINS(N_MELS)
     ) u_frame_ctrl (
         .clk               (clk),
@@ -120,6 +120,18 @@ module logmel_top #(
     // TODO: not written yet  
     // holds 40 log values, handshakes with CNN via valid/ready
     // fires frame_sent back to FSM when all 40 sent
-    // output_buffer u_output_buffer (...)
+    output_buffer #(
+        .N_MELS(N_MELS),
+        .OUT_W (OUT_W)
+    ) u_output_buffer (
+        .clk          (clk),
+        .reset        (reset),
+        .log_out_i    (log_out),
+        .load_i       (log_done), // load when log_lut finishes, not output_valid
+        .cnn_data_o   (cnn_data_ol),
+        .cnn_valid_o  (cnn_valid_ol),
+        .cnn_ready_i  (cnn_ready_il),
+        .frame_sent_o (frame_sent)
+    );
 
 endmodule

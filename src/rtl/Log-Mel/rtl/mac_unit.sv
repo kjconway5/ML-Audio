@@ -1,7 +1,7 @@
 module mac_unit #(
-    parameter int POWER_W = 31,
+    parameter int POWER_W = 32,
     parameter int COEFF_W = 16,
-    parameter int ACCUM_W = 54
+    parameter int ACCUM_W = 56
 )(
     input  logic                 clk_i,
     input  logic                 reset_i,

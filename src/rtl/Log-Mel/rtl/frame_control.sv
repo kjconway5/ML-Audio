@@ -67,7 +67,7 @@ module frame_control #(
             end
 
             ACCUMULATE: begin
-                if (bin_counter_o == (filterbank_done_i-1)) begin
+                if (filterbank_done_i) begin
                     next_state_d = LOG_COMPRESS;
                 end else begin
                     next_state_d = ACCUMULATE;
@@ -97,4 +97,4 @@ module frame_control #(
     assign log_en_o = (curr_state_q == LOG_COMPRESS);
     assign output_valid_o = (curr_state_q == OUTPUT);
 
-    endmodule
+endmodule

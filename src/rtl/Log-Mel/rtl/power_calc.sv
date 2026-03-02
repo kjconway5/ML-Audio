@@ -1,4 +1,3 @@
-
 /*
 Calculate Power/Magnitude = real^2 + imag^2 from STFT output
 */
@@ -10,7 +9,7 @@ module power_calc #(
     input  logic [IW-1:0]       real_il, // fft_data[35:18]
     input  logic [IW-1:0]       imag_il, // fft_data[17:0]
     input  logic                valid_il,
-    output logic [(2*IW)-SHIFT+1:0] power_ol,
+    output logic [(2*IW)-SHIFT:0] power_ol,
     output logic                valid_ol
 );
 

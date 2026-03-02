@@ -1,0 +1,26 @@
+{
+    "top": "logmel_top",
+    "files": [
+        "rtl/Log-Mel/ip/MulPPGenUns.sv",
+        "rtl/Log-Mel/ip/MulUns.sv",
+        "rtl/Log-Mel/ip/AddMopCsv.sv",
+        "rtl/Log-Mel/ip/Add.sv",
+        "rtl/Log-Mel/ip/Cpr.sv",
+        "rtl/Log-Mel/ip/PrefixAndOr.sv",
+        "rtl/Log-Mel/ip/PrefixAnd.sv",
+        "rtl/Log-Mel/ip/FullAdder.sv",
+        "rtl/Log-Mel/ip/SqrPPGenSgn.sv",
+        "rtl/Log-Mel/ip/SqrSgn.sv",
+        "rtl/Log-Mel/ip/LeadZeroDet.sv",
+        "rtl/Log-Mel/ip/Encode.sv",
+        "rtl/Log-Mel/ip/Log2.sv",
+        "rtl/Log-Mel/rtl/mel_coeff_rom.sv",
+        "rtl/Log-Mel/rtl/mac_unit.sv",
+        "rtl/Log-Mel/rtl/power_calc.sv",
+        "rtl/Log-Mel/rtl/mel_filterbank.sv",
+        "rtl/Log-Mel/rtl/frame_control.sv",
+        "rtl/Log-Mel/rtl/log_lut.sv",
+        "rtl/Log-Mel/rtl/output_buffer.sv",
+        "rtl/Log-Mel/rtl/logmel_top.sv"
+    ]
+}
