@@ -4,6 +4,9 @@
 
   Since we are now continuously moving a window across an incoming audio input to simulate many smaller FFTs across the signal. We must introduce different forms of measurement for the FFTs range. First we have the window size/frame size(in our case window and frame size are equal). The window size is the signal we are going to apply a singular FFT to. The window size can be measured in time and number of samples:
 
+![Frame Size](STFFT/frame_size.jpg "Frame Size")
+
+
   Hop size, this is the time or amount of samples before a new window will begin. It is essential to have windows overlapping to prevent aliasing and errors in output(hop size is less than window size):
 
   Now it is important to keep in mind the time-frequency resolution of the STFFTs output. As the frame size increases the frequency resolution increase however the time resolution decreases. Additionally, the hop size dictates how many FFTs are computed in a given audio sound. Before we find suitable values for the window and hop size. I will denote that the FFT core will be 256-points to be accurate but efficient. 
