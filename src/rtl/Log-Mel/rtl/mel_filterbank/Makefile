@@ -1,7 +1,7 @@
 
 
 TOP        := mel_filterbank
-SOURCES    := mel_filterbank.sv ../mel_coeff_rom.sv ../mac_unit/mac_unit.sv $(wildcard ../../ip/*.sv)
+SOURCES    := mel_filterbank.sv ../mel_coeff_rom.sv
 TB_SOURCES := tb_mel_filterbank.sv
 
 TB_MODULE  := tb_$(TOP)

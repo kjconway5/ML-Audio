@@ -27,7 +27,7 @@ async def test_stfft_basic(dut):
     # Test parameters
     fft_size = 256 
     test_frequency = 1000  # Hz
-    sample_rate = 10000  # Hz
+    sample_rate = 16000  # Hz
     
     # Generate test signal (sine wave)
     t = np.arange(fft_size * 2) / sample_rate

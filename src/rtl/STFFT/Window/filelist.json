@@ -1,6 +1,0 @@
-{
-    "top": "windowfn",
-    "files": [
-        "rtl/STFFT/Window/windowfn.v"
-    ]
-}

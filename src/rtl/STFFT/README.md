@@ -38,7 +38,18 @@ Here is a list of what the parameters do:
 
 ## Windowing Function
 
+
 ## Running Testbench
+
+To run the STFFT pipeline testbench:
+```sh
+make test-cocotb
+```
+
+To run the Window function testbench:
+```sh
+cd Window && make test-cocotb
+```
 
 ## Running Simulation
 

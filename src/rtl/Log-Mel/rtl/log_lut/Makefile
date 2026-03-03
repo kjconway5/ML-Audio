@@ -1,7 +1,12 @@
 
 
 TOP        := log_lut
-SOURCES    := log_lut.sv
+IP_DIR     := ../../ip
+SOURCES    := log_lut.sv \
+              $(IP_DIR)/Log2.sv \
+              $(IP_DIR)/LeadZeroDet.sv \
+              $(IP_DIR)/Encode.sv \
+              $(IP_DIR)/PrefixAnd.sv
 TB_SOURCES :=
 
 TB_MODULE  := tb_$(TOP)
@@ -34,7 +39,11 @@ $(RUN_DIR)/$(TB_MODULE).vcd: $(ALL_SOURCES)
 COCOTB_MODULE ?= test_$(TOP)
 COCOTB_MAKEFILES := $(shell cocotb-config --makefiles 2>/dev/null)
 
-test-cocotb test-cocotb-icarus:
+link-hex:
+	@ln -sf $(abspath log2_lut.hex) . 2>/dev/null || true
+.PHONY: link-hex
+
+test-cocotb test-cocotb-icarus: link-hex
 	SIM=icarus TOPLEVEL_LANG=verilog TOPLEVEL=$(TOP) MODULE=$(COCOTB_MODULE) \
 		VERILOG_SOURCES="$(abspath $(SOURCES))" \
 		$(MAKE) -f $(COCOTB_MAKEFILES)/Makefile.sim

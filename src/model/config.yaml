@@ -41,7 +41,8 @@ preprocessing:
   sample_rate: 16000
   n_mels: 40        # Number of mel frequency bins
   n_fft: 256        # FFT size
-  hop_length: 160   # 10ms hop at 16kHz
+  #160 -> 128 to match rtl
+  hop_length: 128   
   window_length: 256 # Must be <= n_fft (was 512, caused mismatch)
   
   # Filters (if using)

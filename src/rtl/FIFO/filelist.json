@@ -1,7 +1,0 @@
-{
-    "top": "example",
-    "files": [
-        "rtl/example/example.sv",
-        "rtl/example/tb_example.sv"
-    ]
-}

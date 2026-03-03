@@ -4,7 +4,7 @@ from cocotb.triggers import RisingEdge, ClockCycles, ReadOnly
 import numpy as np
 import torchaudio.transforms as T
 
-# --- Parameters ---
+# Parameters
 N_MELS, N_BINS = 40, 129
 POWER_W, WEIGHT_W, ACCUM_W = 31, 16, 54
 SAMPLE_RATE, N_FFT = 16000, 256
@@ -44,7 +44,7 @@ async def drive_frame(dut, power_bins: np.ndarray):
     dut.power_il.value = 0
 
 async def wait_for_valid_ol(dut, timeout: int = N_BINS + 50) -> int:
-    """Wait for valid_ol to assert. Returns after the RisingEdge where valid_ol is seen."""
+    #Wait for valid_ol to assert. Returns after the RisingEdge where valid_ol is seen
     for i in range(timeout):
         await RisingEdge(dut.clk_i)
         if dut.valid_ol.value == 1:
@@ -59,7 +59,7 @@ async def test_mel_filterbank(dut):
     cocotb.start_soon(Clock(dut.clk_i, CLK_PERIOD_NS, unit="ns").start())
     ref = My_MelFilterbank()
 
-    # --- Test 1 ---
+    # Test 1 : Flat
     cocotb.log.info("### TEST 1: Flat ###")
     await reset_dut(dut)
     pb = np.full(N_BINS, 1 << 12, dtype=np.uint64)
@@ -76,8 +76,8 @@ async def test_mel_filterbank(dut):
     assert np.all(deltas <= TOLERANCE), f"Test 1 FAIL: max delta={deltas[worst]} at mel[{worst}]"
     await ClockCycles(dut.clk_i, 1)
 
-    # --- Test 2: Diagnostic ---
-    cocotb.log.info("### TEST 2: checking clock advances ###")
+    # --- Test 2: Reset + Random ---
+    cocotb.log.info("### TEST 2: Random & Reset")
     cocotb.log.info(f"  before RisingEdge, sim_time={cocotb.utils.get_sim_time('ns')}ns")
     await RisingEdge(dut.clk_i)
     cocotb.log.info(f"  after RisingEdge, sim_time={cocotb.utils.get_sim_time('ns')}ns")

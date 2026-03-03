@@ -7,9 +7,9 @@ import torch
 # Parameters
 CLK_PERIOD_NS   = 10       # 100 MHz clock
 WINDOW_LENGTH   = 256      # FFT_SIZE 
-IW              = 14       # Input sample bit width 
-OW              = 14       # Output sample bit width 
-TW              = 14       # Tap/coefficient bit width 
+IW              = 16       # Input sample bit width
+OW              = 16       # Output sample bit width
+TW              = 16       # Tap/coefficient bit width
 SIGNED_MAX      = 2**(IW-1) - 1   # 8191 — used to normalize RTL output to float
 SIGNED_MAX_TW   = 2**(TW-1) - 1   # 8191 — tap full-scale
 CE_SPACING      = 23
@@ -49,7 +49,7 @@ async def driver(dut, num_frames = 10):
     total_samples = FIRST_BLOCK + (num_frames * hop)
 
     # Generate a test signal: a sine wave at 1 kHz, sampled at 16 kHz
-    # Scaled to signed 14-bit integer range
+    # Scaled to signed 16-bit integer range
     t = np.arange(total_samples) / 16000.0
     test_signal = (np.sin(2 * np.pi * 1000 * t) * SIGNED_MAX).astype(np.int16)
 
@@ -71,7 +71,7 @@ async def driver(dut, num_frames = 10):
     await write_hann_taps(dut, WINDOW_LENGTH)
 
     # Drive samples with alternating i_ce / i_alt_ce
-    # Matches stfft.sv: alt_ce fires ~22 cycles after i_ce
+    #alt_ce fires ~22 cycles after i_ce
     for sample in test_signal:
         #  Assert i_ce for 1 cycle
         dut.i_ce.value     = 1
@@ -162,7 +162,7 @@ async def test_windowfn(dut):
 
     NUM_FRAMES = 5   # how many frames to verify
 
-    # Clear global queues (safe for re-runs)
+    # Clear global queues 
     rtl_output_queue.clear()
     ref_output_queue.clear()
 
