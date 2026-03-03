@@ -10,7 +10,7 @@ module mel_filterbank #(
     input  logic [0:0]  reset_i,
     input  logic [POWER_W-1:0] power_il,
     input  logic [0:0] valid_il,
-    output logic [ACCUM_W-1:0] mel_ol [N_MELS],
+    output logic [N_MELS-1:0][ACCUM_W-1:0] mel_ol,
     output logic [0:0] valid_ol
 );
 

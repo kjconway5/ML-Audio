@@ -9,14 +9,14 @@ module log_lut #(
     input  logic                              reset,
 
     // from mel_filterbank
-    input  logic [ACCUM_W-1:0]               mel_energy_i [N_MELS],
+    input  logic [N_MELS-1:0][ACCUM_W-1:0]  mel_energy_i,
 
     // from frame_controller
     input  logic [$clog2(N_MELS)-1:0]        mel_idx_i,
     input  logic                              log_en_i,
 
     // to output_buffer
-    output logic [LOG_OUT_W-1:0]             log_out_o [N_MELS],
+    output logic [N_MELS-1:0][LOG_OUT_W-1:0] log_out_o,
     output logic                             log_done_o
 );
 
@@ -34,6 +34,16 @@ module log_lut #(
     // PULP IP to compute floor(log2(cur_energy))
     logic [$clog2(ACCUM_W)-1:0] log2_int;
 
+`ifndef SYNTHESIS
+    // Behavioral floor(log2) for simulation (Log2 IP uses constructs unsupported by Icarus)
+    always_comb begin
+        log2_int = '0;
+        for (int k = 0; k < ACCUM_W; k++) begin
+            if (current_energy[k])
+                log2_int = k;  // implicit truncation; last set bit wins = floor(log2)
+        end
+    end
+`else
     Log2 #(
         .width(ACCUM_W),
         .speed(2)
@@ -41,6 +51,7 @@ module log_lut #(
         .A(current_energy),
         .Z(log2_int)
     );
+`endif
 
     // Fractional part with LUT
     // extract LUT_FRAC bits just below the leading 1 bit

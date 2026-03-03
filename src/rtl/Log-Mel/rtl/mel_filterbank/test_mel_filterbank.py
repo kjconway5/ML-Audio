@@ -5,7 +5,7 @@ import numpy as np
 import torchaudio.transforms as T
 
 # Parameters
-N_MELS, N_BINS = 40, 129
+N_MELS, N_BINS, MAX_COEFFS = 40, 129, 16
 POWER_W, WEIGHT_W, ACCUM_W = 31, 16, 54
 SAMPLE_RATE, N_FFT = 16000, 256
 F_MIN, F_MAX = 0.0, SAMPLE_RATE / 2.0
@@ -43,7 +43,7 @@ async def drive_frame(dut, power_bins: np.ndarray):
     dut.valid_il.value = 0
     dut.power_il.value = 0
 
-async def wait_for_valid_ol(dut, timeout: int = N_BINS + 50) -> int:
+async def wait_for_valid_ol(dut, timeout: int = N_MELS * (MAX_COEFFS + 2) + 50) -> int:
     #Wait for valid_ol to assert. Returns after the RisingEdge where valid_ol is seen
     for i in range(timeout):
         await RisingEdge(dut.clk_i)
@@ -52,7 +52,9 @@ async def wait_for_valid_ol(dut, timeout: int = N_BINS + 50) -> int:
     raise AssertionError(f"Timeout: valid_ol did not assert within {timeout} cycles")
 
 def snapshot_outputs(dut) -> np.ndarray:
-    return np.array([int(dut.mel_ol[m].value) for m in range(N_MELS)], dtype=np.uint64)
+    raw = int(dut.mel_ol.value)
+    mask = (1 << ACCUM_W) - 1
+    return np.array([(raw >> (m * ACCUM_W)) & mask for m in range(N_MELS)], dtype=np.uint64)
 
 @cocotb.test()
 async def test_mel_filterbank(dut):

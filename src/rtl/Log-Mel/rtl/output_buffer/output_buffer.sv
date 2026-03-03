@@ -6,7 +6,7 @@ module output_buffer #(
     input  logic                    reset,
 
     // log_lut stuff - load the 40 vals at once
-    input  logic [OUT_W-1:0]        log_out_i [N_MELS],
+    input  logic [N_MELS-1:0][OUT_W-1:0] log_out_i,
     input  logic                    load_i, // pulse high when log_done fires
 
     // CNN valid/ready handshake
