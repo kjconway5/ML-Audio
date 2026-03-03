@@ -29,7 +29,7 @@ ACCUM_MASK = (1 << ACCUM_W) - 1
 WEIGHT_MAX = (1 << WEIGHT_W) - 1
 
 # log2 fractional LUT — loaded directly from the same hex file the RTL uses
-_LUT_PATH = os.path.join(os.path.dirname(__file__), "data", "log2_lut.hex")
+_LUT_PATH = os.path.join(os.path.dirname(__file__), "..", "..", "data", "log2_lut.hex")
 LOG2_LUT = [int(line, 16) for line in open(_LUT_PATH).read().split() if line]
 
 # Tolerance for the log output (±LSBs in Q4.12).

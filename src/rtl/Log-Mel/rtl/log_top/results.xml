@@ -1,0 +1,8 @@
+<testsuites name="results">
+  <testsuite name="all" package="all">
+    <property name="random_seed" value="1772568859" />
+    <testcase name="test_zero_input" classname="test_logmel_top" file="/home/jlperalt/Desktop/CSE127/ML-Audio/src/rtl/Log-Mel/rtl/log_top/test_logmel_top.py" lineno="209" time="0.07598471641540527" sim_time_ns="5460.0" ratio_time="71856.55560192405" />
+    <testcase name="test_single_frame" classname="test_logmel_top" file="/home/jlperalt/Desktop/CSE127/ML-Audio/src/rtl/Log-Mel/rtl/log_top/test_logmel_top.py" lineno="223" time="0.09387731552124023" sim_time_ns="5470.0" ratio_time="58267.53747301587" />
+    <testcase name="test_two_frames" classname="test_logmel_top" file="/home/jlperalt/Desktop/CSE127/ML-Audio/src/rtl/Log-Mel/rtl/log_top/test_logmel_top.py" lineno="238" time="0.16395139694213867" sim_time_ns="10960.0" ratio_time="66849.07969322139" />
+  </testsuite>
+</testsuites>
