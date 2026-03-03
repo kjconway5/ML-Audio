@@ -58,7 +58,11 @@ class LogMelExtractor:
         # convert to log scale (dB)
         # human colume perception is logarithmic
         # change 10 to 20 if magnitude spectrum wanted
-        log_mel_spec = 10 * torch.log10(mel_spec + 1e-10)
+        
+        #OLD Doesn't match RTL 
+        #log_mel_spec = 10 * torch.log10(mel_spec + 1e-10)
+        #New. Matches RTL 
+        log_mel_spec = torch.log2(mel_spec.clamp(min=1.0))
         
         # Time axis, each frame is 0.01 s
         time_frames = torch.arange(mel_spec.shape[1]) * self.hop_length / self.sample_rate
