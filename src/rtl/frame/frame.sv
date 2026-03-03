@@ -1,7 +1,8 @@
 module frame 
     #(parameter FRAME_LEN = 160, //160 = 20 ms frame at 8kHz 
       parameter HOP_LEN = 160,  
-      parameter WIDTH = $clog2(FRAME_LEN)) 
+      parameter WIDTH = $clog2(FRAME_LEN)
+    ) (
     input logic clk, 
     input logic reset, 
     input logic sample_valid,
@@ -11,7 +12,7 @@ module frame
     output logic frame_end,
     output logic hop_start,
     output logic hop_end
-    );
+);
 
     //Framing to output frame_start and frame_end based on desired frame length
     //FRAME_LEN = Fs * (ms/1000) , Fs = sample rate, ms is frame length usually (10-25) 
@@ -42,15 +43,5 @@ module frame
     //Hop length is used for overlap between frames. More overlap less chance of audio loss 
     //   (if event occurs between frames) 
     //Hop = Frame means no overlap so not necessary right now
-   
 
-    
-
-    
-
-
-
-
-
-
-
+endmodule

@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
 """Pytest runner for cocotb tests"""
 
-import os
-import sys
+import pytest
 from pathlib import Path
-
-# Add util to path
-sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent.parent / "util"))
-
 from utilities import runner, get_repo_root
 
+COCOTB_TESTS = [
+    "test_frame_control_fsm",
+    "test_melindex",
+]
 
-def test_frame_control_cocotb():
+@pytest.mark.parametrize("testname", COCOTB_TESTS)
+def test_frame_control_cocotb(testname):
     test_dir = Path(__file__).parent
     runner(
         simulator="icarus",
@@ -19,7 +19,7 @@ def test_frame_control_cocotb():
         tbpath=str(test_dir),
         params={},
         defs=[],
-        testname=None,
+        testname=testname,          # run ONLY this cocotb test
         pymodule="test_frame_control",
         jsonpath=str(test_dir),
         jsonname="filelist.json",

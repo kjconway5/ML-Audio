@@ -4,3 +4,20 @@ REPO_ROOT ?= $(shell git rev-parse --show-toplevel)
 
 
 .DEFAULT_GOAL := help
+
+# Cocotb / pytest targets
+PYTEST ?= pytest
+PYTEST_ARGS ?= -s
+TEST ?= test_frame_control_cocotb
+
+# Optional knobs (if your utilities.runner() reads env vars)
+SIM ?= icarus
+WAVES ?= 1
+
+test:
+	@echo "Running all pytest wrappers"
+	SIM=$(SIM) WAVES=$(WAVES) COCOTB_LOG_LEVEL=INFO \
+		pytest -s
+
+sim: test ## Alias: make sim == make test
+.PHONY: test sim

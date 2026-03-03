@@ -1,6 +1,6 @@
 {
     "top": "frame_control",
     "files": [
-        "rtl/Log-Mel/rtl/frame_control.sv"
+        "src/rtl/Log-Mel/rtl/frame_control/frame_control.sv"
     ]
 }
