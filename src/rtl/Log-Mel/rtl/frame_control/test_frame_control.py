@@ -3,6 +3,10 @@ from cocotb.triggers import RisingEdge, ClockCycles
 from cocotb.clock import Clock
 
 async def reset_dut(dut, cycles=5):
+    """
+    Reset the DUT, hold for a few cycles, then release.
+    Also resets control inputs to 0
+    """
     dut.reset.value = 1
     dut.fft_sync_i.value = 0
     dut.frame_sent_i.value = 0
@@ -12,6 +16,9 @@ async def reset_dut(dut, cycles=5):
     await ClockCycles(dut.clk, cycles)
 
 def int_sig(x):
+    """
+    Converts cocotb binary or int to int for easier assertions
+    """
     try:
         return int(x.value)
     except Exception:
@@ -19,7 +26,9 @@ def int_sig(x):
 
 @cocotb.test()
 async def test_frame_control_fsm(dut):
-    """Test frame_control FSM transitions and outputs"""
+    """
+    Test frame_control FSM transitions
+    """
 
     clock = Clock(dut.clk, 10, units="ns")
     cocotb.start_soon(clock.start())
@@ -45,8 +54,8 @@ async def test_frame_control_fsm(dut):
 
     # ACCUMULATE 
     await ClockCycles(dut.clk, 3)
-    assert int_sig(dut.log_en_o) == 0, "log_en_o should remain low until LOG_COMPRESS"
-    assert int_sig(dut.output_valid_o) == 0, "output_valid_o should remain low until OUTPUT"
+    assert int_sig(dut.log_en_o) == 0, "log_en_o should remain low in ACCUMULATE(2)"
+    assert int_sig(dut.output_valid_o) == 0, "output_valid_o should be low in ACCUMULATE(2)"
 
     # ACCUMULATE -> LOG_COMPRESS 
     dut.filterbank_done_i.value = 1
@@ -80,6 +89,9 @@ async def test_frame_control_fsm(dut):
     
 @cocotb.test()
 async def test_melindex(dut):
+    """
+    Test frame_control mel indexing behavior thats used in LOG_COMPRESS
+    """
     
     clock = Clock(dut.clk, 10, units="ns")
     cocotb.start_soon(clock.start())

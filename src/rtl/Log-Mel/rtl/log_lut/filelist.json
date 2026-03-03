@@ -1,6 +1,10 @@
 {
     "top": "log_lut",
     "files": [
-        "rtl/Log-Mel/rtl/log_lut.sv"
+        "src/rtl/Log-Mel/ip/LeadZeroDet.sv",
+        "src/rtl/Log-Mel/ip/PrefixAnd.sv",
+        "src/rtl/Log-Mel/ip/Encode.sv",
+        "src/rtl/Log-Mel/ip/Log2.sv",
+        "src/rtl/Log-Mel/rtl/log_lut/log_lut.sv"
     ]
 }

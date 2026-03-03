@@ -3,6 +3,7 @@
 
 import os
 import sys
+import pytest
 from pathlib import Path
 
 # Add util to path
@@ -10,27 +11,37 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent.parent / "util
 
 from utilities import runner, get_repo_root
 
+COCOTB_TESTS = [
+    "test_log_lut_basic_writes",
+    "test_log_lut_full_sweep",
+]
 
-def _link_hex_files(src_dir, dst_dir):
-    """Symlink .hex files into the simulation run directory so $readmemh can find them."""
-    os.makedirs(dst_dir, exist_ok=True)
-    for hex_file in Path(src_dir).glob("*.hex"):
-        link = Path(dst_dir) / hex_file.name
-        if not link.exists():
-            os.symlink(hex_file.resolve(), link)
+def _stage_hex_into_workdir(hex_src: Path, work_dir: Path):
+    """
+    Symlink the LUT hex into the simulator work dir so $readmemh('log2_lut.hex') can find it
+    """
+    work_dir.mkdir(parents=True, exist_ok=True)
+    assert hex_src.exists(), f"Missing LUT file: {hex_src}"
 
+    link = work_dir / hex_src.name
+    if link.exists():
+        return
 
-def test_log_lut_cocotb():
-    """Run cocotb tests for log_lut."""
+    os.symlink(hex_src.resolve(), link)
+
+@pytest.mark.parametrize("testname", COCOTB_TESTS)
+def test_log_lut_cocotb(testname):
+    """
+    Run cocotb tests for log_lut
+    """
     test_dir = Path(__file__).parent
-    run_dir = test_dir / "run" / "all" / "default" / "icarus"
 
-    # mel_coeff_rom uses $readmemh("../data/...") relative to the sim working dir.
-    # The sim runs from run_dir, so "../data/" resolves to run_dir/../data/.
-    # Symlink hex files there so $readmemh can find them.
-    data_dir = test_dir.parent.parent / "data"
-    target_data_dir = run_dir.parent / "data"
-    _link_hex_files(data_dir, target_data_dir)
+    # This is the *actual* work_dir used when runner(testname=...) is set
+    work_dir = test_dir / "run" / testname / "default" / "icarus"
+
+    # Your RTL does: $readmemh("log2_lut.hex")
+    hex_src = test_dir / "log2_lut.hex"
+    _stage_hex_into_workdir(hex_src, work_dir)
 
     runner(
         simulator="icarus",
@@ -38,8 +49,8 @@ def test_log_lut_cocotb():
         tbpath=str(test_dir),
         params={},
         defs=[],
-        testname=None,
+        testname=testname,
         pymodule="test_log_lut",
         jsonpath=str(test_dir),
-        root=get_repo_root()
+        root=get_repo_root(),
     )
