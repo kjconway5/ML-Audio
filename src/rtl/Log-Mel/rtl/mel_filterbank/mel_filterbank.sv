@@ -22,9 +22,12 @@ logic [3:0] coeff_idx [N_MELS];
 logic [0:0]    active    [N_MELS]; 
 logic [0:0] clear_i;
 //Mel_Coeff
-logic [6:0] start_bin  [N_MELS];
-logic [6:0] end_bin    [N_MELS];
+logic [7:0] start_bin  [N_MELS];
+logic [7:0] end_bin    [N_MELS];
 logic [WEIGHT_W-1:0] weight_out [N_MELS];
+
+//Raw accumulator outputs from MACs (before output capture)
+logic [ACCUM_W-1:0] accum_raw [N_MELS];
 
 //40 ROM "Instances" 1 Per bin
 //Hopefully synthesizes to one ROM
@@ -34,7 +37,7 @@ generate
             .MEL_BINS   (N_MELS),
             .MAX_COEFFS (MAX_COEFFS),
             .COEFF_W    (WEIGHT_W),
-            .BIN_W      (7)
+            .BIN_W      (8)
         ) u_rom (
             .mel_idx   (m[5:0]),           // constant per instance
             .coeff_idx (coeff_idx[m]),     // driven by controller
@@ -60,8 +63,21 @@ generate
         .weight_i(weight_out[n]),
         .accumulate_i(active[n] && valid_il),
         .clear_i(clear_i),
-        .accum_o(mel_ol[n])
+        .accum_o(accum_raw[n])
     );
+    end
+endgenerate
+
+//Output capture: latch accumulator values on the clear_i edge,
+//before the MACs zero themselves (both use pre-edge values via NBA).
+generate
+    for (genvar n = 0; n < N_MELS; n++) begin : gen_output_reg
+        always_ff @(posedge clk_i) begin
+            if (reset_i)
+                mel_ol[n] <= '0;
+            else if (clear_i)
+                mel_ol[n] <= accum_raw[n];
+        end
     end
 endgenerate
 
@@ -93,9 +109,13 @@ always_ff @(posedge clk_i ) begin : bin_ctrl
     end
 
 end
-//Clear_i goes high when a frame is done 
+//Pulse valid_ol one cycle after clear_i (so mel_ol has time to latch),
+//but suppress the spurious pulse that clear_i generates during reset.
 always_ff @(posedge clk_i) begin
-    valid_ol_r <= clear_i;
+    if (reset_i)
+        valid_ol_r <= 1'b0;
+    else
+        valid_ol_r <= clear_i;
 end
 
 assign valid_ol = valid_ol_r;

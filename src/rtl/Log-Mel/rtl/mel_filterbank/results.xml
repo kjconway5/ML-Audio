@@ -1,0 +1,6 @@
+<testsuites name="results">
+  <testsuite name="all" package="all">
+    <property name="random_seed" value="1772514920" />
+    <testcase name="test_mel_filterbank" classname="test_mel_filterbank" file="/home/jlperalt/Desktop/CSE127/ML-Audio/src/rtl/Log-Mel/rtl/mel_filterbank/test_mel_filterbank.py" lineno="57" time="1170.500153541565" sim_time_ns="2740.0" ratio_time="2.340879658759226" />
+  </testsuite>
+</testsuites>
