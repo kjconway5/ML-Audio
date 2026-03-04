@@ -1,9 +1,15 @@
 TOP      := pipeline_top
 
+FIFO_DIR   := $(abspath ../FIFO)
 STFFT_DIR  := $(abspath ../STFFT)
 LOGMEL_DIR := $(abspath ../Log-Mel)
+
 RTL_DIR    := $(LOGMEL_DIR)/rtl
 IP_DIR     := $(LOGMEL_DIR)/ip
+
+FIFO_SOURCES := \
+	$(FIFO_DIR)/fifo_1r1w.sv \
+	$(FIFO_DIR)/ram_1r1w_async.sv \
 
 STFFT_SOURCES := \
 	$(STFFT_DIR)/stfft.sv \
@@ -31,7 +37,7 @@ LOGMEL_SOURCES := \
 
 IP_SOURCES := $(wildcard $(IP_DIR)/*.sv)
 
-SOURCES := features_top.sv $(STFFT_SOURCES) $(LOGMEL_SOURCES) $(IP_SOURCES)
+SOURCES := pipeline_top.sv $(STFFT_SOURCES) $(LOGMEL_SOURCES) $(IP_SOURCES)
 
 COCOTB_MODULE    ?= test_$(TOP)
 COCOTB_MAKEFILES := $(shell cocotb-config --makefiles 2>/dev/null)
@@ -71,7 +77,7 @@ clean:
 .PHONY: clean
 
 help:
-	@echo "features_top cocotb testbench (STFFT + Log-Mel end-to-end pipeline)"
+	@echo "pipeline_top cocotb testbench (STFFT + Log-Mel end-to-end pipeline)"
 	@echo ""
 	@echo "Targets:"
 	@echo "  test-cocotb            cocotb + icarus (default)"
