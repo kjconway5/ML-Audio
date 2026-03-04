@@ -67,11 +67,6 @@ test-cocotb-verilator: link-hex
 		$(MAKE) -f $(COCOTB_MAKEFILES)/Makefile.sim
 .PHONY: test-cocotb-verilator
 
-MODEL ?= ../../ml/my_test/dscnn-golden.pt
-
-classify: test-cocotb
-	python3 classify_rtl.py --model $(MODEL)
-.PHONY: classify
 
 clean:
 	rm -rf sim_build build waves __pycache__ .pytest_cache results.xml *.vcd *.fst *.log \
@@ -86,7 +81,6 @@ help:
 	@echo "  test-cocotb            cocotb + icarus (default)"
 	@echo "  test-cocotb-icarus     cocotb + icarus (explicit)"
 	@echo "  test-cocotb-verilator  cocotb + verilator"
-	@echo "  classify               RTL sim + DSCNN classification"
 	@echo "  clean                  Remove build artefacts and hex symlinks"
 	@echo ""
 	@echo "Optional variables:"

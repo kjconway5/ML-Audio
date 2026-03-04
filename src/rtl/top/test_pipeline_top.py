@@ -23,8 +23,9 @@ Q_FRAC       = 12
 
 # Helpers 
 def make_chirp(n: int) -> np.ndarray:
-    
+
     dur = n / SAMPLE_RATE
+    t = np.arange(n) / SAMPLE_RATE
     phase = 2 * np.pi * (200 * t + (7000 - 200) / (2 * dur) * t**2)
     return (np.sin(phase) * ((1 << (SAMPLE_W - 1)) - 1)).astype(np.int32)
 

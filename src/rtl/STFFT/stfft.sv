@@ -16,14 +16,7 @@ module stfft #(
     wire [IW-1:0]    win_sample;
     wire win_ce;
 
-    // ── CE generation ──────────────────────────────────────────────────────
-    // primary_ce = i_ce  → fires on every input sample (writes data to windowfn)
-    // alternate_ce       → fires 3 clocks after i_ce (overlap processing)
-    //
-    // Both fire for EVERY input sample so all samples are stored and the
-    // 50% overlap produces 2 windowed frames per 256 input samples.
-    // Spacing of 3 clocks satisfies fftmain's CKPCE=3 constraint.
-    // Requires CE_EVERY >= 6 so alt_ce doesn't collide with the next i_ce.
+
     wire primary_ce = i_ce;
 
     reg [2:0] alt_delay;
@@ -59,7 +52,7 @@ module stfft #(
 
     assign win_ce_o = win_ce;
 
-    // ── Width adaptation for fftmain (hardcoded IWIDTH=16, OWIDTH=16) ────
+    // Width adaptation for fftmain 
     // fftmain is a generated 256-point FFT with fixed 16-bit I/O (32-bit bus).
     // Input:  sign-extend IW-bit windowed sample → 16-bit real + 16-bit zero imag
     // Output: sign-extend 16-bit real/imag → OW-bit for downstream pipeline
