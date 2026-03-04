@@ -64,7 +64,7 @@
 //
 module	fftstage #(
 		// {{{
-		parameter	IWIDTH=14,CWIDTH=20,OWIDTH=15,
+		parameter	IWIDTH=16,CWIDTH=20,OWIDTH=17,
 		// Parameters specific to the core that should be changed when
 		// this core is built ... Note that the minimum LGSPAN (the base
 		// two log of the span, or the base two log of the current FFT
