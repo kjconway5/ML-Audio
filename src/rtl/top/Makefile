@@ -86,5 +86,4 @@ help:
 	@echo "Optional variables:"
 	@echo "  WAV_FILE=/path/to/audio.wav  Feed a real WAV file instead of the"
 	@echo "                               synthetic chirp test signal."
-	@echo "  MODEL=/path/to/model.pt      DSCNN checkpoint (default: dscnn-golden.pt)"
 .PHONY: help

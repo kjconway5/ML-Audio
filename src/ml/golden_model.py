@@ -1,11 +1,3 @@
-"""
-Bit-accurate Python replica of the RTL feature pipeline.
-stfft.sv → power_calc.sv → mel_filterbank.sv → log_lut.sv
-
-Output: np.uint16 Q4.12 log-mel features (same format the CNN sees from RTL).
-Use extract_float() for float32 in log₂ units.
-"""
-
 import numpy as np
 import torch
 import os
@@ -56,7 +48,7 @@ def _load_hex(path: Path) -> list[int]:
 
 
 class GoldenExtractor:
-    """Bit-accurate replica of the RTL STFFT → Log-Mel pipeline."""
+    #Bit-accurate replica of the RTL Features Pipeline
 
     def __init__(self):
         self.win_coeffs = np.array(_load_hex(_WIN_HEX), dtype=np.int32)
@@ -79,7 +71,7 @@ class GoldenExtractor:
         assert len(self.log_lut) == (1 << LUT_FRAC)
 
     def _window_frame(self, frame: np.ndarray) -> np.ndarray:
-        """windowfn.v: signed multiply + convergent rounding, IW=OW=TW=14."""
+        #windowfn.v: signed multiply + convergent rounding, IW=OW=TW=14.
         data = frame.astype(np.int64)
         tap  = self.win_coeffs.astype(np.int64)
         product = data * tap
@@ -98,8 +90,8 @@ class GoldenExtractor:
         return np.clip(o_sample, lo, hi).astype(np.int32)
 
     def _fft_frame(self, windowed: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-        """Float64 FFT approximation of RTL fftmain (16-bit fixed-point, sign-extended to 18).
-        FFT_SCALE=128 compensates for 7 internal ÷2 stages in fftmain."""
+        #Float64 FFT approximation of RTL fftmain (16-bit fixed-point, sign-extended to 18).
+        #FFT_SCALE=128 compensates for 7 internal ÷2 stages in fftmain.
         X = np.fft.rfft(windowed.astype(np.float64))
 
         FFT_SCALE = 128
@@ -115,7 +107,7 @@ class GoldenExtractor:
         return re_u.astype(np.uint64), im_u.astype(np.uint64)
 
     def _power(self, re: np.ndarray, im: np.ndarray) -> np.ndarray:
-        """power_calc.sv: (re² + im²) >> SHIFT"""
+        #power_calc.sv: (re² + im²) >> SHIFT
         half = 1 << (FFT_W - 1)
         r = re.astype(np.int64)
         i = im.astype(np.int64)
@@ -125,13 +117,13 @@ class GoldenExtractor:
         return (s & POWER_MASK).astype(np.uint64)
 
     def _filterbank(self, power: np.ndarray) -> np.ndarray:
-        """mel_filterbank.sv: 54-bit accumulator, no saturation."""
+        #mel_filterbank.sv: 54-bit accumulator, no saturation.
         p = power.astype(np.int64)
         accum = p @ self.fb_dense
         return (accum & ACCUM_MASK).astype(np.uint64)
 
     def _log_one(self, energy: int) -> int:
-        """log_lut.sv: (floor(log2(e)) << Q_FRAC) + lut[frac]. Returns 0 for energy==0."""
+        #log_lut.sv: (floor(log2(e)) << Q_FRAC) + lut[frac]. Returns 0 for energy==0.
         if energy == 0:
             return 0
         lg = int(energy).bit_length() - 1
@@ -152,7 +144,7 @@ class GoldenExtractor:
         )
 
     def _process_frame(self, frame_samples: np.ndarray) -> np.ndarray:
-        """Run one frame through window → FFT → power → mel → log. Returns (N_MELS,) uint16."""
+        #Run one frame""
         windowed = self._window_frame(frame_samples)
         re, im   = self._fft_frame(windowed)
         power    = self._power(re, im)
@@ -160,8 +152,8 @@ class GoldenExtractor:
         return self._log_compress(mel_e)
 
     def extract(self, audio: np.ndarray) -> np.ndarray:
-        """Extract log-mel features (bit-accurate to RTL).
-        Input: PCM audio (clipped to 14-bit). Output: (N_MELS, n_frames) uint16 Q4.12."""
+        #Extract log-mel features (bit-accurate to RTL).
+       #Input: PCM audio (clipped to 14-bit). Output: (N_MELS, n_frames) uint16 Q4.12.
         samples = np.clip(np.asarray(audio, dtype=np.int32), -SAMPLE_MAX - 1, SAMPLE_MAX)
         n_samples = len(samples)
         n_frames  = max(0, (n_samples - N_FFT) // HOP_LENGTH + 1)
@@ -177,7 +169,7 @@ class GoldenExtractor:
         return out
 
     def extract_float(self, audio: np.ndarray) -> np.ndarray:
-        """Same as extract() but returns float32 in log₂ units."""
+        #Same as extract() but returns float32 in log₂ units.
         return self.extract(audio).astype(np.float32) / (1 << Q_FRAC)
 
     def get_config(self) -> dict:

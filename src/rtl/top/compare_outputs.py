@@ -1,7 +1,5 @@
 #Compare RTL pipeline output against golden model and torchaudio (features.py).
 
-
-
 import os, sys, argparse
 import numpy as np
 import matplotlib
