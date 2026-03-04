@@ -92,7 +92,7 @@ make test-cocotb
 | Lowpass characterization (all-ones taps) | Measures passband/stopband cutoff, verifies stopband depth is between -14 and -13 dB |
 | Lowpass characterization (12-tap design coefficients) | Loads actual filter coefficients, verifies stopband depth is between -55 and -54 dB |
 
-**ZipCPU fastfir — C++ testbench:**
+**ZipCPU fastfir: C++ testbench:**
 
 The upstream IP includes a C++ testbench for `fastfir` specifically:
 ```bash
