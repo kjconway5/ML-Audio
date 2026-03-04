@@ -4,10 +4,12 @@
 
   Since we are now continuously moving a window across an incoming audio input to simulate many smaller FFTs across the signal. We must introduce different forms of measurement for the FFTs range. First we have the window size/frame size(in our case window and frame size are equal). The window size is the signal we are going to apply a singular FFT to. The window size can be measured in time and number of samples:
 
-![Frame Size](src/rtl/STFFT/frame_size.png)
+![Frame Size](../src/rtl/STFFT/util/frame_size.png)
 
 
   Hop size, this is the time or amount of samples before a new window will begin. It is essential to have windows overlapping to prevent aliasing and errors in output(hop size is less than window size):
+
+  ![Hop Size](../src/rtl/STFFT/util/hop_size.png)
 
   Now it is important to keep in mind the time-frequency resolution of the STFFTs output. As the frame size increases the frequency resolution increase however the time resolution decreases. Additionally, the hop size dictates how many FFTs are computed in a given audio sound. Before we find suitable values for the window and hop size. I will denote that the FFT core will be 256-points to be accurate but efficient. 
 
@@ -27,7 +29,7 @@
 
 Gisselquist Technology's ZipCPU created an open source pipelined FFT generator, this allows us to generate a custom FFT core for the ASIC. This can be done by downloading and building the https://github.com/ZipCPU/dblclockfft that is available on GitHub by ZipCPU. Once the `make` command is complete there will be a `./fftgen` executable in the `sw/` directory. Using this executable alongside parameters we can build the custom core:
 
-`./fftgen -f 256 -n 16 -m 16 -k 4 -p 1`
+`./fftgen -f 256 -n 14 -m 18 -k 4 -p 1`
 
 Here is a list of what the parameters do:
 
@@ -40,6 +42,11 @@ Here is a list of what the parameters do:
 
 
 ## Running Testbench
+
+To run the lint check:
+```sh
+make lint
+```
 
 To run the STFFT pipeline testbench:
 ```sh
@@ -59,32 +66,3 @@ To run the RTL simulation:
 make -B
 ```
 
-To run gatelevel simulation, first harden your project and copy `../runs/wokwi/results/final/verilog/gl/{your_module_name}.v` to `gate_level_netlist.v`.
-
-Then run:
-
-```sh
-make -B GATES=yes
-```
-
-If you wish to save the waveform in VCD format instead of FST format, edit tb.v to use `$dumpfile("tb.vcd");` and then run:
-
-```sh
-make -B FST=
-```
-
-This will generate `tb.vcd` instead of `tb.fst`.
-
-## How to view the waveform file
-
-Using GTKWave
-
-```sh
-gtkwave tb.fst tb.gtkw
-```
-
-Using Surfer
-
-```sh
-surfer tb.fst
-```
