@@ -48,7 +48,7 @@ module pipeline_top #(
     logic [0:0] fifo_ready_o;
 
     fifo_1r1w #(
-        .width_p(width_p),
+        .width_p(IW_STFFT),
         .depth_log2_p(depth_log2_p)
     ) fifo (
         .clk_i(clk_i),
@@ -71,7 +71,7 @@ module pipeline_top #(
     ) fft (
         .i_clk(clk_i),
         .i_reset(reset_i),
-        .i_ce(valid_o), // from FIFO
+        .i_ce(fifo_valid_o), // from FIFO
         .i_sample(fifo_o),
         .o_fft_result(o_fft_result),
         .o_fft_sync(o_fft_sync)
