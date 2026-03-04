@@ -53,7 +53,7 @@ RUN pip3 install --no-cache-dir --upgrade pip setuptools wheel && \
     soundfile
 
 # Install ML dependencies (torch, torchaudio, pyyaml, tqdm, etc.)
-COPY requirements-ml.txt /tmp/requirements-ml.txt
+COPY .devcontainer/requirements-ml.txt /tmp/requirements-ml.txt
 RUN pip3 install --no-cache-dir -r /tmp/requirements-ml.txt && \
     rm /tmp/requirements-ml.txt
 
