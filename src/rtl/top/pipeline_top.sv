@@ -1,3 +1,4 @@
+
 module pipeline_top #(
     // stfft params
     parameter IW_STFFT = 14,
@@ -26,19 +27,13 @@ module pipeline_top #(
     // outputs to ML
     output logic [OUT_W-1:0]    cnn_data_ol,
     output logic [0:0]          cnn_valid_ol,
-    input  logic [0:0]          cnn_ready_il  // backpressure from CNN
-
+    input  logic [0:0]          cnn_ready_il  
 );
 
-    // order:
-    // 1. PDM Decimator (waiting on these for later)
-    // 2. FIR Filter (waiting on these for later)
-    // 3. STFFT
-    // 4. LogMel Top
-    // 5. Output to ML
 
     logic [2*OW_STFFT-1:0] o_fft_result;
     logic [0:0] o_fft_sync;
+    logic       win_ce_raw;   // one pulse per windowed sample entering fftmain
 
     stfft #(
         .IW(IW_STFFT),
@@ -50,32 +45,37 @@ module pipeline_top #(
         .i_ce(valid_i),
         .i_sample(data_i),
         .o_fft_result(o_fft_result),
-        .o_fft_sync(o_fft_sync)
+        .o_fft_sync(o_fft_sync),
+        .win_ce_o(win_ce_raw)
     );
 
-
-    // Timing bridge
+    
     logic               fft_sync_r;
     logic [2*OW_STFFT-1:0] fft_result_r, fft_result_rr;
+    logic               win_ce_r, win_ce_rr;
 
     always_ff @(posedge clk_i) begin
         if (reset_i) begin
             fft_sync_r    <= '0;
             fft_result_r  <= '0;
             fft_result_rr <= '0;
+            win_ce_r      <= '0;
+            win_ce_rr     <= '0;
         end else begin
-            fft_sync_r    <= o_fft_sync;
-            fft_result_r  <= o_fft_result;
-            fft_result_rr <= fft_result_r;
+            fft_sync_r    <= o_fft_sync;       // 1-cycle delayed sync
+            fft_result_r  <= o_fft_result;     // 1-cycle delayed data
+            fft_result_rr <= fft_result_r;     // 2-cycle delayed data
+            win_ce_r      <= win_ce_raw;       // 1-cycle delayed CE
+            win_ce_rr     <= win_ce_r;         // 2-cycle delayed CE (aligned with fft_result_rr)
         end
     end
 
-    // Split 2-cycle-delayed result into real and imaginary
-    wire signed [OW_STFFT-1:0] fft_real = fft_result_rr[2*OW_STFFT-1:OW_STFFT];
-    wire signed [OW_STFFT-1:0] fft_imag = fft_result_rr[OW_STFFT-1:0];
+    
+    logic [OW_STFFT-1:0] fft_re, fft_im;
+    assign fft_re = fft_result_rr[2*OW_STFFT-1:OW_STFFT];
+    assign fft_im = fft_result_rr[OW_STFFT-1:0];
 
-
-    // Asserts fft_valid for exactly N_BINS cycles after sync
+    
     localparam int CNT_W = $clog2(N_BINS + 1);
 
     logic [CNT_W-1:0] bin_cnt_q;
@@ -83,16 +83,16 @@ module pipeline_top #(
     always_ff @(posedge clk_i) begin
         if (reset_i)
             bin_cnt_q <= '0;
-        else if (fft_sync_r)
+        else if (fft_sync_r)                    // load on the pre-data sync pulse
             bin_cnt_q <= CNT_W'(N_BINS);
-        else if (bin_cnt_q > 0)
+        else if (bin_cnt_q > 0 && win_ce_rr)   // count only on actual FFT output beats
             bin_cnt_q <= bin_cnt_q - 1'b1;
     end
 
     logic fft_valid;
-    assign fft_valid = (bin_cnt_q > 0);
+    assign fft_valid = (bin_cnt_q > 0) && win_ce_rr;
 
-  
+   
     logmel_top #(
         .IW(IW_LOGMEL),
         .SHIFT(SHIFT),
@@ -108,11 +108,11 @@ module pipeline_top #(
         .clk_i(clk_i),
         .reset_i(reset_i),
 
-        // from STFT (timing-bridged)
-        .re_il(fft_real),
-        .im_il(fft_imag),
+        // from STFT 
+        .re_il(fft_re),
+        .im_il(fft_im),
         .fft_valid_il(fft_valid),
-        .fft_sync_il(fft_sync_r),
+        .fft_sync_il(fft_sync_r),   // 1-cycle delayed: arrives before the data
 
         // to CNN
         .cnn_data_ol(cnn_data_ol),

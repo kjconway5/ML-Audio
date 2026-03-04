@@ -40,7 +40,7 @@ COCOTB_MAKEFILES := $(shell cocotb-config --makefiles 2>/dev/null)
 
 # Hex data files required by $readmemh in RTL
 DATA_DIR    := $(abspath $(LOGMEL_DIR)/data)
-HANNING_HEX := $(FFT_DIR)/hanning.hex
+HANNING_HEX := $(STFFT_DIR)/hanning.hex
 HEX_FILES   := \
 	$(DATA_DIR)/mel_coeffs.hex \
 	$(DATA_DIR)/mel_starts.hex \
@@ -67,9 +67,16 @@ test-cocotb-verilator: link-hex
 		$(MAKE) -f $(COCOTB_MAKEFILES)/Makefile.sim
 .PHONY: test-cocotb-verilator
 
+MODEL ?= ../../ml/my_test/dscnn-golden.pt
+
+classify: test-cocotb
+	python3 classify_rtl.py --model $(MODEL)
+.PHONY: classify
+
 clean:
 	rm -rf sim_build build waves __pycache__ .pytest_cache results.xml *.vcd *.fst *.log \
-		hanning.hex mel_coeffs.hex mel_starts.hex mel_ends.hex log2_lut.hex cmem_*.hex
+		hanning.hex mel_coeffs.hex mel_starts.hex mel_ends.hex log2_lut.hex cmem_*.hex \
+		rtl_features.npy
 .PHONY: clean
 
 help:
@@ -79,5 +86,11 @@ help:
 	@echo "  test-cocotb            cocotb + icarus (default)"
 	@echo "  test-cocotb-icarus     cocotb + icarus (explicit)"
 	@echo "  test-cocotb-verilator  cocotb + verilator"
+	@echo "  classify               RTL sim + DSCNN classification"
 	@echo "  clean                  Remove build artefacts and hex symlinks"
+	@echo ""
+	@echo "Optional variables:"
+	@echo "  WAV_FILE=/path/to/audio.wav  Feed a real WAV file instead of the"
+	@echo "                               synthetic chirp test signal."
+	@echo "  MODEL=/path/to/model.pt      DSCNN checkpoint (default: dscnn-golden.pt)"
 .PHONY: help
