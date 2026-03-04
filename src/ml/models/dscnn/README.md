@@ -8,7 +8,9 @@ dscnn.py -
 
 Trained Models: 
 dscnn7.pt - Trained with old preprocessing pipeline that did not simulate RTL functionality 
+
 dscnn7-new.pt - Trained with NEW preprocessing pipeline that simulates RTL functionality 
+
 dscnn-golden.pt - Trained with golden_model.py (entire pipeline in one file )
 
 
