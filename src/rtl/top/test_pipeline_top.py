@@ -6,7 +6,8 @@ from cocotb.clock import Clock
 from cocotb.triggers import RisingEdge, ClockCycles
 import numpy as np
 
-# ── Constants 
+# Constants 
+SAMPLE_W     = 14
 N_MELS       = 40
 OUT_W        = 16
 WIN_LEN      = 256
@@ -40,7 +41,7 @@ async def reset(dut):
 
 
 async def drive_samples(dut, samples):
-    #Push each sample for 1 clock, idle for CE_EVERY-1 clocks."""
+    #Push each sample for 1 clock, idle for CE_EVERY-1 clocks.
     mask = (1 << SAMPLE_W) - 1
     for s in samples:
         dut.data_i.value  = int(s) & mask
@@ -51,7 +52,7 @@ async def drive_samples(dut, samples):
 
 
 async def collect_frames(dut, timeout_clks):
-    """Collect CNN output until timeout.  Returns list[list[int]]."""
+    #Collect CNN output until timeout.  Returns list[list[int]].
     frames: list[list[int]] = []
     for _ in range(timeout_clks):
         await RisingEdge(dut.clk_i)
@@ -68,11 +69,10 @@ async def collect_frames(dut, timeout_clks):
     return frames
 
 
-# ── Test ────────────────────────────────────────────────────────────────────
-
+#Test
 @cocotb.test()
 async def test_pipeline(dut):
-    """Feed chirp → collect log-mel frames → assert count, shape, range."""
+    
     cocotb.start_soon(Clock(dut.clk_i, 10, unit="ns").start())
     await reset(dut)
 
@@ -83,7 +83,7 @@ async def test_pipeline(dut):
     frames = await collect_frames(dut, timeout)
 
     n = len(frames)
-    cocotb.log.info(f"{N_SAMPLES} samples → {n} frames (expected {EXPECTED})")
+    cocotb.log.info(f"{N_SAMPLES} samples : {n} frames (expected {EXPECTED})")
 
     # — frame count
     assert n == EXPECTED, f"frame count: {n} != {EXPECTED}"
@@ -99,7 +99,7 @@ async def test_pipeline(dut):
     all_v = [v for f in frames for v in f]
     nz = sum(1 for v in all_v if v > 0)
     cocotb.log.info(f"non-zero: {nz}/{len(all_v)} ({100*nz/len(all_v):.1f}%)")
-    assert nz > 0, "all outputs zero — pipeline not processing"
+    assert nz > 0, "all outputs zero  pipeline not processing"
 
     # — save for downstream classification (classify_rtl.py / compare_outputs.py)
     mat = np.stack(
@@ -107,4 +107,4 @@ async def test_pipeline(dut):
     )
     npy = os.path.join(os.path.dirname(__file__) or ".", "rtl_features.npy")
     np.save(npy, mat)
-    cocotb.log.info(f"PASS — {n}×{N_MELS} features saved → {npy}")
+    cocotb.log.info(f"PASS  {n}×{N_MELS} features saved:{npy}")

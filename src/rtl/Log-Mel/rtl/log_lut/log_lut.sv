@@ -69,11 +69,15 @@ module log_lut #(
     // integer part in Q4.12: floor(log2(x)) shifted left by Q_FRAC
     // fractional part: lut_val already in Q4.12
     // full result = integer + fractional
+    // Saturate at max when log2_int exceeds the Q4.12 integer range (15)
+    localparam int MAX_LOG_INT = (1 << (LOG_OUT_W - Q_FRAC)) - 1;  // 15
     logic [LOG_OUT_W-1:0] log_result;
 
     assign log_result = (current_energy == '0)
                       ? '0
-                      : (log2_int << Q_FRAC) + lut_val;
+                      : (log2_int > MAX_LOG_INT)
+                        ? {LOG_OUT_W{1'b1}}
+                        : (log2_int << Q_FRAC) + lut_val;
 
     // Register Output
     // each cycle log_en is high, write result for current mel_idx
