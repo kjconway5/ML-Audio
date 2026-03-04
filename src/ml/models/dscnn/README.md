@@ -1,5 +1,19 @@
-# Configuration for 7-Class Keyword Spotting
-# Based on Google Speech Commands dataset
+DS-CNN specifics README.md
+
+PyTorch Model Structure: 
+dscnn.py - 
+  - First conv: A large (10×4) strided convolution that takes the 1-channel mel spectrogram and produces 24 feature maps, using stride (2,2) to  downsample the spatial dimensions.
+
+  - DS blocks: Four sequential blocks each consisting of a depthwise conv (one filter per channel) followed by a pointwise 1×1 conv (mixing information across channels). Key Idea: DS-CNN vs tiny-CNN reduces number of parameters and computations ~6.5x
+
+Trained Models: 
+dscnn7.pt - Trained with old preprocessing pipeline that did not simulate RTL functionality 
+dscnn7-new.pt - Trained with NEW preprocessing pipeline that simulates RTL functionality 
+dscnn-golden.pt - Trained with golden_model.py (entire pipeline in one file )
+
+
+####
+config.yaml for all ds-cnn: 
 
 dataset:
   data_dir: "/home/dnocera/ML-Audio/ml/data/speech_commands"
@@ -80,6 +94,7 @@ vad:
   threshold_multiplier: 3.0
   default_energy_threshold: 0.0001
 
-output:
-  model_save_path: "tiny-7class.pt"
-  log_file: "tiny7txt.txt"
+
+
+
+
