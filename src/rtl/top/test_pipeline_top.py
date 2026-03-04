@@ -74,7 +74,7 @@ async def collect_frames(dut, timeout_clks):
 @cocotb.test()
 async def test_pipeline(dut):
     
-    cocotb.start_soon(Clock(dut.clk_i, 10, unit="ns").start())
+    cocotb.start_soon(Clock(dut.clk_i, 10, units="ns").start())
     await reset(dut)
 
     samples = make_chirp(N_SAMPLES)
