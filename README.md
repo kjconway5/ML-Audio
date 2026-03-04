@@ -75,6 +75,10 @@ targets:
 ---
 
 #### FIR Filter
+The FIR filter uses the ZipCPU `fastfir` module from the
+[dspfilters](https://github.com/ZipCPU/dspfilters) repository.
+
+**Our cocotb testbench:**
 ```bash
 cd src/rtl/FIR
 make test-cocotb
@@ -82,7 +86,28 @@ make test-cocotb
 
 | Test | Description |
 |------|-------------|
-| TBD  | TBD |
+| Impulse + overflow check | Loads each tap position individually with a single non-zero coefficient and verifies no overflow occurs |
+| Block filter, impulse input | Loads all-identical taps, drives a single impulse, verifies output matches expected impulse response |
+| Block filter, block input | Drives a constant block input, verifies cumulative sum response and intentional overflow behavior |
+| Lowpass characterization (all-ones taps) | Measures passband/stopband cutoff, verifies stopband depth is between -14 and -13 dB |
+| Lowpass characterization (12-tap design coefficients) | Loads actual filter coefficients, verifies stopband depth is between -55 and -54 dB |
+
+**ZipCPU fastfir — C++ testbench:**
+
+The upstream IP includes a C++ testbench for `fastfir` specifically:
+```bash
+cd src/rtl/FIR/ip/bench/cpp
+# build and run fastfir_tb.cpp
+# see ZipCPU dspfilters repo for build instructions
+```
+
+**ZipCPU fastfir: Formal verification:**
+
+A SymbiYosys formal proof for `fastfir` is available at:
+```bash
+cd src/rtl/FIR/ip/bench/formal
+# requires SymbiYosys and a supported solver (e.g. yices2, z3)
+sby fastfir.sby
 
 ---
 
