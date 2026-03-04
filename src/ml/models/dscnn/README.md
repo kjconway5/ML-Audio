@@ -7,6 +7,7 @@ dscnn.py -
   - DS blocks: Four sequential blocks each consisting of a depthwise conv (one filter per channel) followed by a pointwise 1×1 conv (mixing information across channels). Key Idea: DS-CNN vs tiny-CNN reduces number of parameters and computations ~6.5x
 
 Trained Models: 
+
 dscnn7.pt - Trained with old preprocessing pipeline that did not simulate RTL functionality 
 
 dscnn7-new.pt - Trained with NEW preprocessing pipeline that simulates RTL functionality 
