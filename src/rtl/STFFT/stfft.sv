@@ -2,8 +2,7 @@ module stfft #(
     parameter IW = 14,
     parameter OW = 18,
     parameter FFT_SIZE = 256
-)
-(
+) (
     input  wire             i_clk,
     input  wire             i_reset,
     input  wire             i_ce,
