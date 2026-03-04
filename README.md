@@ -80,9 +80,14 @@ The FIR filter uses the ZipCPU `fastfir` module from the
 
 **Our cocotb testbench:**
 ```bash
-cd src/rtl/FIR
-make test-cocotb
+cd src/rtl/FIR/ip/bench/cpp
+make
+./fastfir_tb
 ```
+
+Requires Verilator to build. See the ZipCPU
+[dspfilters](https://github.com/ZipCPU/dspfilters) repo for full build
+instructions.
 
 | Test | Description |
 |------|-------------|
@@ -92,14 +97,6 @@ make test-cocotb
 | Lowpass characterization (all-ones taps) | Measures passband/stopband cutoff, verifies stopband depth is between -14 and -13 dB |
 | Lowpass characterization (12-tap design coefficients) | Loads actual filter coefficients, verifies stopband depth is between -55 and -54 dB |
 
-**ZipCPU fastfir: C++ testbench:**
-
-The upstream IP includes a C++ testbench for `fastfir` specifically:
-```bash
-cd src/rtl/FIR/ip/bench/cpp
-# build and run fastfir_tb.cpp
-# see ZipCPU dspfilters repo for build instructions
-```
 
 **ZipCPU fastfir: Formal verification:**
 
