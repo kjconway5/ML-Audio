@@ -24,6 +24,6 @@ Prints delta statistics and saves a 4-panel spectrogram comparison to `compariso
 
 ## Files
 
-- `pipeline_top.sv`: Top-level RTL (STFFT → logmel_top)
+- `pipeline_top.sv`: Top-level RTL 
 - `test_pipeline_top.py`: cocotb testbench
 - `compare_outputs.py`: 3-way feature comparison
