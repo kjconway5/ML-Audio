@@ -1,61 +1,52 @@
-# Configuration for 6-Class Keyword Spotting (yes, no, stop, go, silence, unknown)
+# Configuration for 7-Class Keyword Spotting
 # Based on Google Speech Commands dataset
 
-# Dataset paths and settings
 dataset:
   data_dir: "/home/dnocera/ML-Audio/ml/data/speech_commands"
 
 data:
   output_dir: "/home/dnocera/ML-Audio/ml/output"
-  
-  #
+
   classes:
     - "yes"
     - "no"
-    - "stop"
-    - "go"
     - "left"
     - "right"
+    - "go"
     - "silence"
     - "unknown"
-  
-  # Target keywords to detect (everything else becomes "unknown")
+
   target_keywords:
     - "yes"
     - "no"
-    - "stop"
     - "go"
     - "left"
     - "right"
 
-  # Silence generation (from background noise)
   include_silence: true
   num_silence_samples: 1000
-
-  # Cap on "unknown" examples per split (null for no cap)
+  num_true_silence_samples: 500
   unknown_max_per_split: 4000
-
-  # Reproducibility
   random_seed: 42
 
-# Preprocessing settings
+
 preprocessing:
   sample_rate: 16000
-  n_mels: 40        # Number of mel frequency bins
-  n_fft: 256        # FFT size
-  hop_length: 160   # 10ms hop at 16kHz
-  window_length: 256 # Must be <= n_fft (was 512, caused mismatch)
-  
-  # Filters (if using)
+  n_mels: 40
+  n_fft: 256
+  hop_length: 128
+  window_length: 256
+
+  #filters
   use_filters: false
   hpf_order: 2
   lpf_order: 4
   cutoff_hpf: 150
   cutoff_lpf: 4000
 
-# Model architecture
+#ds-cnn
 model:
-  n_classes: 8  # yes, no, stop, go, silence, unknown
+  n_classes: 7  # yes, no, stop, go, silence, unknown
   
   # First convolution layer
   first_conv:
@@ -70,26 +61,25 @@ model:
     kernel_size: [3, 3]
     stride: [1, 1]
 
-# Training settings
 training:
-  n_epochs: 30
+  n_epochs: 20
   batch_size: 64
-  
-  # Optimizer: SGD with momentum
+
   optimizer: "sgd"
   learning_rate: 0.1
   momentum: 0.9
   weight_decay: 0.0001
-  
-  # Learning rate schedule: decay by 0.1 at epochs 5, 10, 15
+
   lr_schedule:
     milestones: [5, 10, 15]
     gamma: 0.1
-  
-  # Validation schedule
-  val_every: 5  # Validate at epochs 5, 10, 15, 20
+  val_every: 5
 
-# Output settings
+vad:
+  calibration_duration: 2.0
+  threshold_multiplier: 3.0
+  default_energy_threshold: 0.0001
+
 output:
-  model_save_path: "8classes_ynsglr.pt"
-  log_file: "training_log8.txt"
+  model_save_path: "tiny-7class.pt"
+  log_file: "tiny7txt.txt"
