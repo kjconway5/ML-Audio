@@ -3,8 +3,8 @@ module bias_DFFs #(
     parameter DATA_W = 32,
     parameter ADDR_W = 8
 )(
-    input  wire [ADDR_W-1:0]        addr,   // no clk — purely combinational
-    output reg  signed [DATA_W-1:0] data    // reg because driven by always@(*)
+    input  wire [ADDR_W-1:0]        addr,   
+    output reg  signed [DATA_W-1:0] data    
 );
     always @(*) begin
         case (addr)

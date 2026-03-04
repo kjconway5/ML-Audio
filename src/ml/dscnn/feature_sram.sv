@@ -1,46 +1,26 @@
-// feature_sram.sv
-// Ping-pong dual buffer for intermediate feature maps between layers
-// Both banks are read and written at runtime — hard SRAM macro required
-//
-// TODO: Instantiate GF180 SRAM macros here
-//
-// Required interface:
-//   - Depth per bank:  12,000 entries  (24ch × 25 × 20, 14-bit address)
-//   - Width:           8-bit data      (INT8)
-//   - Two independent banks (A and B) for ping-pong buffering
-//   - Each bank needs simultaneous read and write capability
-//     → requires either a true dual-port macro or
-//       a single-port macro with careful timing (no same-cycle R/W conflict)
-//
-// Ping-pong scheme:
-//   buf_sel=0 → controller reads from A, writes to B
-//   buf_sel=1 → controller reads from B, writes to A
-//   buf_sel flips in NEXT_LAYER state of layer_controller.sv
-//
-// Feature map address layout within each bank:
-//   addr = ch * ofmap_H * ofmap_W + oh * ofmap_W + ow
-//   Max address = 24 * 25 * 20 - 1 = 11,999
-//
-// NOTE: Input feature map (mel spectrogram) is written into the active
-// buffer before inference begins, then first_conv reads from it.
-// The input has shape (1ch × 49 × 40 = 1,960 values) which fits
-// comfortably within the 12,000 entry bank.
+// Ping-pong  feature-map buffer: 2 banks × 12,000 × 8-bit INT8
+// Each bank implemented as 24× cascaded sram512x8 macros
+// (24 × 512 = 12,288 capacity; valid range 0–11,999)
+
+
+// Read latency: 1 cycle 
+// Write latency: 1 cycle 
 
 module feature_sram #(
     parameter DEPTH  = 12000,
     parameter DATA_W = 8,
-    parameter ADDR_W = 14
+    parameter ADDR_W = 14   // covers 0–16383; valid range 0–11,999
 )(
     input  wire              clk,
 
-    // Bank A
+    // Bank A ports
     input  wire              a_we,
     input  wire [ADDR_W-1:0] a_waddr,
     input  wire [DATA_W-1:0] a_wdata,
     input  wire [ADDR_W-1:0] a_raddr,
     output wire [DATA_W-1:0] a_rdata,
 
-    // Bank B
+    // Bank B ports
     input  wire              b_we,
     input  wire [ADDR_W-1:0] b_waddr,
     input  wire [DATA_W-1:0] b_wdata,
@@ -48,24 +28,75 @@ module feature_sram #(
     output wire [DATA_W-1:0] b_rdata
 );
 
-    // TODO: Replace with GF180 SRAM macro instantiation
-    //
-    // gf180mcu_fd_ip_sram__sram512x8m8wm1 u_bank_a (
-    //     .CLK  (clk),
-    //     .CEN  (1'b0),
-    //     .WEN  (~a_we),
-    //     .A    (a_addr),     // mux between a_waddr and a_raddr based on a_we
-    //     .D    (a_wdata),
-    //     .Q    (a_rdata)
-    // );
-    //
-    // NOTE: 12,000 entries requires cascaded macros.
-    // If using single-port macros, the controller must ensure
-    // read and write never occur on the same bank in the same cycle.
-    // The current FSM design guarantees this since COMPUTE only reads
-    // and WRITE_OFMAP only writes — they are separate FSM states.
+    localparam NUM_BANKS = 24;  // 24 × 512 = 12,288 ≥ 12,000
 
-    assign a_rdata = 8'h00; // placeholder
-    assign b_rdata = 8'h00; // placeholder
+    wire [ADDR_W-1:0] a_addr = a_we ? a_waddr : a_raddr;
+    wire [ADDR_W-1:0] b_addr = b_we ? b_waddr : b_raddr;
+
+    // Upper bits select macro instance; lower 9 bits are bank-specific offset 
+    wire [4:0] a_bank_sel  = a_addr[13:9];
+    wire [8:0] a_bank_addr = a_addr[8:0];
+    wire [4:0] b_bank_sel  = b_addr[13:9];
+    wire [8:0] b_bank_addr = b_addr[8:0];
+
+
+    wire [NUM_BANKS-1:0] a_cen;   // chip enable (active-low) (which bank to access) 
+    wire [NUM_BANKS-1:0] a_gwen;  // global write enable (active-low = write) (read/write) 
+    wire [NUM_BANKS-1:0] b_cen;
+    wire [NUM_BANKS-1:0] b_gwen;
+
+    wire [7:0] a_q [NUM_BANKS-1:0];
+    wire [7:0] b_q [NUM_BANKS-1:0];
+
+    genvar gi;
+    generate
+        for (gi = 0; gi < NUM_BANKS; gi++) begin : gen_feat_banks
+
+            // Bank A 
+            assign a_cen[gi]  = (a_bank_sel == gi[4:0]) ? 1'b0 : 1'b1;
+            assign a_gwen[gi] = a_we ? 1'b0 : 1'b1;
+
+            gf180mcu_fd_ip_sram__sram512x8m8wm1 u_feat_a (
+                .CLK  (clk),
+                .CEN  (a_cen[gi]),
+                .GWEN (a_gwen[gi]),
+                .WEN  (8'h00),      // write all 8 bits when GWEN=0
+                .A    (a_bank_addr),
+                .D    (a_wdata),
+                .Q    (a_q[gi]),
+                .VDD  (1'b1),
+                .VSS  (1'b0)
+            );
+
+            // Bank B 
+            assign b_cen[gi]  = (b_bank_sel == gi[4:0]) ? 1'b0 : 1'b1;
+            assign b_gwen[gi] = b_we ? 1'b0 : 1'b1;
+
+            gf180mcu_fd_ip_sram__sram512x8m8wm1 u_feat_b (
+                .CLK  (clk),
+                .CEN  (b_cen[gi]),
+                .GWEN (b_gwen[gi]),
+                .WEN  (8'h00),
+                .A    (b_bank_addr),
+                .D    (b_wdata),
+                .Q    (b_q[gi]),
+                .VDD  (1'b1),
+                .VSS  (1'b0)
+            );
+
+        end
+    endgenerate
+
+    // account for 1 cycle read latency 
+    reg [4:0] a_bank_sel_q;
+    reg [4:0] b_bank_sel_q;
+
+    always_ff @(posedge clk) begin
+        a_bank_sel_q <= a_bank_sel;
+        b_bank_sel_q <= b_bank_sel;
+    end
+
+    assign a_rdata = a_q[a_bank_sel_q];
+    assign b_rdata = b_q[b_bank_sel_q];
 
 endmodule

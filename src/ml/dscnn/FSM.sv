@@ -138,20 +138,19 @@ module layer_controller #(
     reg [2:0]  state;
     reg [3:0]  layer;       // current layer index 0-9
     reg        buf_sel;     // 0=read A write B, 1=read B write A
-    reg [7:0]  oh, ow, oc;  // output pixel coordinates
+    reg [7:0]  oh, ow, oc;  // output pixel coordinates, output h/w, output channel 
     reg [7:0]  ic;          // input channel counter
     reg [3:0]  kh, kw;      // kernel position counters
     reg [3:0]  mac_idx;     // position within N_MACS group
 
-    // Argmax registers for classifier output
-    reg signed [ACC_W-1:0] max_val;     //holds highest classification value 
-    reg [2:0]              max_idx;     //Which class had the highest score [2:0] to hold 7 classes 
-    reg [2:0]              oc_reg;      //register copy of oc "output channel" so we capture the correct class with highest score 
+    reg signed [ACC_W-1:0] max_val;     // holds highest classification value 
+    reg [2:0]              max_idx;     // Which class had the highest score [2:0] to hold 7 classes 
+    reg [2:0]              oc_reg;      // register copy of oc "output channel" so we capture the correct class with highest score 
 
     always @(posedge clk) begin
         if (reset) begin
             state    <= IDLE;
-            done     <= 0;          //when classification is done
+            done     <= 0;          // when classification is done
             layer    <= 0;
             buf_sel  <= 0;
             mac_en   <= 0;
@@ -171,13 +170,12 @@ module layer_controller #(
                 IDLE: begin
                     if (start) begin
                         layer   <= 0;
-                        buf_sel <= 0;       //read from bank A (mel spectrogram)
+                        buf_sel <= 0;       // read from bank A (mel spectrogram)
                         state   <= LOAD_LAYER;
                     end
                 end
 
                 LOAD_LAYER: begin
-                    // Latch current layer config into working registers    (one cycle)
                     rq_shift  <= cfg_shift[layer];
                     rq_relu_en<= cfg_relu[layer];
                     oh <= 0; ow <= 0; oc <= 0;
@@ -194,7 +192,6 @@ module layer_controller #(
                 COMPUTE: begin
                     // Feed one (ifmap, weight) pair into MAC array per cycle
                     // Address arithmetic for weight SRAM and feature SRAM
-                    // omitted here for brevity — expand per layer type
                     mac_en  <= 1;
                     // Increment kw→kh→ic counters, move to WRITE_OFMAP when done
                     if (kw == cfg_kW[layer]-1 && kh == cfg_kH[layer]-1 &&
@@ -216,10 +213,10 @@ module layer_controller #(
 
                 WRITE_OFMAP: begin
                     // Write requantized result to output feature SRAM
-                    if (!buf_sel) begin
+                    if (!buf_sel) begin     // decide to write to B/A buffer 
                         fs_b_we    <= 1;
-                        fs_b_waddr <= oc * cfg_ofmap_h[layer] * cfg_ofmap_w[layer]
-                                    + oh * cfg_ofmap_w[layer] + ow;
+                        fs_b_waddr <= oc * cfg_ofmap_h[layer] * cfg_ofmap_w[layer]  // Flatten 3d index -> 1d array, // oc = # of channels, oh = # of rows, 
+                                    + oh * cfg_ofmap_w[layer] + ow;   //ow = # of coloumns formula gives each parameter amount of data to "skip" to arrive at correct adress
                         fs_b_wdata <= rq_out;
                     end else begin
                         fs_a_we    <= 1;

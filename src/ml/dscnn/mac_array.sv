@@ -23,7 +23,7 @@ module mac_array #(
             valid <= 0;
         end else if (en) begin
             for (i = 0; i < N_MACS; i = i + 1)
-                acc <= acc + (ifmap[i] * weight[i]);
+                acc <= acc + (ifmap[i] * weight[i]);    
             valid <= 1;
         end else begin
             valid <= 0;
