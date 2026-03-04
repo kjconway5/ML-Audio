@@ -27,7 +27,7 @@
 
 Gisselquist Technology's ZipCPU created an open source pipelined FFT generator, this allows us to generate a custom FFT core for the ASIC. This can be done by downloading and building the https://github.com/ZipCPU/dblclockfft that is available on GitHub by ZipCPU. Once the `make` command is complete there will be a `./fftgen` executable in the `sw/` directory. Using this executable alongside parameters we can build the custom core:
 
-`./fftgen -f 256 -n 14 -m 18 -k 4 -p 1`
+`./fftgen -f 256 -n 16 -m 16 -k 4 -p 1`
 
 Here is a list of what the parameters do:
 
