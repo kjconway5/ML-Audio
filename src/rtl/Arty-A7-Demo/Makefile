@@ -1,5 +1,5 @@
 BITSTREAM := demo.bit
-MODEL     := demo.pt
+MODEL     := demo24.pt
 PORT      := /dev/ttyUSB1
 BOARD     := arty_a7_100t
 
