@@ -15,7 +15,7 @@ module FSM #(
     parameter DATA_W  = 8,
     parameter ACC_W   = 32,
     parameter ADDR_W  = 14,
-    parameter SPECT_AW = 11   // matches spectrogram_sram ADDR_W (covers 0-2047)
+    parameter SPECT_AW = 11   // matches spectrogram_sram ADDR_W 
 )(
     input  wire                     clk,
     input  wire                     reset,
@@ -94,8 +94,9 @@ module FSM #(
     reg        cfg_load_done;   // set by SERV writing 1 to addr 8'hFF
 
     // Config decoder signals 
-    reg [3:0] layer;
-    reg [3:0] field;
+    // cfg_layer/cfg_field are MMIO decode signals 
+    reg [3:0] cfg_layer;
+    reg [3:0] cfg_field;
 
     // MMIO write decode
     always @(posedge clk) begin
@@ -108,25 +109,25 @@ module FSM #(
                 // Decode layer index and field offset from address
                 // layer  = cfg_addr[7:4]  upper 4-bits (layers 0-9) 
                 // field  = cfg_addr[3:0]  lower 4-bits (fields 0-15) 
-                layer = cfg_addr[7:4];
-                field = cfg_addr[3:0];
-                case (field)
-                    4'd0:  cfg_in_ch   [layer] <= cfg_wdata;
-                    4'd1:  cfg_out_ch  [layer] <= cfg_wdata;
-                    4'd2:  cfg_kH      [layer] <= cfg_wdata[3:0];
-                    4'd3:  cfg_kW      [layer] <= cfg_wdata[3:0];
-                    4'd4:  cfg_stride_h[layer] <= cfg_wdata[1:0];
-                    4'd5:  cfg_stride_w[layer] <= cfg_wdata[1:0];
-                    4'd6:  cfg_pad_h   [layer] <= cfg_wdata[3:0];
-                    4'd7:  cfg_pad_w   [layer] <= cfg_wdata[3:0];
-                    4'd8:  cfg_dw      [layer] <= cfg_wdata[0];
-                    4'd9:  cfg_w_off   [layer][7:0]  <= cfg_wdata;       // Weight offset split into two (bot 8 bits) 
-                    4'd10: cfg_w_off   [layer][12:8] <= cfg_wdata[4:0];  // high 5 bits
-                    4'd11: cfg_shift   [layer] <= cfg_wdata[4:0];
-                    4'd12: cfg_relu    [layer] <= cfg_wdata[0];
-                    4'd13: cfg_ofmap_h [layer] <= cfg_wdata;
-                    4'd14: cfg_ofmap_w [layer] <= cfg_wdata;
-                    4'd15: cfg_bias_off[layer] <= cfg_wdata;
+                cfg_layer = cfg_addr[7:4];
+                cfg_field = cfg_addr[3:0];
+                case (cfg_field)
+                    4'd0:  cfg_in_ch   [cfg_layer] <= cfg_wdata;
+                    4'd1:  cfg_out_ch  [cfg_layer] <= cfg_wdata;
+                    4'd2:  cfg_kH      [cfg_layer] <= cfg_wdata[3:0];
+                    4'd3:  cfg_kW      [cfg_layer] <= cfg_wdata[3:0];
+                    4'd4:  cfg_stride_h[cfg_layer] <= cfg_wdata[1:0];
+                    4'd5:  cfg_stride_w[cfg_layer] <= cfg_wdata[1:0];
+                    4'd6:  cfg_pad_h   [cfg_layer] <= cfg_wdata[3:0];
+                    4'd7:  cfg_pad_w   [cfg_layer] <= cfg_wdata[3:0];
+                    4'd8:  cfg_dw      [cfg_layer] <= cfg_wdata[0];
+                    4'd9:  cfg_w_off   [cfg_layer][7:0]  <= cfg_wdata;       // Weight offset split into two (bot 8 bits) 
+                    4'd10: cfg_w_off   [cfg_layer][12:8] <= cfg_wdata[4:0];  // high 5 bits
+                    4'd11: cfg_shift   [cfg_layer] <= cfg_wdata[4:0];
+                    4'd12: cfg_relu    [cfg_layer] <= cfg_wdata[0];
+                    4'd13: cfg_ofmap_h [cfg_layer] <= cfg_wdata;
+                    4'd14: cfg_ofmap_w [cfg_layer] <= cfg_wdata;
+                    4'd15: cfg_bias_off[cfg_layer] <= cfg_wdata;
                     default: ;
                 endcase
             end
@@ -163,7 +164,7 @@ module FSM #(
                 OUTPUT      = 3'd7;
 
     reg [2:0]  state;
-    reg [3:0]  layer;
+    reg [3:0]  layer;       // FSM layer counter (0-9), separate from cfg_layer decode above
     reg        buf_sel;     // feature SRAM ping-pong: 0=read A write B, 1=read B write A
     reg [7:0]  oh, ow, oc;
     reg [7:0]  ic;
