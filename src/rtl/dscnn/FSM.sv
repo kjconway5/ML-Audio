@@ -9,6 +9,7 @@
 
 //   Special address: 8'hFF → write 1 to assert cfg_load_done internally
 
+
 module FSM #(
     parameter N_MACS  = 16,
     parameter DATA_W  = 8,
@@ -224,6 +225,7 @@ module FSM #(
                     state <= COMPUTE;
                 end
 
+                //Each pass through COMPUTE processes one kernel position for one output pixel 
                 COMPUTE: begin
                     // Compute input (ifmap) spatial coordinates
                     ih_raw = ($signed({1'b0, oh}) * $signed({2'b0, cfg_stride_h[layer]})) //ih_raw = oh * stride_h + kh - pad_h
