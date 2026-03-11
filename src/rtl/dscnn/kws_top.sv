@@ -54,7 +54,7 @@ module kws_top (
         .relu_en(rq_relu_en), .out(rq_out)
     );
 
-    layer_controller u_ctrl (
+    FSM u_ctrl (
         .clk(clk), .reset(reset), .start(start),
         .done(done), .class_out(class_out),
         .w_addr(w_addr), .w_data(w_data),
@@ -73,7 +73,7 @@ endmodule
 
 ---
 
-The one thing marked as incomplete in `layer_controller.v` is the SRAM address arithmetic inside `COMPUTE` — that's the trickiest part and deserves its own focused pass once the rest compiles cleanly. The address formula for reading ifmap is:
+The one thing marked as incomplete in `FSM.v` is the SRAM address arithmetic inside `COMPUTE` — that's the trickiest part and deserves its own focused pass once the rest compiles cleanly. The address formula for reading ifmap is:
 ```
 ifmap_addr = ic * ifmap_H * ifmap_W
            + (oh * stride_h + kh) * ifmap_W

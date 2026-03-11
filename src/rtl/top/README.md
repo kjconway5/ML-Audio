@@ -27,3 +27,11 @@ Prints delta statistics and saves a 4-panel spectrogram comparison to `compariso
 - `pipeline_top.sv`: Top-level RTL 
 - `test_pipeline_top.py`: cocotb testbench
 - `compare_outputs.py`: 3-way feature comparison
+
+## TODO: spect_buffer_ctrl (module between pipeline and dscnn)
+
+-Accepts INT16 mel stream from output_buffer (cnn_data_ol/cnn_valid_ol) and writes INT8 values into the active spectrogram_sram bank
+-Counts 50 frames of 40 mel bins each before signaling completion
+-Pulses spect_done for one cycle after the 50th frame so FSM can begin inference
+-Quantizes each value INT16→INT8 via arithmetic right shift by QUANT_SHIFT + saturating clamp to [-128, 127]
+-On spect_done, flips spect_write_sel to swap which bank the preprocessor writes into next
