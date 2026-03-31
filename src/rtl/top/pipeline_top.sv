@@ -15,7 +15,12 @@ module pipeline_top #(
     parameter int WEIGHT_W   = 16,         // mel coefficient width
     parameter int ACCUM_W    = 54,         // MAC accumulator width
     parameter int LOG_OUT_W  = 16,         // log_lut output width
-    parameter int OUT_W      = 16          // output width to CNN
+    parameter int OUT_W      = 16,         // output width to CNN
+
+    //spect_buffer params 
+    parameter int SPECT_SHIFT = 4,       // first_conv SPECT_SHIFT from export.py
+    parameter int N_FRAMES    = 50,      // frames per inference window
+    parameter int ADDR_W      = 11       // must match spectrogram_sram ADDR_W
 ) (
     input  logic [0:0] clk_i,
     input  logic [0:0] reset_i,
@@ -24,10 +29,20 @@ module pipeline_top #(
     input logic [IW_STFFT-1:0] data_i,
     input logic [0:0] valid_i,
 
-    // outputs to ML
-    output logic [OUT_W-1:0]    cnn_data_ol,
-    output logic [0:0]          cnn_valid_ol,
-    input  logic [0:0]          cnn_ready_il  
+    // outputs to Spectrogram_SRAM
+    // Bank A
+    output wire                   sp_a_we,
+    output wire [ADDR_W-1:0]      sp_a_waddr,
+    output wire signed [7:0]      sp_a_wdata,
+
+    // Bank B
+    output wire                   sp_b_we,
+    output wire [ADDR_W-1:0]      sp_b_waddr,
+    output wire signed [7:0]      sp_b_wdata,
+
+    output logic                    spect_done,
+    output logic                    spect_write_sel
+
 );
 
 
@@ -92,7 +107,11 @@ module pipeline_top #(
     logic fft_valid;
     assign fft_valid = (bin_cnt_q > 0) && win_ce_rr;
 
-   
+    // Spectrogram output signals 
+    logic [OUT_W-1:0] mel_data;
+    logic             mel_valid;
+    logic             mel_ready;
+
     logmel_top #(
         .IW(IW_LOGMEL),
         .SHIFT(SHIFT),
@@ -115,9 +134,32 @@ module pipeline_top #(
         .fft_sync_il(fft_sync_r),   // 1-cycle delayed: arrives before the data
 
         // to CNN
-        .cnn_data_ol(cnn_data_ol),
-        .cnn_valid_ol(cnn_valid_ol),
-        .cnn_ready_il(cnn_ready_il)
+        .cnn_data_ol(mel_data),
+        .cnn_valid_ol(mel_valid), 
+        .cnn_ready_il(mel_ready) // Driven by spect_buffer always high
     );
+
+    spect_buffer_ctrl #(
+        .SPECT_SHIFT(SPECT_SHIFT),
+        .N_MELS     (N_MELS),
+        .N_FRAMES   (N_FRAMES),
+        .IN_W       (OUT_W),
+        .ADDR_W     (ADDR_W)
+    ) spectrogram_buffer (
+        .clk            (clk_i),
+        .reset          (reset_i),
+        .cnn_data_i     (mel_data),
+        .cnn_valid_i    (mel_valid),
+        .cnn_ready_o    (mel_ready),
+        .sp_a_we        (sp_a_we),
+        .sp_a_waddr     (sp_a_waddr),
+        .sp_a_wdata     (sp_a_wdata),
+        .sp_b_we        (sp_b_we),
+        .sp_b_waddr     (sp_b_waddr),
+        .sp_b_wdata     (sp_b_wdata),
+        .spect_done     (spect_done),
+        .spect_write_sel(spect_write_sel)
+    );
+
 
 endmodule

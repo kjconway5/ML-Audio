@@ -6,6 +6,7 @@ RTL_DIR    := $(LOGMEL_DIR)/rtl
 IP_DIR     := $(LOGMEL_DIR)/ip
 
 FFT_DIR    := $(STFFT_DIR)/ip/FFT
+SPECTBUF_DIR := $(abspath ../SPECT_BUFFER)
 
 STFFT_SOURCES := \
 	$(STFFT_DIR)/stfft.sv \
@@ -33,7 +34,10 @@ LOGMEL_SOURCES := \
 
 IP_SOURCES := $(wildcard $(IP_DIR)/*.sv)
 
-SOURCES := pipeline_top.sv $(STFFT_SOURCES) $(LOGMEL_SOURCES) $(IP_SOURCES)
+SPECTBUF_SOURCES := \
+	$(SPECTBUF_DIR)/spect_buffer_ctrl.sv
+
+SOURCES := pipeline_top.sv $(STFFT_SOURCES) $(LOGMEL_SOURCES) $(IP_SOURCES) $(SPECTBUF_SOURCES)
 
 COCOTB_MODULE    ?= test_$(TOP)
 COCOTB_MAKEFILES := $(shell cocotb-config --makefiles 2>/dev/null)

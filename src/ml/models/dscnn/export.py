@@ -1,8 +1,9 @@
 import torch
 import numpy as np
+import math
 from dscnn import DSCNN
 
-checkpoint = torch.load("dscnn7.pt", map_location="cpu")
+checkpoint = torch.load("dscnn-golden2.pt", map_location="cpu")
 
 cfg = checkpoint["config"]["model"]
 model = DSCNN(
@@ -32,11 +33,11 @@ layers = []
 for name, module in model.named_modules():
     if isinstance(module, torch.nn.quantized.Conv2d):
         w = module.weight().int_repr().numpy().flatten().astype(np.int8)
-        
+
         # Also grab per-channel quantization scale for requantization in RTL
         scale = module.weight().q_per_channel_scales().numpy()
         zero  = module.weight().q_per_channel_zero_points().numpy()
-        
+
         layers.append({
             "name":   name,
             "shape":  module.weight().int_repr().numpy().shape,
@@ -63,9 +64,8 @@ with open("scales.txt", "w") as f:
     f.write("-" * 60 + "\n")
     for l in layers:
         mean_scale = float(np.mean(l["scale"]))
-        import math
         shift = round(-math.log2(mean_scale))
-        shift = max(0, min(31, shift))  # clamp to valid range
+        shift = max(0, min(31, shift))
         f.write(f"{l['name']:<35s}  {mean_scale:>12.6f}  {shift:>6d}\n")
         print(f"{l['name']:35s}  scale={mean_scale:.6f}  shift={shift}")
 
@@ -75,6 +75,23 @@ for l in layers:
     print(f"  name={l['name']:35s}  shape={str(l['shape']):20s}  "
           f"offset={l['offset']:5d}  n_vals={len(l['weights'])}")
 
+# ── Extract input activation scales ──────────────────────────────────────────
+# These are needed by spect_buffer_ctrl to quantize the INT16 logmel output
+# to INT8 before writing into spectrogram_sram.
+# SPECT_SHIFT is derived from first_conv's input_scale:
+#   quant_int8 = clamp($signed(mel_int16) >>> SPECT_SHIFT, -128, 127)
+# When you retrain, update SPECT_SHIFT in spect_buffer_ctrl.sv to match.
+print("\n--- Input activation scales (needed for spect_buffer_ctrl) ---")
+print(f"{'layer':<35s}  {'input_scale':>14s}  {'SPECT_SHIFT':>12s}")
+print("-" * 65)
+for name, module in model.named_modules():
+    if isinstance(module, torch.nn.quantized.Conv2d):
+        input_scale = float(module.scale)
+        shift = round(-math.log2(input_scale))
+        shift = max(0, min(15, shift))
+        print(f"{name:35s}  input_scale={input_scale:.8f}  SPECT_SHIFT={shift}")
+
+# ── Bias extraction (quantized to INT32) ─────────────────────────────────────
 print("\n--- Bias extraction ---")
 for name, module in model.named_modules():
     if isinstance(module, torch.nn.quantized.Conv2d):
@@ -94,28 +111,23 @@ for name, module in model.named_modules():
         if module.bias() is not None:
             # Get the float bias
             b_float = module.bias().detach().numpy()
-            
-            # Get scales needed for bias quantization
-            # Input activation scale (tracked by QAT observer)
-            # Weight scale (per-channel, take mean for single scale approx)
-            w_scale = module.weight().q_per_channel_scales().numpy().mean()
-            
+
             # Bias scale = input_scale × weight_scale
-            # Input scale is stored in the module's scale attribute
+            w_scale    = module.weight().q_per_channel_scales().numpy().mean()
             input_scale = float(module.scale)
-            bias_scale = input_scale * w_scale
-            
+            bias_scale  = input_scale * w_scale
+
             # Quantize bias to INT32
             b_int32 = np.round(b_float / bias_scale).astype(np.int32)
-            
+
             np.save(f"bias_{name}.npy", b_int32)
-            
+
             bias_layers.append({
                 "name":   name,
                 "offset": sum(len(l["bias"]) for l in bias_layers),
                 "bias":   b_int32,
             })
-            
+
             print(f"{name:35s}  shape={b_int32.shape}  "
                   f"offset={bias_layers[-1]['offset']:4d}  "
                   f"scale={bias_scale:.6f}")
@@ -126,7 +138,6 @@ for name, module in model.named_modules():
 all_biases = np.concatenate([l["bias"] for l in bias_layers])
 with open("bias.hex", "w") as f:
     for val in all_biases:
-        # Write as unsigned 32-bit hex, 8 characters wide
         f.write(f"{val & 0xFFFFFFFF:08x}\n")
 
 print(f"\nbias.hex written — {len(all_biases)} total INT32 values")
@@ -137,7 +148,7 @@ for l in bias_layers:
     print(f"  name={l['name']:35s}  "
           f"offset={l['offset']:4d}  n_vals={len(l['bias'])}")
 
-print("\n--- bias_sram.sv case statement (paste into module) ---")
+print("\n--- bias_DFFs.sv case statement (paste into module) ---")
 offset = 0
 for l in bias_layers:
     print(f"\n            // {l['name']} (offset {l['offset']}, {len(l['bias'])} values)")
