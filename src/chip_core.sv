@@ -46,9 +46,11 @@ module chip_core #(
     assign bidir_pu = '0;
     assign bidir_pd = '0;
   
-    logic _unused;
+    logic _unused;                  // TODO: Set ununsed wires here 
     assign _unused = &bidir_in;
  
+
+    // Example SRAM instantiation from Wafer Space
     // logic [NUM_BIDIR_PADS-1:0] count;
     // always_ff @(posedge clk) begin
     //     if (!rst_n) begin
@@ -115,12 +117,52 @@ module chip_core #(
     wire [2:0]      kws_class_out; 
 
     pipeline_top #(
-    .IW_STFFT   (14),
-    .OW_STFFT   (18),
-    .FFT_SIZE   (256),
-    .N_MELS     (40),
-    .N_BINS     (129),
-    .N_FRAMES   (50),
-    .SPECT_SHIFT(4),    // update this after retraining
-    .ADDR_W     (11)
+        .IW_STFFT(14),
+        .OW_STFFT(18),
+        .FFT_SIZE(256),
+        .N_MELS(40),
+        .N_BINS(129),
+        .N_FRAMES(50),
+        .SPECT_SHIFT(4),    // update this after retraining
+        .ADDR_W(11)
     ) 
+    pipeline_inst (
+        .clk_i(clk),
+        .reset_i(reset),
+        .data_i('0),          // TODO: connect to audio input pads
+        .valid_i(1'b0),        // TODO: connect to audio valid pad
+        .sp_a_we(sp_a_we),
+        .sp_a_waddr(sp_a_waddr),
+        .sp_a_wdata(sp_a_wdata),
+        .sp_b_we(sp_b_we),
+        .sp_b_waddr(sp_b_waddr),
+        .sp_b_wdata(sp_b_wdata),
+        .spect_done(spect_done),
+        .spect_write_sel(spect_write_sel)
+    ); 
+
+    kws_top kws_inst (
+        .clk(clk),
+        .reset(reset),
+        .start(1'b0),               // TODO: connect to SERV or pad
+        .done(kws_done),
+        .class_out(kws_class_out),
+        .cfg_we(1'b0),              // TODO: connect to SERV
+        .cfg_addr('0),              // TODO: connect to SERV
+        .cfg_wdata('0),             // TODO: connect to SERV
+        .spect_done(spect_done),
+        .spect_write_sel(spect_write_sel),
+        .sp_a_we(sp_a_we),
+        .sp_a_waddr(sp_a_waddr),
+        .sp_a_wdata(sp_a_wdata),
+        .sp_b_we(sp_b_we),
+        .sp_b_waddr(sp_b_waddr),
+        .sp_b_wdata(sp_b_wdata)
+    );
+
+
+    // TODO: Figure out output pad connection from kws_top -> bidir_out
+    assign bidir_out = '0; 
+
+    endmodule 
+    `default_nettype wire 

@@ -141,23 +141,23 @@ module pipeline_top #(
 
     spect_buffer_ctrl #(
         .SPECT_SHIFT(SPECT_SHIFT),
-        .N_MELS     (N_MELS),
-        .N_FRAMES   (N_FRAMES),
-        .IN_W       (OUT_W),
-        .ADDR_W     (ADDR_W)
+        .N_MELS(N_MELS),
+        .N_FRAMES(N_FRAMES),
+        .IN_W(OUT_W),
+        .ADDR_W(ADDR_W)
     ) spectrogram_buffer (
-        .clk            (clk_i),
-        .reset          (reset_i),
-        .cnn_data_i     (mel_data),
-        .cnn_valid_i    (mel_valid),
-        .cnn_ready_o    (mel_ready),
-        .sp_a_we        (sp_a_we),
-        .sp_a_waddr     (sp_a_waddr),
-        .sp_a_wdata     (sp_a_wdata),
-        .sp_b_we        (sp_b_we),
-        .sp_b_waddr     (sp_b_waddr),
-        .sp_b_wdata     (sp_b_wdata),
-        .spect_done     (spect_done),
+        .clk(clk_i),
+        .reset(reset_i),
+        .cnn_data_imel_data),
+        .cnn_valid_i(mel_valid),
+        .cnn_ready_o(mel_ready),
+        .sp_a_we(sp_a_we),
+        .sp_a_waddr(sp_a_waddr),
+        .sp_a_wdata(sp_a_wdata),
+        .sp_b_we(sp_b_we),
+        .sp_b_waddr(sp_b_waddr),
+        .sp_b_wdata(sp_b_wdata),
+        .spect_done(spect_done),
         .spect_write_sel(spect_write_sel)
     );
 
