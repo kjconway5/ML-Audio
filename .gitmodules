@@ -1,0 +1,9 @@
+[submodule "gf180mcu_as_sc_mcu7t3v3"]
+	path = gf180mcu_as_sc_mcu7t3v3
+	url = https://github.com/AvalonSemiconductors/gf180mcu_as_sc_mcu7t3v3.git
+[submodule "gf180mcu_ocd_ip_sram"]
+	path = gf180mcu_ocd_ip_sram
+	url = https://github.com/RTimothyEdwards/gf180mcu_ocd_ip_sram.git
+[submodule "gf180mcu"]
+	path = gf180mcu
+	url = https://github.com/wafer-space/gf180mcu.git
