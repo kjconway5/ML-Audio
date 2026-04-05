@@ -1,6 +1,6 @@
 // Ping-pong  feature-map buffer: 2 banks × 12,000 × 8-bit INT8
-// Each bank implemented as 24× cascaded sram512x8 macros
-// (24 × 512 = 12,288 capacity; valid range 0–11,999)
+// Each bank implemented as 12× cascaded sram1024x8 macros
+// (12 × 1024 = 12,288 capacity; valid range 0–11,999)
 
 
 // Read latency: 1 cycle 
@@ -28,16 +28,17 @@ module feature_sram #(
     output wire [DATA_W-1:0] b_rdata
 );
 
-    localparam NUM_BANKS = 24;  // 24 × 512 = 12,288 ≥ 12,000
+    // 12 x 1024 = 12,288 
+    localparam NUM_BANKS = 12;
 
     wire [ADDR_W-1:0] a_addr = a_we ? a_waddr : a_raddr;
     wire [ADDR_W-1:0] b_addr = b_we ? b_waddr : b_raddr;
 
-    // Upper bits select macro instance; lower 9 bits are bank-specific offset 
-    wire [4:0] a_bank_sel  = a_addr[13:9];
-    wire [8:0] a_bank_addr = a_addr[8:0];
-    wire [4:0] b_bank_sel  = b_addr[13:9];
-    wire [8:0] b_bank_addr = b_addr[8:0];
+    // Upper bits select macro instance; lower 10 bits are bank-specific offset 
+    wire [3:0] a_bank_sel  = a_addr[13:10];  
+    wire [9:0] a_bank_addr = a_addr[9:0];    
+    wire [3:0] b_bank_sel  = b_addr[13:10];  
+    wire [9:0] b_bank_addr = b_addr[9:0];    
 
 
     wire [NUM_BANKS-1:0] a_cen;   // chip enable (active-low) (which bank to access) 
@@ -53,10 +54,11 @@ module feature_sram #(
         for (gi = 0; gi < NUM_BANKS; gi++) begin : gen_feat_banks
 
             // Bank A 
-            assign a_cen[gi]  = (a_bank_sel == gi[4:0]) ? 1'b0 : 1'b1;
+            assign a_cen[gi]  = (a_bank_sel == gi[3:0]) ? 1'b0 : 1'b1;  //// was gi[4:0] → now gi[3:0]
             assign a_gwen[gi] = a_we ? 1'b0 : 1'b1;
 
-            gf180mcu_fd_ip_sram__sram512x8m8wm1 u_feat_a (
+            // 1024x8 3.3V SRAM Macro 
+            gf180mcu_ocd_ip_sram__sram1024x8m8wm1 inst_feature_sram (
                 .CLK  (clk),
                 .CEN  (a_cen[gi]),
                 .GWEN (a_gwen[gi]),
@@ -69,10 +71,10 @@ module feature_sram #(
             );
 
             // Bank B 
-            assign b_cen[gi]  = (b_bank_sel == gi[4:0]) ? 1'b0 : 1'b1;
+            assign b_cen[gi]  = (b_bank_sel == gi[3:0]) ? 1'b0 : 1'b1;  
             assign b_gwen[gi] = b_we ? 1'b0 : 1'b1;
 
-            gf180mcu_fd_ip_sram__sram512x8m8wm1 u_feat_b (
+            gf180mcu_ocd_ip_sram__sram1024x8m8wm1 inst_feature_sram2 (
                 .CLK  (clk),
                 .CEN  (b_cen[gi]),
                 .GWEN (b_gwen[gi]),
@@ -82,14 +84,14 @@ module feature_sram #(
                 .Q    (b_q[gi]),
                 .VDD  (1'b1),
                 .VSS  (1'b0)
-            );
+            ); // 
 
         end
     endgenerate
 
     // account for 1 cycle read latency 
-    reg [4:0] a_bank_sel_q;
-    reg [4:0] b_bank_sel_q;
+    reg [3:0] a_bank_sel_q;  
+    reg [3:0] b_bank_sel_q;  
 
     always_ff @(posedge clk) begin
         a_bank_sel_q <= a_bank_sel;
