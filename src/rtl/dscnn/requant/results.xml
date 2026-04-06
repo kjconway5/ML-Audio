@@ -1,0 +1,10 @@
+<testsuites name="results">
+  <testsuite name="all" package="all">
+    <property name="random_seed" value="1775467776" />
+    <testcase name="positive_nosaturation_test" classname="test_requant" file="/workspace/src/rtl/dscnn/requant/test_requant.py" lineno="8" time="0.00046062469482421875" sim_time_ns="5.001" ratio_time="10856.99498136646" />
+    <testcase name="positive_saturation_test" classname="test_requant" file="/workspace/src/rtl/dscnn/requant/test_requant.py" lineno="53" time="0.0001862049102783203" sim_time_ns="2.0009999999999994" ratio_time="10746.225741357232" />
+    <testcase name="negative_test" classname="test_requant" file="/workspace/src/rtl/dscnn/requant/test_requant.py" lineno="74" time="0.00018310546875" sim_time_ns="3.0010000000000003" ratio_time="16389.461333333336" />
+    <testcase name="negative_saturation_test" classname="test_requant" file="/workspace/src/rtl/dscnn/requant/test_requant.py" lineno="103" time="0.00014066696166992188" sim_time_ns="2.0009999999999994" ratio_time="14225.088650847454" />
+    <testcase name="relu_test" classname="test_requant" file="/workspace/src/rtl/dscnn/requant/test_requant.py" lineno="124" time="0.00017881393432617188" sim_time_ns="3.0010000000000012" ratio_time="16782.80840533334" />
+  </testsuite>
+</testsuites>

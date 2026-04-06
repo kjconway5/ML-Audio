@@ -1,9 +1,9 @@
 <testsuites name="results">
   <testsuite name="all" package="all">
-    <property name="random_seed" value="1775465294" />
-    <testcase name="reset_test" classname="test_mac_array" file="/workspace/src/rtl/dscnn/mac_array/test_mac_array.py" lineno="25" time="0.0014295578002929688" sim_time_ns="105.001" ratio_time="73449.9857078052" />
-    <testcase name="clear_test" classname="test_mac_array" file="/workspace/src/rtl/dscnn/mac_array/test_mac_array.py" lineno="40" time="0.0008883476257324219" sim_time_ns="200.001" ratio_time="225138.21639935588" />
-    <testcase name="en_test" classname="test_mac_array" file="/workspace/src/rtl/dscnn/mac_array/test_mac_array.py" lineno="62" time="0.0010273456573486328" sim_time_ns="230.00100000000003" ratio_time="223878.88473056396" />
-    <testcase name="else_test" classname="test_mac_array" file="/workspace/src/rtl/dscnn/mac_array/test_mac_array.py" lineno="85" time="0.0009295940399169922" sim_time_ns="200.00099999999998" ratio_time="215148.75463041803" />
+    <property name="random_seed" value="1775465976" />
+    <testcase name="reset_test" classname="test_mac_array" file="/workspace/src/rtl/dscnn/mac_array/test_mac_array.py" lineno="25" time="0.001527547836303711" sim_time_ns="105.001" ratio_time="68738.27287404402" />
+    <testcase name="clear_test" classname="test_mac_array" file="/workspace/src/rtl/dscnn/mac_array/test_mac_array.py" lineno="40" time="0.0008645057678222656" sim_time_ns="200.001" ratio_time="231347.2129906233" />
+    <testcase name="en_test" classname="test_mac_array" file="/workspace/src/rtl/dscnn/mac_array/test_mac_array.py" lineno="62" time="0.0009908676147460938" sim_time_ns="230.00100000000003" ratio_time="232120.81672377288" />
+    <testcase name="else_test" classname="test_mac_array" file="/workspace/src/rtl/dscnn/mac_array/test_mac_array.py" lineno="85" time="0.0012209415435791016" sim_time_ns="200.00099999999998" ratio_time="163808.82528881077" />
   </testsuite>
 </testsuites>
