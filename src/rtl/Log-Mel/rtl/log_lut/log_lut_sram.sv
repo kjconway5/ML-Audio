@@ -1,11 +1,3 @@
-
-
-//
-//
-//
-//
-//
-
 module log_lut_sram #(
     parameter int LUT_DEPTH = 64,
     parameter int DATA_W    = 16,
@@ -22,11 +14,12 @@ module log_lut_sram #(
     input  wire [ADDR_W-1:0] rd_addr_i,
     output wire [DATA_W-1:0] rd_data_o
 );
-
     //Flash write vs run time read
     wire [ADDR_W-1:0] sram_addr = flash_write_enable_i ? flash_addr_i : rd_addr_i;
     wire [0:0] gwen  = flash_write_enable_i ? 1'b0 : 1'b1;  // 0=write, 1=read
     wire [0:0] cen   = 1'b0;   
+
+    wire [7:0] wen = flash_write_enable_i ? 8'h00 : 8'hFF;
 
     wire [7:0] q_lo, q_hi;
 
@@ -35,9 +28,9 @@ module log_lut_sram #(
         .CLK  (clk_i),
         .CEN  (cen),
         .GWEN (gwen),
-        .WEN  (8'h00),
-        .A    (sram_addr_i),
-        .D    (boot_wdata[7:0]),
+        .WEN  (wen),
+        .A    (sram_addr),
+        .D    (flash_write_data_i[7:0]),
         .Q    (q_lo),
         .VDD  (1'b1),
         .VSS  (1'b0)
@@ -48,14 +41,14 @@ module log_lut_sram #(
         .CLK  (clk_i),
         .CEN  (cen),
         .GWEN (gwen),
-        .WEN  (8'h00),
-        .A    (sram_addr_i),
-        .D    (boot_wdata[15:8]),
+        .WEN  (wen),
+        .A    (sram_addr),
+        .D    (flash_write_data_i[15:8]),
         .Q    (q_hi),
         .VDD  (1'b1),
         .VSS  (1'b0)
     );
 
-    assign rd_data = {q_hi, q_lo};
+    assign rd_data_o = {q_hi, q_lo};
 
 endmodule
