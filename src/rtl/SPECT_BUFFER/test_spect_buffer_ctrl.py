@@ -74,5 +74,17 @@ async def data_out_test(dut):
     assert dut.sp_b_wdata.value == 128, f"Expected sp_b_wdata to be 128, got {dut.sp_b_wdata.value}"
     cocotb.log.info("saturation_test passed")
     
+    cocotb.log.info("data_out_test passed")
     
+async def write_addr_test(dut):
+    cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
+    await reset_dut(dut)
+    await RisingEdge(dut.clk)
+
+    dut.reset.value = 0
+    dut.cnn_valid_i.value = 1
+    
+    
+    
+    cocotb.log.info("write_addr_test passed")
     
