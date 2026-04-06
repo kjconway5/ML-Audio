@@ -14,6 +14,7 @@ module mac_array #(
     output reg                       valid
 );
     integer i;
+    reg signed [ACC_W-1:0] sum;
     always @(posedge clk) begin
         if (reset) begin
             acc   <= 0;
@@ -22,9 +23,11 @@ module mac_array #(
             acc   <= bias;
             valid <= 0;
         end else if (en) begin
-            for (i = 0; i < N_MACS; i = i + 1)
-                acc <= acc + (ifmap[i] * weight[i]);    
+            sum = 0;
             valid <= 1;
+            for (i = 0; i < N_MACS; i = i + 1)
+                sum = sum + (ifmap[i] * weight[i]);
+            acc <= sum;
         end else begin
             valid <= 0;
         end
