@@ -7,6 +7,7 @@ N_MELS      = 40
 N_FRAMES    = 50
 IN_W        = 16
 ADDR_W      = 11 
+TOTAL_SAMPLES = N_FRAMES * N_MELS;
 
 async def reset_dut(dut, cycles=5):
     """
@@ -35,3 +36,43 @@ async def reset_test(dut):
     
     cocotb.log.info("reset_test passed")
 
+@cocotb.test()
+async def data_out_test(dut):
+    cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
+    await reset_dut(dut)
+    await RisingEdge(dut.clk)
+
+    dut.reset.value = 0
+    dut.cnn_valid_i.value = 1
+    
+    # positive within bounds
+    dut.cnn_data_i.value = 100
+    await Timer(1, units='ns')
+    assert dut.sp_a_wdata.value == 6, f"Expected sp_a_wdata to be 6, got {dut.sp_a_wdata.value}"
+    assert dut.sp_b_wdata.value == 6, f"Expected sp_b_wdata to be 6, got {dut.sp_b_wdata.value}"
+
+    # negative within bounds
+    # output is large positive, but the rtl knows its signed and 
+    # in twos complement
+    dut.cnn_data_i.value = -100
+    await Timer(1, units='ns')
+    assert dut.sp_a_wdata.value == 249, f"Expected sp_a_wdata to be 249, got {dut.sp_a_wdata.value}"
+    assert dut.sp_b_wdata.value == 249, f"Expected sp_b_wdata to be 249, got {dut.sp_b_wdata.value}"
+
+    # positive saturation
+    dut.cnn_data_i.value = 4092
+    await Timer(1, units='ns')
+    assert dut.sp_a_wdata.value == 127, f"Expected sp_a_wdata to be 127, got {dut.sp_a_wdata.value}"
+    assert dut.sp_b_wdata.value == 127, f"Expected sp_b_wdata to be 127, got {dut.sp_b_wdata.value}"
+
+    # negative saturation
+    # output is large positive, but the rtl knows its signed and 
+    # in twos complement
+    dut.cnn_data_i.value = -4092
+    await Timer(1, units='ns')
+    assert dut.sp_a_wdata.value == 128, f"Expected sp_a_wdata to be 128, got {dut.sp_a_wdata.value}"
+    assert dut.sp_b_wdata.value == 128, f"Expected sp_b_wdata to be 128, got {dut.sp_b_wdata.value}"
+    cocotb.log.info("saturation_test passed")
+    
+    
+    

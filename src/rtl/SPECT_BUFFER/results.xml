@@ -1,6 +1,7 @@
 <testsuites name="results">
   <testsuite name="all" package="all">
-    <property name="random_seed" value="1775515136" />
-    <testcase name="reset_test" classname="test_spect_buffer_ctrl" file="/workspace/src/rtl/SPECT_BUFFER/test_spect_buffer_ctrl.py" lineno="24" time="0.0010075569152832031" sim_time_ns="105.001" ratio_time="104213.46765357313" />
+    <property name="random_seed" value="1775517187" />
+    <testcase name="reset_test" classname="test_spect_buffer_ctrl" file="/workspace/src/rtl/SPECT_BUFFER/test_spect_buffer_ctrl.py" lineno="25" time="0.0010058879852294922" sim_time_ns="105.001" ratio_time="104386.37456838114" />
+    <testcase name="data_out_test" classname="test_spect_buffer_ctrl" file="/workspace/src/rtl/SPECT_BUFFER/test_spect_buffer_ctrl.py" lineno="39" time="0.0008382797241210938" sim_time_ns="104.001" ratio_time="124064.79246416382" />
   </testsuite>
 </testsuites>
