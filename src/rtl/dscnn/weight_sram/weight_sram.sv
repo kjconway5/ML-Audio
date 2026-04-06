@@ -15,13 +15,13 @@ module weight_sram #(
     input  wire [DATA_W-1:0] wdata,           // write data from SERV
 
     // Read port
-    input  wire [ADDR_W-1:0] addr,
-    output wire [DATA_W-1:0] data
+    input  wire [ADDR_W-1:0] raddr,
+    output wire [DATA_W-1:0] rdata
 );
 
     localparam NUM_BANKS = 5;
 
-    wire [ADDR_W-1:0] active_addr = we ? waddr : addr;
+    wire [ADDR_W-1:0] active_addr = we ? waddr : raddr;
 
     wire [2:0]  bank_sel  = active_addr[12:10];  
     wire [9:0]  bank_addr = active_addr[9:0];     
@@ -60,6 +60,6 @@ module weight_sram #(
     always_ff @(posedge clk)       
         bank_sel_q <= bank_sel;
 
-    assign data = q_out[bank_sel_q];
+    assign rdata = q_out[bank_sel_q];
 
 endmodule
