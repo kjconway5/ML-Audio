@@ -14,19 +14,23 @@ module mac_array #(
     output reg                       valid
 );
     integer i;
+    reg signed [ACC_W-1:0] sum;
     always @(posedge clk) begin
         if (reset) begin
             acc   <= 0;
-            valid <= 0;
         end else if (clear) begin
             acc   <= bias;
-            valid <= 0;
         end else if (en) begin
+            sum = 0;
             for (i = 0; i < N_MACS; i = i + 1)
-                acc <= acc + (ifmap[i] * weight[i]);    
-            valid <= 1;
-        end else begin
-            valid <= 0;
-        end
+                sum = sum + (ifmap[i] * weight[i]);
+            acc <= sum;
+        end 
+        // else begin
+        //     acc <= acc; // hold value
+        // end
     end
+
+    assign valid = en ? 1 : 0;
+
 endmodule
