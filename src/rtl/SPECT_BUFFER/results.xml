@@ -1,0 +1,6 @@
+<testsuites name="results">
+  <testsuite name="all" package="all">
+    <property name="random_seed" value="1775515136" />
+    <testcase name="reset_test" classname="test_spect_buffer_ctrl" file="/workspace/src/rtl/SPECT_BUFFER/test_spect_buffer_ctrl.py" lineno="24" time="0.0010075569152832031" sim_time_ns="105.001" ratio_time="104213.46765357313" />
+  </testsuite>
+</testsuites>
