@@ -1,0 +1,8 @@
+<testsuites name="results">
+  <testsuite name="all" package="all">
+    <property name="random_seed" value="1775455636" />
+    <testcase name="reset_test" classname="test_mac_array" file="/workspace/src/rtl/dscnn/mac_array/test_mac_array.py" lineno="23" time="0.0005936622619628906" sim_time_ns="0.0" ratio_time="0.0">
+      <failure message="Test failed with RANDOM_SEED=1775455636" />
+    </testcase>
+  </testsuite>
+</testsuites>

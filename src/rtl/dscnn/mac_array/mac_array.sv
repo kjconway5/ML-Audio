@@ -16,7 +16,7 @@ module mac_array #(
     integer i;
     always @(posedge clk) begin
         if (reset) begin
-            acc   <= 0;
+            acc   <= '0;
             valid <= 0;
         end else if (clear) begin
             acc   <= bias;
