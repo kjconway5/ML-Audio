@@ -65,9 +65,11 @@ module feature_sram #(
                 .WEN  (8'h00),      // write all 8 bits when GWEN=0
                 .A    (a_bank_addr),
                 .D    (a_wdata),
-                .Q    (a_q[gi]),
-                .VDD  (1'b1),
-                .VSS  (1'b0)
+                .Q    (a_q[gi])
+                `ifdef USE_POWER_PINS   // Need to put commas inside ifdef for icarus 
+                ,.VDD  (1'b1),
+                ,.VSS  (1'b0)
+                `endif
             );
 
             // Bank B 
@@ -81,9 +83,11 @@ module feature_sram #(
                 .WEN  (8'h00),
                 .A    (b_bank_addr),
                 .D    (b_wdata),
-                .Q    (b_q[gi]),
-                .VDD  (1'b1),
-                .VSS  (1'b0)
+                .Q    (b_q[gi])
+                `ifdef USE_POWER_PINS   // Need to put commas inside ifdef for icarus 
+                ,.VDD  (1'b1),
+                ,.VSS  (1'b0)
+                `endif
             ); // 
 
         end
