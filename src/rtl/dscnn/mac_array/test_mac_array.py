@@ -28,6 +28,8 @@ async def reset_test(dut):
     await reset_dut(dut)
     await RisingEdge(dut.clk)
     
+    await FallingEdge(dut.clk)
+    
     assert dut.acc.value == 0, f"Expected acc to be 0 after reset, got {dut.acc.value}"
     assert dut.valid.value == 0, f"Expected valid to be 0"
     
@@ -37,16 +39,20 @@ async def reset_test(dut):
 
 @cocotb.test() 
 async def clear_test(dut):
-    cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
+    cocotb.start_soon(Clock(dut.clk, 20, units="ns").start())
     await reset_dut(dut)
     await RisingEdge(dut.clk)
 
     # set some non-zero values
     dut.clear.value = 1
+    dut.reset.value = 0
+    dut.en.value = 0
+    
     for i in range (N_MACS):
         dut.ifmap[i].value = i + 1
         dut.weight[i].value = (i + 1) * 2
     dut.bias.value = 123
+    
 
     assert dut.acc.value == dut.bias.value, f"Expected acc to be bias after clear, got {dut.acc.value}"
     assert dut.valid.value == 0, f"Expected valid to be 0 after clear"
@@ -55,11 +61,13 @@ async def clear_test(dut):
     
 @cocotb.test()
 async def en_test(dut):
-    cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
+    cocotb.start_soon(Clock(dut.clk, 20, units="ns").start())
     await reset_dut(dut)
     await RisingEdge(dut.clk)
     
     dut.en.value = 1
+    dut.clear.value = 0
+    dut.reset.value = 0
     sum = 0
     
     # set some non-zero values
@@ -68,6 +76,7 @@ async def en_test(dut):
         dut.weight[i].value = (i + 1) * 2
         sum = sum + (dut.ifmap[i].value * dut.weight[i].value)
         
+    await FallingEdge(dut.clk)
     assert dut.acc.value ==  sum, f"Expected acc to be the sum of all MAC operations, got {dut.acc.value}"
     assert dut.valid.value == 1, f"Expected valid to be 1 after en, got {dut.valid.value}"
     
@@ -75,7 +84,7 @@ async def en_test(dut):
     
 @cocotb.test() 
 async def else_test(dut):
-    cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
+    cocotb.start_soon(Clock(dut.clk, 20, units="ns").start())
     await reset_dut(dut)
     await RisingEdge(dut.clk)
     

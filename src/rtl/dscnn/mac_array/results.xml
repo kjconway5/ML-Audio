@@ -1,11 +1,9 @@
 <testsuites name="results">
   <testsuite name="all" package="all">
-    <property name="random_seed" value="1775463659" />
-    <testcase name="reset_test" classname="test_mac_array" file="/workspace/src/rtl/dscnn/mac_array/test_mac_array.py" lineno="25" time="0.001416921615600586" sim_time_ns="100.001" ratio_time="70576.23999730776" />
-    <testcase name="clear_test" classname="test_mac_array" file="/workspace/src/rtl/dscnn/mac_array/test_mac_array.py" lineno="38" time="0.0009086132049560547" sim_time_ns="110.001" ratio_time="121064.71642718447" />
-    <testcase name="en_test" classname="test_mac_array" file="/workspace/src/rtl/dscnn/mac_array/test_mac_array.py" lineno="56" time="0.0009317398071289062" sim_time_ns="110.00099999999998" ratio_time="118059.78359877173">
-      <failure message="Test failed with RANDOM_SEED=1775463659" />
-    </testcase>
-    <testcase name="else_test" classname="test_mac_array" file="/workspace/src/rtl/dscnn/mac_array/test_mac_array.py" lineno="76" time="0.0007507801055908203" sim_time_ns="110.00100000000003" ratio_time="146515.60314512547" />
+    <property name="random_seed" value="1775465294" />
+    <testcase name="reset_test" classname="test_mac_array" file="/workspace/src/rtl/dscnn/mac_array/test_mac_array.py" lineno="25" time="0.0014295578002929688" sim_time_ns="105.001" ratio_time="73449.9857078052" />
+    <testcase name="clear_test" classname="test_mac_array" file="/workspace/src/rtl/dscnn/mac_array/test_mac_array.py" lineno="40" time="0.0008883476257324219" sim_time_ns="200.001" ratio_time="225138.21639935588" />
+    <testcase name="en_test" classname="test_mac_array" file="/workspace/src/rtl/dscnn/mac_array/test_mac_array.py" lineno="62" time="0.0010273456573486328" sim_time_ns="230.00100000000003" ratio_time="223878.88473056396" />
+    <testcase name="else_test" classname="test_mac_array" file="/workspace/src/rtl/dscnn/mac_array/test_mac_array.py" lineno="85" time="0.0009295940399169922" sim_time_ns="200.00099999999998" ratio_time="215148.75463041803" />
   </testsuite>
 </testsuites>

@@ -18,18 +18,19 @@ module mac_array #(
     always @(posedge clk) begin
         if (reset) begin
             acc   <= 0;
-            valid <= 0;
         end else if (clear) begin
             acc   <= bias;
-            valid <= 0;
         end else if (en) begin
             sum = 0;
-            valid <= 1;
             for (i = 0; i < N_MACS; i = i + 1)
                 sum = sum + (ifmap[i] * weight[i]);
             acc <= sum;
-        end else begin
-            valid <= 0;
-        end
+        end 
+        // else begin
+        //     acc <= acc; // hold value
+        // end
     end
+
+    assign valid = en ? 1 : 0;
+
 endmodule
