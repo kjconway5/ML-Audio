@@ -1,7 +1,10 @@
 <testsuites name="results">
   <testsuite name="all" package="all">
-    <property name="random_seed" value="1775517187" />
-    <testcase name="reset_test" classname="test_spect_buffer_ctrl" file="/workspace/src/rtl/SPECT_BUFFER/test_spect_buffer_ctrl.py" lineno="25" time="0.0010058879852294922" sim_time_ns="105.001" ratio_time="104386.37456838114" />
+    <property name="random_seed" value="1775544482" />
+    <testcase name="reset_test" classname="test_spect_buffer_ctrl" file="/workspace/src/rtl/SPECT_BUFFER/test_spect_buffer_ctrl.py" lineno="25" time="0.0013737678527832031" sim_time_ns="105.001" ratio_time="76432.85565845192" />
     <testcase name="data_out_test" classname="test_spect_buffer_ctrl" file="/workspace/src/rtl/SPECT_BUFFER/test_spect_buffer_ctrl.py" lineno="39" time="0.0008382797241210938" sim_time_ns="104.001" ratio_time="124064.79246416382" />
+    <testcase name="write_addr_test" classname="test_spect_buffer_ctrl" file="/workspace/src/rtl/SPECT_BUFFER/test_spect_buffer_ctrl.py" lineno="79" time="0.0011723041534423828" sim_time_ns="121.00099999999998" ratio_time="103216.38769656293">
+      <failure message="Test failed with RANDOM_SEED=1775544482" />
+    </testcase>
   </testsuite>
 </testsuites>

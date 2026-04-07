@@ -76,6 +76,7 @@ async def data_out_test(dut):
     
     cocotb.log.info("data_out_test passed")
     
+@cocotb.test()
 async def write_addr_test(dut):
     cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
     await reset_dut(dut)
@@ -83,6 +84,22 @@ async def write_addr_test(dut):
 
     dut.reset.value = 0
     dut.cnn_valid_i.value = 1
+    if dut.spect_write_sel.value == 0:
+        prev_sel = 0
+    else:
+        prev_sel = 1
+    for i in range(TOTAL_SAMPLES):
+        dut.wr_addr.value = i
+        await Timer(1, units='ns')
+        if i < TOTAL_SAMPLES:
+            last_addr = i
+            assert dut.sp_a_waddr.value == last_addr, f"Expected sp_a_waddr to be {last_addr}, got {dut.sp_a_waddr.value}"
+            assert dut.sp_b_waddr.value == last_addr, f"Expected sp_b_waddr to be {last_addr}, got {dut.sp_b_waddr.value}"
+        else:
+            assert dut.sp_a_waddr.value == 0, f"Expected sp_a_waddr to wrap to 0, got {dut.sp_a_waddr.value}"
+            assert dut.sp_b_waddr.value == 0, f"Expected sp_b_waddr to wrap to 0, got {dut.sp_b_waddr.value}"
+            assert dut.spect_done.value == 1, f"Expected spect_done to be 1 after last sample, got {dut.spect_done.value}"
+            assert dut.spect_write_sel.value == prev_sel, f"Expected spect_write_sel to be {prev_sel}, got {dut.spect_write_sel.value}"
     
     
     
