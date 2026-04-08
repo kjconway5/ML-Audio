@@ -1,4 +1,4 @@
-// Read-only weight storage: 4,296 × 8-bit INT8 values
+// Weight storage with write port for Subservient and read port for FSM: 4,296 × 8-bit INT8 values
 // Implemented as 5× cascaded gf180mcu_ocd_ip_sram__sram1024x8m8wm1 macros
 // (5 × 1024 = 5120) 
 
@@ -18,6 +18,22 @@ module weight_sram #(
     input  wire [ADDR_W-1:0] raddr,
     output wire [DATA_W-1:0] rdata
 );
+
+`ifdef SIM
+
+    // Behavioral model for simulation
+    reg [DATA_W-1:0] mem [0:DEPTH-1];
+
+    reg [ADDR_W-1:0] raddr_q;
+    always @(posedge clk) begin
+        if (we)
+            mem[waddr] <= wdata;
+        raddr_q <= raddr;
+    end
+
+    assign rdata = mem[raddr_q];
+
+`else
 
     localparam NUM_BANKS = 5;
 
@@ -42,7 +58,7 @@ module weight_sram #(
             gf180mcu_ocd_ip_sram__sram1024x8m8wm1 inst_weight_sram (
                 .CLK  (clk),
                 .CEN  (cen[gi]),
-                .GWEN (we ? 1'b0 : 1'b1),
+                .GWEN (~(we & ~cen[gi])), // only enable write on selected bank 
                 .WEN  (8'h00),
                 .A    (bank_addr),
                 .D    (wdata),
@@ -55,11 +71,13 @@ module weight_sram #(
         end
     endgenerate
 
-     // Account for 1 cycle read latency 
+    // Account for 1 cycle read latency 
     reg [2:0] bank_sel_q;   
     always_ff @(posedge clk)       
         bank_sel_q <= bank_sel;
 
     assign rdata = q_out[bank_sel_q];
+
+`endif
 
 endmodule

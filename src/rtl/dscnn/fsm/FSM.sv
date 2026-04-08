@@ -43,6 +43,10 @@ module FSM #(
     output reg  [12:0]              w_addr,
     input  wire signed [DATA_W-1:0] w_data,
 
+    // Weight writing signals
+    input wire                      weights_ready, // from subservient GPIO
+    output wire                     inference_idle, // to Subservient, high when safe to write
+
     //Feature SRAM signals 
     // Bank A 
     output reg                      fs_a_we,
@@ -205,7 +209,7 @@ module FSM #(
 
                 IDLE: begin
                     // Is spectrogram and config loading ready 
-                    if (start && cfg_load_done && spect_ready) begin
+                    if (start && cfg_load_done && spect_ready && weights_ready) begin
                         layer   <= 4'd0;
                         buf_sel <= 1'b0;   
                         state   <= LOAD_LAYER;
@@ -382,5 +386,7 @@ module FSM #(
             endcase
         end
     end
+
+    assign inference_idle = (state == IDLE);
 
 endmodule
