@@ -7,3 +7,9 @@
 [submodule "gf180mcu"]
 	path = gf180mcu
 	url = https://github.com/wafer-space/gf180mcu.git
+[submodule "ip/serv"]
+	path = ip/serv
+	url = https://github.com/olofk/serv.git
+[submodule "ip/subservient"]
+	path = ip/subservient
+	url = https://github.com/olofk/subservient.git
