@@ -72,7 +72,7 @@ module spectrogram_sram #(
                 .D    (a_wdata),
                 .Q    (a_q[gi])
                 `ifdef USE_POWER_PINS    // Need to put commas inside ifdef for icarus
-                ,.VDD  (1'b1),
+                ,.VDD  (1'b1)
                 ,.VSS  (1'b0)
                 `endif
             );
@@ -88,9 +88,11 @@ module spectrogram_sram #(
                 .WEN  (8'h00),
                 .A    (b_bank_addr),
                 .D    (b_wdata),
-                .Q    (b_q[gi]),
-                .VDD  (1'b1),
-                .VSS  (1'b0)
+                .Q    (b_q[gi])
+                `ifdef USE_POWER_PINS
+                ,.VDD  (1'b1)
+                ,.VSS  (1'b0)
+                `endif
             );
 
         end

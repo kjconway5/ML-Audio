@@ -1,24 +1,23 @@
-# test_feature_sram.py
-# Cocotb testbench for feature_sram.sv
+# test_spectrogram_sram.py
+# Cocotb testbench for spectrogram_sram.sv
 
 import cocotb
 from cocotb.clock import Clock
 from cocotb.triggers import RisingEdge, FallingEdge
-import os
 
 CLK_PERIOD_NS = 100
-DEPTH         = 12000
-ADDR_W        = 14
-NUM_BANKS     = 12
+DEPTH         = 2000
+ADDR_W        = 11
+NUM_BANKS     = 2
+
 
 def test_pattern(addr):
-    return (addr) % 256
+    return addr % 256
 
 
 async def init_dut(dut):
     """
-    Interact with all 12 macro instances in each bank A and B so CEN sees
-    a 1->0
+    Interact with all macro instances in each bank A and B so CEN sees a 1->0.
     """
     cocotb.start_soon(Clock(dut.clk, CLK_PERIOD_NS, unit="ns").start())
 
@@ -33,13 +32,13 @@ async def init_dut(dut):
 
     await RisingEdge(dut.clk)
 
-    # Interact bank A
+    # Touch each macro in bank A (addr[10] selects the macro)
     for bank in range(NUM_BANKS):
         dut.a_raddr.value = bank * 1024
         await RisingEdge(dut.clk)
         await RisingEdge(dut.clk)
 
-    # Interact bank B
+    # Touch each macro in bank B
     for bank in range(NUM_BANKS):
         dut.b_raddr.value = bank * 1024
         await RisingEdge(dut.clk)
@@ -96,13 +95,12 @@ async def read_bank_b(dut, addr):
     return int(dut.b_rdata.value)
 
 
-
 @cocotb.test()
 async def test_bank_a_write_read(dut):
     await init_dut(dut)
     await write_bank_a(dut)
 
-    dut._log.info("Reading back all 12,000 entries from bank A...")
+    dut._log.info("Reading back all 2,000 entries from bank A...")
     errors = 0
     for addr in range(DEPTH):
         result   = await read_bank_a(dut, addr)
@@ -127,7 +125,7 @@ async def test_bank_b_write_read(dut):
     await init_dut(dut)
     await write_bank_b(dut)
 
-    dut._log.info("Reading back all 12,000 entries from bank B...")
+    dut._log.info("Reading back all 2,000 entries from bank B...")
     errors = 0
     for addr in range(DEPTH):
         result   = await read_bank_b(dut, addr)
@@ -149,33 +147,25 @@ async def test_bank_b_write_read(dut):
 
 @cocotb.test()
 async def test_simultaneous_ab(dut):
-    """
-    Write to bank A while simultaneously reading from bank B.
-    """
+    """Write to bank A while simultaneously reading from bank B."""
     await init_dut(dut)
-
-    # Write B with a regular pattern
     await write_bank_b(dut)
 
     dut._log.info("Writing different pattern to bank A simultaneously with bank B reads...")
-
     errors = 0
     for addr in range(DEPTH):
         await FallingEdge(dut.clk)
 
-        # Write to bank A
         dut.a_we.value    = 1
         dut.a_waddr.value = addr
         dut.a_wdata.value = (addr * 128) % 256
 
-        # Simultaneously read from bank B
         dut.b_we.value    = 0
         dut.b_raddr.value = addr
 
         await RisingEdge(dut.clk)
         await FallingEdge(dut.clk)
 
-        # Check bank B read is correct
         b_result   = int(dut.b_rdata.value)
         b_expected = test_pattern(addr)
 
