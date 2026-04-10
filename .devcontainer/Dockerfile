@@ -27,6 +27,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     # EDA Tools
     iverilog \
     yosys \
+    gtkwave \
     # Synthesis visualization
     nodejs \
     npm \

@@ -84,12 +84,19 @@ async def write_addr_test(dut):
 
     dut.reset.value = 0
     dut.cnn_valid_i.value = 1
+    dut.cnn_data_i.value = 0
+    
     if dut.spect_write_sel.value == 0:
         prev_sel = 0
     else:
         prev_sel = 1
     for i in range(TOTAL_SAMPLES):
+        await RisingEdge(dut.clk)
+        await Timer(1, units="ns")
         dut.wr_addr.value = i
+        
+        # print(f"i: {i}, sp_a_waddr: {dut.sp_a_waddr.value}")
+        
         await Timer(1, units='ns')
         if i < TOTAL_SAMPLES:
             last_addr = i
