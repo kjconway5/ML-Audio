@@ -56,7 +56,7 @@ module spect_buffer_ctrl #(
     assign sp_b_wdata = quant_val;
 
     always_ff @(posedge clk) begin
-        if (rst) begin
+        if (reset) begin
             wr_addr         <= '0;
             spect_done      <= 1'b0;
             spect_write_sel <= 1'b0;

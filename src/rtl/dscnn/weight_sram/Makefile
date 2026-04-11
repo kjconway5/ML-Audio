@@ -1,4 +1,4 @@
-TOP      := feature_sram
+TOP      := weight_sram
 
 SRAM_MACRO_DIR := $(abspath ../../../../gf180mcu_ocd_ip_sram/cells/gf180mcu_ocd_ip_sram__sram1024x8m8wm1)
 
@@ -6,7 +6,7 @@ SRAM_SOURCES := \
 	$(SRAM_MACRO_DIR)/gf180mcu_ocd_ip_sram__sram1024x8m8wm1.v
 
 SOURCES := \
-	feature_sram.sv \
+	weight_sram.sv \
 	$(SRAM_SOURCES)
 
 COCOTB_MODULE    ?= test_$(TOP)
@@ -29,7 +29,7 @@ clean:
 .PHONY: clean
 
 help:
-	@echo "feature_sram cocotb testbench"
+	@echo "weight_sram cocotb testbench"
 	@echo ""
 	@echo "Targets:"
 	@echo "  test-cocotb            cocotb + icarus (default)"
