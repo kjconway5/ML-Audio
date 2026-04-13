@@ -1,3 +1,5 @@
+import copy
+import random
 import yaml
 import torch
 import torch.nn as nn
@@ -68,17 +70,51 @@ def get_pow2_qat_qconfig():
 
 
 class NpyDataset(Dataset):
-    def __init__(self, features_path, labels_path):
+    def __init__(self, features_path, labels_path, augment=False,
+                 time_mask_max=10, freq_mask_max=8, time_shift_max=5):
         self.features = np.load(features_path)
         self.labels = np.load(labels_path)
+        self.augment = augment
+        self.time_mask_max = time_mask_max
+        self.freq_mask_max = freq_mask_max
+        self.time_shift_max = time_shift_max
 
     def __len__(self):
         return len(self.labels)
 
     def __getitem__(self, idx):
-        x = torch.from_numpy(self.features[idx]).unsqueeze(0)
+        x = torch.from_numpy(self.features[idx]).unsqueeze(0).clone()  # (1, 50, 40)
         y = torch.tensor(self.labels[idx], dtype=torch.long)
+        if self.augment:
+            x = self._augment(x)
         return x, y
+
+    def _augment(self, x):
+        # x: (1, T, F) = (1, 50, 40)
+        T, F = x.shape[1], x.shape[2]
+
+        # Time shift: roll spectrogram left/right, zero the wrapped edge
+        shift = random.randint(-self.time_shift_max, self.time_shift_max)
+        if shift != 0:
+            x = torch.roll(x, shift, dims=1)
+            if shift > 0:
+                x[0, :shift, :] = 0.0
+            else:
+                x[0, shift:, :] = 0.0
+
+        # Time masking: zero a random block of consecutive time frames
+        t = random.randint(0, self.time_mask_max)
+        if t > 0:
+            t0 = random.randint(0, T - t)
+            x[0, t0:t0 + t, :] = 0.0
+
+        # Frequency masking: zero a random block of consecutive mel bins
+        f = random.randint(0, self.freq_mask_max)
+        if f > 0:
+            f0 = random.randint(0, F - f)
+            x[0, :, f0:f0 + f] = 0.0
+
+        return x
 
 
 def create_dataloaders(config):
@@ -86,7 +122,7 @@ def create_dataloaders(config):
     batch_size = config["training"]["batch_size"]
     num_workers = config["training"].get("num_workers", 2)
 
-    train_ds = NpyDataset(f"{output_dir}/train_features.npy", f"{output_dir}/train_labels.npy")
+    train_ds = NpyDataset(f"{output_dir}/train_features.npy", f"{output_dir}/train_labels.npy", augment=True)
     val_ds   = NpyDataset(f"{output_dir}/val_features.npy",   f"{output_dir}/val_labels.npy")
     test_ds  = NpyDataset(f"{output_dir}/test_features.npy",  f"{output_dir}/test_labels.npy")
 
@@ -244,6 +280,7 @@ def main():
     print("="*70 + "\n")
 
     best_val_acc = 0.0
+    best_model_state = None
     qat_prepared = False
 
     for epoch in range(1, n_epochs + 1):
@@ -320,7 +357,8 @@ def main():
 
             if val_acc > best_val_acc:
                 best_val_acc = val_acc
-                print(f"{'':11s}  *** New best validation accuracy! ***")
+                best_model_state = copy.deepcopy(model.state_dict())
+                print(f"{'':11s}  *** New best validation accuracy! Checkpoint saved. ***")
 
         with open(log_file, 'a') as f:
             f.write(log_msg + '\n')
@@ -331,7 +369,14 @@ def main():
     print("\n" + "="*70)
     print(" Phase 3: INT8 Conversion")
     print("="*70)
-    print("\n>>> Converting QAT model to INT8 <<<\n")
+
+    if best_model_state is not None:
+        model.load_state_dict(best_model_state)
+        print(f"\n>>> Restoring best val checkpoint ({best_val_acc:.2f}%) for INT8 conversion <<<\n")
+    else:
+        print("\n>>> No val checkpoint found — converting final epoch weights <<<\n")
+
+    print(">>> Converting QAT model to INT8 <<<\n")
     model.eval()
     torch.quantization.convert(model, inplace=True)
     print("  → Conversion complete: model is now INT8.\n")

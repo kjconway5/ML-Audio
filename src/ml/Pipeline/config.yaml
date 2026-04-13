@@ -25,7 +25,7 @@ data:
 
   include_silence: true
   num_silence_samples: 1000
-  unknown_max_per_split: 1000
+  unknown_max_per_split: 350
   random_seed: 42
 
 
@@ -61,7 +61,7 @@ model:
     stride: [1, 1]
 
 training:
-  n_epochs: 20
+  n_epochs: 40
   batch_size: 64
 
   optimizer: "sgd"
@@ -69,8 +69,13 @@ training:
   momentum: 0.9
   weight_decay: 0.0005
 
+  # Float warmup: epochs 1-31, QAT: epochs 32-40
+  # LR is 0.001 when QAT starts — high enough for fake-quant to adapt
+  qat_start_epoch: 32
+  freeze_bn_epoch: 38
+
   lr_schedule:
-    milestones: [5, 10, 15]
+    milestones: [15, 25, 35]
     gamma: 0.1
   val_every: 5
 
@@ -80,6 +85,6 @@ vad:
   default_energy_threshold: 0.0001
 
 output:
-  model_save_path: "/Users/diegonocera/Documents/ML-Audio/ML-Audio/src/ml/models/dscnn/dscnn-pow2-v2.pt"
-  log_file: "training_log_pow2_v2.txt"
+  model_save_path: "/Users/diegonocera/Documents/ML-Audio/ML-Audio/src/ml/models/dscnn/dscnn-pow2-v3.pt"
+  log_file: "training_log_pow2_v3.txt"
   # Keywords: yes, no, on, off, wow | Pipeline: GoldenExtractor (bit-accurate RTL) | Input: 50x40
