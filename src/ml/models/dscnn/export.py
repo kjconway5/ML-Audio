@@ -1,159 +1,192 @@
-import torch
-import numpy as np
+#!/usr/bin/env python3
+"""
+export.py — Extract weights, biases, and requantization shifts from a trained
+            QAT DSCNN checkpoint for use in the RTL testbench.
+
+Usage (run from src/ml/models/dscnn/):
+    python3 export.py [--ckpt dscnn-4-10.pt]
+
+Outputs written to the same directory as the checkpoint:
+    weights.hex  — all INT8 weights concatenated, one byte per line (2-digit hex)
+    bias.hex     — all INT32 biases concatenated, one per line (8-digit hex)
+    scales.txt   — per-layer requant shift values (paste into LAYER_CFGS in test)
+    bias_DFFs.sv snippet printed to stdout for updating bias_dff/bias_DFFs.sv
+"""
+
+import argparse
 import math
+import sys
+from pathlib import Path
+
+import numpy as np
+import torch
+
+HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE))
 from dscnn import DSCNN
 
-checkpoint = torch.load("dscnn-golden2.pt", map_location="cpu")
 
-cfg = checkpoint["config"]["model"]
-model = DSCNN(
-    n_classes=cfg["n_classes"],
-    n_mels=checkpoint["config"]["preprocessing"]["n_mels"],
-    first_conv_filters=cfg["first_conv"]["filters"],
-    first_conv_kernel=tuple(cfg["first_conv"]["kernel_size"]),
-    first_conv_stride=tuple(cfg["first_conv"]["stride"]),
-    n_ds_blocks=cfg["ds_blocks"]["n_blocks"],
-    ds_filters=cfg["ds_blocks"]["filters"],
-    ds_kernel=tuple(cfg["ds_blocks"]["kernel_size"]),
-    ds_stride=tuple(cfg["ds_blocks"]["stride"]),
-)
+def load_model(ckpt_path: Path) -> torch.nn.Module:
+    checkpoint = torch.load(str(ckpt_path), map_location="cpu", weights_only=False)
+    cfg     = checkpoint["config"]["model"]
+    preproc = checkpoint["config"]["preprocessing"]
+    backend = checkpoint.get("qat_backend", "fbgemm")
 
-model.eval()
-model.fuse_model()
-model.qconfig = torch.quantization.get_default_qconfig("fbgemm")
-torch.quantization.prepare(model, inplace=True)
-torch.quantization.convert(model, inplace=True)
-model.load_state_dict(checkpoint["model_state_dict"])
-model.eval()
+    # "pow2" is our training label, not a PyTorch engine name.
+    # The pow2 model uses per-tensor symmetric weights — qnnpack matches that.
+    # fbgemm uses per-channel weights by default and would misload the state_dict.
+    if backend == "pow2":
+        backend = "qnnpack"
 
-# ── Extract weights in exact layer order ──────────────────────────────────────
-# Order must match what your layer_controller.v will expect in weight SRAM
-layers = []
+    model = DSCNN(
+        n_classes=cfg["n_classes"],
+        n_mels=preproc["n_mels"],
+        first_conv_filters=cfg["first_conv"]["filters"],
+        first_conv_kernel=tuple(cfg["first_conv"]["kernel_size"]),
+        first_conv_stride=tuple(cfg["first_conv"]["stride"]),
+        n_ds_blocks=cfg["ds_blocks"]["n_blocks"],
+        ds_filters=cfg["ds_blocks"]["filters"],
+        ds_kernel=tuple(cfg["ds_blocks"]["kernel_size"]),
+        ds_stride=tuple(cfg["ds_blocks"]["stride"]),
+    )
+    torch.backends.quantized.engine = backend
+    model.eval()
+    model.fuse_model()
+    model.qconfig = torch.quantization.get_default_qconfig(backend)
+    torch.quantization.prepare(model, inplace=True)
+    torch.quantization.convert(model, inplace=True)
+    model.load_state_dict(checkpoint["model_state_dict"])
+    model.eval()
+    return model, checkpoint
 
-for name, module in model.named_modules():
-    if isinstance(module, torch.nn.quantized.Conv2d):
-        w = module.weight().int_repr().numpy().flatten().astype(np.int8)
 
-        # Also grab per-channel quantization scale for requantization in RTL
-        scale = module.weight().q_per_channel_scales().numpy()
-        zero  = module.weight().q_per_channel_zero_points().numpy()
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--ckpt", type=Path, default=HERE / "dscnn-4-13.pt")
+    args = parser.parse_args()
 
-        layers.append({
-            "name":   name,
-            "shape":  module.weight().int_repr().numpy().shape,
-            "offset": sum(len(l["weights"]) for l in layers),
-            "weights": w,
-            "scale":  scale,
-            "zero":   zero,
-        })
-        print(f"{name:35s}  shape={module.weight().int_repr().numpy().shape}  "
-              f"offset={layers[-1]['offset']:5d}  n_vals={len(w)}")
+    ckpt_path = args.ckpt
+    if not ckpt_path.exists():
+        print(f"ERROR: checkpoint not found: {ckpt_path}", file=sys.stderr)
+        sys.exit(1)
 
-# ── Write weights.hex ─────────────────────────────────────────────────────────
-all_weights = np.concatenate([l["weights"] for l in layers])
-with open("weights.hex", "w") as f:
-    for val in all_weights:
-        f.write(f"{val & 0xFF:02x}\n")
-print(f"\nweights.hex written — {len(all_weights)} total INT8 values")
+    out_dir = ckpt_path.parent
+    print(f"Loading checkpoint : {ckpt_path}")
+    model, ckpt = load_model(ckpt_path)
+    print(f"Labels             : {ckpt['labels']}")
+    print(f"QAT backend        : {ckpt.get('qat_backend', 'fbgemm')}")
+    print()
 
-# ── Write scales.txt for RTL requantization shifts ────────────────────────────
-# The RTL requant module needs a right-shift value per layer.
-# shift = round(-log2(scale)) — approximates the quantization scale as a power of 2
-with open("scales.txt", "w") as f:
-    f.write(f"{'layer':<35s}  {'mean_scale':>12s}  {'shift':>6s}\n")
-    f.write("-" * 60 + "\n")
+    # ── Collect all quantized Conv2d layers in order ──────────────────────────
+    # true_input_scale: QuantStub scale for layer 0, previous layer's output_scale thereafter.
+    # output_scale: module.scale (the activation scale of THIS layer's output).
+    # Requant shift = round(-log2(true_input_scale * mean_wscale / output_scale)).
+    quant_input_scale = float(model.quant.scale)
+
+    layers = []
+    for name, module in model.named_modules():
+        if isinstance(module, torch.nn.quantized.Conv2d):
+            w_int8 = module.weight().int_repr().numpy().flatten().astype(np.int8)
+            # Support both per-channel and per-tensor weight quantization
+            try:
+                w_scale = module.weight().q_per_channel_scales().numpy()
+            except RuntimeError:
+                w_scale = np.array([float(module.weight().q_scale())])
+            true_input_scale = quant_input_scale if len(layers) == 0 else layers[-1]["output_scale"]
+            output_scale     = float(module.scale)
+            layers.append({
+                "name":              name,
+                "shape":             tuple(module.weight().int_repr().numpy().shape),
+                "offset":            sum(len(l["weights"]) for l in layers),
+                "weights":           w_int8,
+                "w_scale":           w_scale,
+                "true_input_scale":  true_input_scale,
+                "output_scale":      output_scale,
+            })
+            print(f"  {name:35s}  shape={str(layers[-1]['shape']):20s}  "
+                  f"offset={layers[-1]['offset']:5d}  n={len(w_int8)}")
+
+    # ── weights.hex ───────────────────────────────────────────────────────────
+    all_weights = np.concatenate([l["weights"] for l in layers])
+    weights_path = out_dir / "weights.hex"
+    with open(weights_path, "w") as f:
+        for v in all_weights:
+            f.write(f"{int(v) & 0xFF:02x}\n")
+    print(f"\nweights.hex  : {weights_path}  ({len(all_weights)} INT8 values)")
+
+    # ── scales.txt (requant shifts for LAYER_CFGS) ────────────────────────────
+    # shift = round(-log2(true_input_scale * mean_wscale / output_scale))
+    scales_path = out_dir / "scales.txt"
+    print(f"\n{'layer':<35s}  {'mean_w_scale':>14s}  {'in_scale':>10s}  {'out_scale':>10s}  {'shift':>6s}")
+    print("-" * 83)
+    with open(scales_path, "w") as f:
+        f.write(f"{'layer':<35s}  {'mean_w_scale':>14s}  {'in_scale':>10s}  {'out_scale':>10s}  {'shift':>6s}\n")
+        f.write("-" * 83 + "\n")
+        for l in layers:
+            mean_wscale   = float(np.mean(l["w_scale"]))
+            requant_scale = l["true_input_scale"] * mean_wscale / l["output_scale"]
+            shift = round(-math.log2(requant_scale))
+            shift = max(0, min(31, shift))
+            line = (f"{l['name']:<35s}  {mean_wscale:>14.8f}  "
+                    f"{l['true_input_scale']:>10.6f}  {l['output_scale']:>10.6f}  {shift:>6d}")
+            print(line)
+            f.write(line + "\n")
+    print(f"\nscales.txt   : {scales_path}")
+
+    # ── bias.hex (quantized INT32) ────────────────────────────────────────────
+    # bias_scale = true_input_scale * mean_wscale  (units of the accumulator before shift)
+    bias_layers = []
     for l in layers:
-        mean_scale = float(np.mean(l["scale"]))
-        shift = round(-math.log2(mean_scale))
-        shift = max(0, min(31, shift))
-        f.write(f"{l['name']:<35s}  {mean_scale:>12.6f}  {shift:>6d}\n")
-        print(f"{l['name']:35s}  scale={mean_scale:.6f}  shift={shift}")
-
-# ── Write layer config for controller ROM ────────────────────────────────────
-print("\n--- Layer config for controller.v ROM ---")
-for l in layers:
-    print(f"  name={l['name']:35s}  shape={str(l['shape']):20s}  "
-          f"offset={l['offset']:5d}  n_vals={len(l['weights'])}")
-
-# ── Extract input activation scales ──────────────────────────────────────────
-# These are needed by spect_buffer_ctrl to quantize the INT16 logmel output
-# to INT8 before writing into spectrogram_sram.
-# SPECT_SHIFT is derived from first_conv's input_scale:
-#   quant_int8 = clamp($signed(mel_int16) >>> SPECT_SHIFT, -128, 127)
-# When you retrain, update SPECT_SHIFT in spect_buffer_ctrl.sv to match.
-print("\n--- Input activation scales (needed for spect_buffer_ctrl) ---")
-print(f"{'layer':<35s}  {'input_scale':>14s}  {'SPECT_SHIFT':>12s}")
-print("-" * 65)
-for name, module in model.named_modules():
-    if isinstance(module, torch.nn.quantized.Conv2d):
-        input_scale = float(module.scale)
-        shift = round(-math.log2(input_scale))
-        shift = max(0, min(15, shift))
-        print(f"{name:35s}  input_scale={input_scale:.8f}  SPECT_SHIFT={shift}")
-
-# ── Bias extraction (quantized to INT32) ─────────────────────────────────────
-print("\n--- Bias extraction ---")
-for name, module in model.named_modules():
-    if isinstance(module, torch.nn.quantized.Conv2d):
+        name   = l["name"]
+        module = dict(model.named_modules())[name]
         if module.bias() is not None:
-            b = module.bias().detach().numpy()
-            np.save(f"bias_{name}.npy", b)
-            print(f"{name}: {b.shape}  dtype={b.dtype}")
-        else:
-            print(f"{name}: no bias")
-
-print("\n--- Bias extraction (quantized to INT32) ---")
-
-bias_layers = []
-
-for name, module in model.named_modules():
-    if isinstance(module, torch.nn.quantized.Conv2d):
-        if module.bias() is not None:
-            # Get the float bias
-            b_float = module.bias().detach().numpy()
-
-            # Bias scale = input_scale × weight_scale
-            w_scale    = module.weight().q_per_channel_scales().numpy().mean()
-            input_scale = float(module.scale)
-            bias_scale  = input_scale * w_scale
-
-            # Quantize bias to INT32
-            b_int32 = np.round(b_float / bias_scale).astype(np.int32)
-
-            np.save(f"bias_{name}.npy", b_int32)
-
+            b_float    = module.bias().detach().numpy()
+            mean_wscale = float(np.mean(l["w_scale"]))
+            bias_scale  = l["true_input_scale"] * mean_wscale
+            b_int32     = np.round(b_float / bias_scale).astype(np.int32)
             bias_layers.append({
                 "name":   name,
-                "offset": sum(len(l["bias"]) for l in bias_layers),
+                "offset": sum(len(bl["bias"]) for bl in bias_layers),
                 "bias":   b_int32,
             })
 
-            print(f"{name:35s}  shape={b_int32.shape}  "
-                  f"offset={bias_layers[-1]['offset']:4d}  "
-                  f"scale={bias_scale:.6f}")
-        else:
-            print(f"{name:35s}  no bias")
+    all_biases = np.concatenate([l["bias"] for l in bias_layers])
+    bias_path = out_dir / "bias.hex"
+    with open(bias_path, "w") as f:
+        for v in all_biases:
+            f.write(f"{int(v) & 0xFFFFFFFF:08x}\n")
+    print(f"bias.hex     : {bias_path}  ({len(all_biases)} INT32 values)")
 
-# Write bias.hex — INT32 values, each written as 8 hex chars (4 bytes)
-all_biases = np.concatenate([l["bias"] for l in bias_layers])
-with open("bias.hex", "w") as f:
-    for val in all_biases:
-        f.write(f"{val & 0xFFFFFFFF:08x}\n")
+    # ── QuantStub input scale (for generate_spect.py / spect_buffer_ctrl) ─────
+    input_scale = float(model.quant.scale)
+    spect_shift = round(-math.log2(input_scale))
+    spect_shift = max(0, min(15, spect_shift))
+    print(f"\nQuantStub scale   : {input_scale:.8f}  → SPECT_SHIFT={spect_shift}")
+    print("  (Update SPECT_SHIFT in spect_buffer_ctrl.sv if needed)")
 
-print(f"\nbias.hex written — {len(all_biases)} total INT32 values")
-print(f"Total bias storage: {len(all_biases) * 4} bytes")
+    # ── bias_DFFs.sv case statement snippet ───────────────────────────────────
+    print("\n" + "="*70)
+    print("Paste the following into bias_dff/bias_DFFs.sv case statement:")
+    print("="*70)
+    offset = 0
+    for l in bias_layers:
+        print(f"\n    // {l['name']} (bias_off={l['offset']}, {len(l['bias'])} channels)")
+        for i, val in enumerate(l["bias"]):
+            u = int(val) & 0xFFFFFFFF
+            print(f"    8'd{offset + i}: data = 32'sh{u:08X};")
+        offset += len(l["bias"])
+    print(f"\n    // Total entries: {offset}")
 
-print("\n--- Bias config for controller.v ROM ---")
-for l in bias_layers:
-    print(f"  name={l['name']:35s}  "
-          f"offset={l['offset']:4d}  n_vals={len(l['bias'])}")
+    # ── Summary for updating LAYER_CFGS in test_kws_top.py ───────────────────
+    print("\n" + "="*70)
+    print("Update LAYER_CFGS shifts in test_kws_top.py (field index 11):")
+    print("="*70)
+    for i, l in enumerate(layers):
+        mean_wscale = float(np.mean(l["w_scale"]))
+        shift = round(-math.log2(mean_wscale))
+        shift = max(0, min(31, shift))
+        print(f"  layer {i:2d}  {l['name']:35s}  shift={shift}")
 
-print("\n--- bias_DFFs.sv case statement (paste into module) ---")
-offset = 0
-for l in bias_layers:
-    print(f"\n            // {l['name']} (offset {l['offset']}, {len(l['bias'])} values)")
-    for i, val in enumerate(l["bias"]):
-        unsigned = int(val) & 0xFFFFFFFF
-        print(f"            8'd{offset + i}: data = 32'sh{unsigned:08X};")
-    offset += len(l["bias"])
-print(f"\n            // Total entries: {offset}")
+
+if __name__ == "__main__":
+    main()

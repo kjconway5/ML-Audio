@@ -9,7 +9,6 @@ module requant #(
 );
     wire signed [ACC_W-1:0] shifted = acc >>> shift;  // shift magnitude so value fits in 8-bits 
 
-    
     wire signed [DATA_W-1:0] saturated =            // Truncate 32 -> 8 bits 
         (shifted > 32'sh0000007F) ?  8'sh7F :       
         (shifted < -32'sh00000080) ? -8'sh80 :

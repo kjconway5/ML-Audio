@@ -2,31 +2,30 @@
 # Based on Google Speech Commands dataset
 
 dataset:
-  data_dir: "/home/dnocera/ML-Audio/ml/data/speech_commands"
+  data_dir: "/Users/diegonocera/Documents/ML-Audio/ML-Audio/src/ml/Pipeline/speech_commands_v0.02"
 
 data:
-  output_dir: "/home/dnocera/ML-Audio/ml/output"
+  output_dir: "/Users/diegonocera/Documents/ML-Audio/ML-Audio/src/ml/output"
 
   classes:
     - "yes"
     - "no"
-    - "left"
-    - "right"
-    - "go"
+    - "on"
+    - "off"
+    - "wow"
     - "silence"
     - "unknown"
 
   target_keywords:
     - "yes"
     - "no"
-    - "go"
-    - "left"
-    - "right"
+    - "on"
+    - "off"
+    - "wow"
 
   include_silence: true
   num_silence_samples: 1000
-  num_true_silence_samples: 500
-  unknown_max_per_split: 4000
+  unknown_max_per_split: 1000
   random_seed: 42
 
 
@@ -68,7 +67,7 @@ training:
   optimizer: "sgd"
   learning_rate: 0.1
   momentum: 0.9
-  weight_decay: 0.0001
+  weight_decay: 0.0005
 
   lr_schedule:
     milestones: [5, 10, 15]
@@ -81,5 +80,6 @@ vad:
   default_energy_threshold: 0.0001
 
 output:
-  model_save_path: "tiny-7class.pt"
-  log_file: "tiny7txt.txt"
+  model_save_path: "/Users/diegonocera/Documents/ML-Audio/ML-Audio/src/ml/models/dscnn/dscnn-pow2-v2.pt"
+  log_file: "training_log_pow2_v2.txt"
+  # Keywords: yes, no, on, off, wow | Pipeline: GoldenExtractor (bit-accurate RTL) | Input: 50x40

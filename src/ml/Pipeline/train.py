@@ -5,9 +5,66 @@ import torch.optim as optim
 from tqdm import tqdm
 from datetime import datetime
 from pathlib import Path
-from model import create_model
+import sys
+sys.path.insert(0, str(Path(__file__).parent.parent / "models" / "dscnn"))
+from dscnn import create_model
 import numpy as np
 from torch.utils.data import Dataset, DataLoader
+
+
+# ── Power-of-2 QAT ────────────────────────────────────────────────────────────
+# The RTL applies one arithmetic right-shift per layer to requantize INT32 → INT8.
+# A right-shift by N is equivalent to multiplying by 2^-N — an exact power of 2.
+# Standard fbgemm QAT learns arbitrary floating-point per-channel scales, which
+# export.py then rounds to the nearest power of 2, introducing requantization error.
+#
+# This observer snaps the scale to the nearest power of 2 DURING training so the
+# model learns weights that are robust to exactly the arithmetic the RTL uses.
+# Weights also use per-tensor (not per-channel) quantization so the effective
+# output scale s_in * s_w is constant across all channels in a layer — matching
+# the single shift the RTL applies to every output channel equally.
+
+class PowerOf2Observer(torch.quantization.observer.MinMaxObserver):
+    """MinMaxObserver that snaps the computed scale to the nearest power of 2."""
+    def calculate_qparams(self):
+        scale, zero_point = super().calculate_qparams()
+        log2_scale   = torch.log2(scale.clamp(min=1e-8))
+        snapped_scale = torch.pow(2.0, torch.round(log2_scale))
+        return snapped_scale, zero_point
+
+
+def get_pow2_qat_qconfig():
+    """
+    QAT qconfig with power-of-2 scales and per-tensor weight quantization.
+    Produces scales that map exactly to the RTL's integer right-shift — no
+    rounding error at export time.
+    """
+    act_fq = torch.quantization.FakeQuantize.with_args(
+        observer=PowerOf2Observer.with_args(
+            dtype=torch.quint8,
+            qscheme=torch.per_tensor_affine,
+            quant_min=0,
+            quant_max=255,
+        ),
+        dtype=torch.quint8,
+        qscheme=torch.per_tensor_affine,
+        quant_min=0,
+        quant_max=255,
+    )
+    wt_fq = torch.quantization.FakeQuantize.with_args(
+        observer=PowerOf2Observer.with_args(
+            dtype=torch.qint8,
+            qscheme=torch.per_tensor_symmetric,
+            quant_min=-128,
+            quant_max=127,
+        ),
+        dtype=torch.qint8,
+        qscheme=torch.per_tensor_symmetric,
+        quant_min=-128,
+        quant_max=127,
+    )
+    return torch.quantization.QConfig(activation=act_fq, weight=wt_fq)
+# ──────────────────────────────────────────────────────────────────────────────
 
 
 class NpyDataset(Dataset):
@@ -167,7 +224,7 @@ def main():
     freeze_bn_epoch = train_cfg.get("freeze_bn_epoch", n_epochs - 2)
 
     
-    qat_backend = train_cfg.get("qat_backend", "fbgemm")
+    qat_backend = "pow2"  # always power-of-2; config value ignored
 
     print(f"\nTraining configuration:")
     print(f"  - Total epochs        : {n_epochs}")
@@ -221,8 +278,15 @@ def main():
             model.fuse_model()
             model.train()  # Back to train mode for QAT
 
-            
-            model.qconfig = torch.quantization.get_default_qat_qconfig(qat_backend)
+            # ── QAT qconfig selection ──────────────────────────────────────────
+            # Option A — Power-of-2 QAT (matches RTL exactly, revert to Option B
+            #            if this model is unneeded):
+            model.qconfig = get_pow2_qat_qconfig()
+
+            # Option B — Standard fbgemm QAT (per-channel float scales, higher
+            #            accuracy but requires rounding at export → RTL mismatch):
+            # model.qconfig = torch.quantization.get_default_qat_qconfig(qat_backend)
+            # ───────────────────────────────────────────────────────────────────
 
             torch.quantization.prepare_qat(model, inplace=True)
 

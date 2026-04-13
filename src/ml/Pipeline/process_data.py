@@ -3,8 +3,12 @@
 Processes all Data from Speech Command Dataset.
 Reads all settings from config.yaml.
 Outputs train, val and test features and labels as npy files.
+
+Preprocessing uses GoldenExtractor (bit-accurate RTL replica) from golden_model.py.
+Features are cropped/padded to N_FRAMES x N_MELS to match RTL FSM fixed input size.
 """
 import json
+import sys
 import yaml
 import numpy as np
 import torch
@@ -14,9 +18,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from tqdm import tqdm
 import random
-from pipeline import SimplePipeline
 
-print("Using soundfile for audio I/O (Docker-compatible)")
+# GoldenExtractor lives in src/ml/
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from golden_model import GoldenExtractor
+
+print("Using GoldenExtractor (bit-accurate RTL pipeline) for feature extraction")
 
 # Load configuration from config.yaml
 CONFIG_PATH = Path(__file__).parent / "config.yaml"
@@ -32,7 +39,6 @@ _preproc = _config["preprocessing"]
 N_MELS = _preproc["n_mels"]
 N_FFT = _preproc["n_fft"]
 HOP_LENGTH = _preproc["hop_length"]
-USE_FILTERS = _preproc["use_filters"]
 N_SAMPLES = None
 
 # Data processing settings
@@ -210,21 +216,10 @@ def process_and_save():
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     print(f"[DEBUG] Output directory: {OUTPUT_DIR}")
 
-    # Feature Extractor
-    print(f"[DEBUG] Initializing pipeline with: n_mels={N_MELS}, n_fft={N_FFT}, hop_length={HOP_LENGTH}")
-    pipeline = SimplePipeline(
-        sample_rate=_preproc.get("sample_rate", 16_000),
-        use_filters=USE_FILTERS,
-        n_mels=N_MELS,
-        n_fft=N_FFT,
-        hop_length=HOP_LENGTH,
-        window_length=_preproc.get("window_length", N_FFT),
-        hpf_order=_preproc.get("hpf_order", 2),
-        lpf_order=_preproc.get("lpf_order", 4),
-        cutoff_hpf=_preproc.get("cutoff_hpf", 150),
-        cutoff_lpf=_preproc.get("cutoff_lpf", 4000),
-    )
-    print(f"[DEBUG] Pipeline initialized successfully")
+    # Feature Extractor — bit-accurate RTL replica
+    print(f"[DEBUG] Initializing GoldenExtractor (n_mels={N_MELS}, n_fft={N_FFT}, hop_length={HOP_LENGTH})")
+    extractor = GoldenExtractor()
+    print(f"[DEBUG] GoldenExtractor initialized successfully")
 
     # Collect examples and optionally remap labels
     print(f"\n[DEBUG] Target keywords: {TARGET_KEYWORDS}")
@@ -278,8 +273,20 @@ def process_and_save():
             try:
                 wav = load_wav_fixed(Path(ex.wav_path))
                 audio_i16 = torch_to_int16_np(wav)
-                feats, _ = pipeline.process(audio_i16)
-                features_list.append(feats.T)  # (T, M)
+                # extract_float returns (n_mels, n_frames) float32 log2 values
+                feats = extractor.extract_float(audio_i16)  # (N_MELS, n_frames)
+                feats_T = feats.T  # (n_frames, N_MELS)
+                # Center-crop to exactly N_FRAMES=50 to match RTL ifmap_h=50.
+                # Must match generate_spect.py — training and inference must see
+                # the same input shape so BatchNorm statistics are valid.
+                n = feats_T.shape[0]
+                N_FRAMES = 50
+                if n >= N_FRAMES:
+                    start = (n - N_FRAMES) // 2
+                    feats_T = feats_T[start:start + N_FRAMES, :]
+                else:
+                    feats_T = np.pad(feats_T, ((0, N_FRAMES - n), (0, 0)), mode="constant")
+                features_list.append(feats_T)  # (50, 40)
                 labels_list.append(label_to_id[ex.label])
             except Exception as e:
                 skipped += 1
@@ -301,7 +308,7 @@ def process_and_save():
         "label_to_id": label_to_id,
         "target_keywords": sorted(TARGET_KEYWORDS) if TARGET_KEYWORDS else None,
         "include_silence": INCLUDE_SILENCE,
-        "pipeline": pipeline.get_config(),
+        "pipeline": extractor.get_config(),
     }
     with open(OUTPUT_DIR / "config.json", "w") as f:
         json.dump(config, f, indent=2)
