@@ -6,7 +6,7 @@ Updates:
   1. Shift values (field 11) in LAYER_CFGS in test_kws_top.py  ← from scales.txt
   2. Case statement in bias_DFFs.sv                             ← from bias.hex
 
-Usage (run from src/ml/models/dscnn/ or anywhere):
+Usage (run from src/ml/Pipeline/ or anywhere):
     python3 update_rtl.py [--ckpt-dir <dir>] [--dry-run]
 
 --ckpt-dir : directory containing scales.txt and bias.hex
@@ -20,7 +20,8 @@ import sys
 from pathlib import Path
 
 HERE      = Path(__file__).resolve().parent
-REPO_ROOT = HERE.parents[3]   # dscnn → models → ml → src → repo root
+MODEL_DIR = HERE.parent / "models" / "dscnn-pow2-v4"
+REPO_ROOT = HERE.parents[2]   # Pipeline → ml → src → repo root
 
 TEST_FILE = REPO_ROOT / "src/rtl/dscnn/kws_top/test_kws_top.py"
 BIAS_SV   = REPO_ROOT / "src/rtl/dscnn/bias_dff/bias_DFFs.sv"
@@ -172,7 +173,7 @@ def update_bias_sv(sv_path: Path, biases: list, dry_run: bool) -> bool:
 def main():
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--ckpt-dir", type=Path, default=HERE,
+    parser.add_argument("--ckpt-dir", type=Path, default=MODEL_DIR,
                         help="Directory containing scales.txt and bias.hex (default: %(default)s)")
     parser.add_argument("--dry-run", action="store_true",
                         help="Show changes without writing files")
@@ -203,8 +204,7 @@ def main():
 
     ok = True
 
-    print("Updating LAYER_CFGS in test_kws_top.py...")
-    ok &= update_layer_cfgs(TEST_FILE, shifts, args.dry_run)
+    print("LAYER_CFGS shifts: loaded dynamically from scales.txt by rtl_golden.load_layer_cfgs() — no patching needed.")
 
     print("\nUpdating bias_DFFs.sv case statement...")
     ok &= update_bias_sv(BIAS_SV, biases, args.dry_run)

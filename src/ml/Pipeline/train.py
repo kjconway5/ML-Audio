@@ -114,6 +114,16 @@ class NpyDataset(Dataset):
             f0 = random.randint(0, F - f)
             x[0, :, f0:f0 + f] = 0.0
 
+        # Gaussian noise: simulate low-SNR conditions (50% probability)
+        if random.random() < 0.5:
+            sigma = random.uniform(0.0, 0.15)
+            x = x + torch.randn_like(x) * sigma
+
+        # Amplitude jitter: simulate varying speaker volumes (50% probability)
+        if random.random() < 0.5:
+            gain = random.uniform(0.85, 1.15)
+            x = x * gain
+
         return x
 
 
@@ -186,11 +196,13 @@ def train_epoch(model, train_loader, criterion, optimizer, device, epoch):
     return total_loss / total, 100.0 * correct / total
 
 
-def validate(model, val_loader, criterion, device, epoch, mode="Val"):
+def validate(model, val_loader, criterion, device, epoch, mode="Val", class_names=None):
     model.eval()
     total_loss = 0.0
     correct = 0
     total = 0
+    all_preds  = []
+    all_labels = []
 
     progress_bar = tqdm(val_loader, desc=f"Epoch {epoch:2d} [{mode:>4s}]")
 
@@ -207,10 +219,23 @@ def validate(model, val_loader, criterion, device, epoch, mode="Val"):
             correct += predicted.eq(labels).sum().item()
             total += batch.size(0)
 
+            all_preds.extend(predicted.cpu().tolist())
+            all_labels.extend(labels.cpu().tolist())
+
             current_acc = 100.0 * correct / total
             progress_bar.set_postfix({'loss': f'{loss.item():.4f}', 'acc': f'{current_acc:.2f}%'})
 
-    return total_loss / total, 100.0 * correct / total
+    # Per-class accuracy
+    per_class_acc = {}
+    n_classes = max(all_labels) + 1 if all_labels else 0
+    names = class_names if class_names else [str(i) for i in range(n_classes)]
+    for c in range(n_classes):
+        idxs = [i for i, l in enumerate(all_labels) if l == c]
+        if idxs:
+            per_class_acc[names[c] if c < len(names) else str(c)] = \
+                100.0 * sum(1 for i in idxs if all_preds[i] == c) / len(idxs)
+
+    return total_loss / total, 100.0 * correct / total, per_class_acc
 
 
 def main():
@@ -233,22 +258,35 @@ def main():
     model = create_model(config)
     model = model.to(device)          
 
-    criterion = nn.CrossEntropyLoss()
+    # Class weights: boost underperforming classes
+    # Order matches label_to_id: [no=0, off=1, on=2, silence=3, unknown=4, wow=5, yes=6]
+    # unknown: 3000 samples already gives natural advantage — 1.5x weight is enough
+    # wow: was at 35% before weighting; keep boost to maintain gains
+    class_weights = torch.tensor([1.0, 1.0, 1.0, 1.0, 1.5, 2.5, 1.0]).to(device)
+    criterion = nn.CrossEntropyLoss(label_smoothing=0.1, weight=class_weights)
 
     train_cfg = config["training"]
-    optimizer = optim.SGD(
+    optimizer = optim.Adam(
         model.parameters(),
         lr=train_cfg["learning_rate"],
-        momentum=train_cfg["momentum"],
         weight_decay=train_cfg.get("weight_decay", 0.0001),
     )
 
-    lr_schedule = train_cfg["lr_schedule"]
-    scheduler = optim.lr_scheduler.MultiStepLR(
-        optimizer,
-        milestones=lr_schedule["milestones"],
-        gamma=lr_schedule["gamma"],
-    )
+    lr_schedule    = train_cfg["lr_schedule"]
+    warmup_epochs  = train_cfg.get("warmup_epochs", 5)
+    milestones     = lr_schedule["milestones"]
+    gamma          = lr_schedule["gamma"]
+
+    def lr_lambda(epoch):
+        if epoch < warmup_epochs:
+            return (epoch + 1) / warmup_epochs
+        factor = 1.0
+        for m in milestones:
+            if epoch >= m:
+                factor *= gamma
+        return factor
+
+    scheduler = optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
 
     n_epochs  = train_cfg["n_epochs"]
     val_every = train_cfg.get("val_every", 5)
@@ -271,13 +309,29 @@ def main():
     print(f"  - BN freeze epoch     : {freeze_bn_epoch}")
     print(f"  - QAT backend         : {qat_backend}")
 
-    log_file = config["output"].get("log_file", "training_log.txt")
+    save_path = Path(config["output"]["model_save_path"])
+    save_path.parent.mkdir(parents=True, exist_ok=True)
+
+    import shutil
+    shutil.copy(config_path, save_path.parent / "config.yaml")
+
+    log_file = config["output"].get("log_file", str(save_path.parent / "training_log.txt"))
     with open(log_file, 'w') as f:
         f.write(f"QAT Training started at {datetime.now()}\n\n")
 
     print("\n" + "="*70)
     print(f" Phase 1: Float32 Warmup  (epochs 1 – {qat_start_epoch - 1})")
     print("="*70 + "\n")
+
+    # Load class names for per-class accuracy logging
+    import json as _json
+    _cfg_json = Path(config["data"]["output_dir"]) / "config.json"
+    if _cfg_json.exists():
+        with open(_cfg_json) as _f:
+            _data_cfg = _json.load(_f)
+        class_names = _data_cfg.get("labels", None)
+    else:
+        class_names = None
 
     best_val_acc = 0.0
     best_model_state = None
@@ -298,11 +352,14 @@ def main():
             if gpu_available:
                 print(f"\n>>> Migrating model and optimizer: {device} → {cpu_device} <<<\n")
 
-                
+
                 model.to(cpu_device)
 
-                
+
                 migrate_optimizer_to_cpu(optimizer)
+
+                if criterion.weight is not None:
+                    criterion.weight = criterion.weight.to(cpu_device)
 
                 print(f"  → Model and optimizer state now on {cpu_device}.")
 
@@ -351,14 +408,22 @@ def main():
         print(f"{'':11s}  Train Loss: {train_loss:.4f} | Train Acc: {train_acc:.2f}%")
 
         if epoch % val_every == 0:
-            val_loss, val_acc = validate(model, val_loader, criterion, device, epoch, mode="Val")
+            val_loss, val_acc, val_per_class = validate(
+                model, val_loader, criterion, device, epoch, mode="Val", class_names=class_names)
             log_msg += f" | Val Loss: {val_loss:.4f} | Val Acc: {val_acc:.2f}%"
             print(f"{'':11s}  Val   Loss: {val_loss:.4f} | Val   Acc: {val_acc:.2f}%")
+            if val_per_class:
+                cls_str = "  ".join(f"{k}={v:.0f}%" for k, v in sorted(val_per_class.items()))
+                print(f"{'':11s}  Per-class: {cls_str}")
+                log_msg += f" | {cls_str}"
 
             if val_acc > best_val_acc:
                 best_val_acc = val_acc
-                best_model_state = copy.deepcopy(model.state_dict())
-                print(f"{'':11s}  *** New best validation accuracy! Checkpoint saved. ***")
+                if qat_prepared:  # only save QAT state dicts — float keys are incompatible at convert time
+                    best_model_state = copy.deepcopy(model.state_dict())
+                    print(f"{'':11s}  *** New best QAT validation accuracy! Checkpoint saved. ***")
+                else:
+                    print(f"{'':11s}  *** New best float validation accuracy (not saved — QAT not started yet). ***")
 
         with open(log_file, 'a') as f:
             f.write(log_msg + '\n')
@@ -386,8 +451,12 @@ def main():
     print(" Final Test Evaluation  (INT8 model on CPU)")
     print("="*70 + "\n")
 
-    test_loss, test_acc = validate(model, test_loader, criterion, device, n_epochs, mode="Test")
+    test_loss, test_acc, test_per_class = validate(
+        model, test_loader, criterion, device, n_epochs, mode="Test", class_names=class_names)
     print(f"\n{'':11s}  Test Loss: {test_loss:.4f} | Test Acc: {test_acc:.2f}%")
+    if test_per_class:
+        cls_str = "  ".join(f"{k}={v:.0f}%" for k, v in sorted(test_per_class.items()))
+        print(f"{'':11s}  Per-class: {cls_str}")
 
     with open(log_file, 'a') as f:
         f.write(f"\n{'='*70}\n")
@@ -395,6 +464,10 @@ def main():
         f.write(f"Best validation accuracy  : {best_val_acc:.2f}%\n")
         f.write(f"Final INT8 test accuracy  : {test_acc:.2f}%\n")
         f.write(f"Final INT8 test loss      : {test_loss:.4f}\n")
+        if test_per_class:
+            f.write(f"Per-class test accuracy   :\n")
+            for k, v in sorted(test_per_class.items()):
+                f.write(f"  {k:<12}: {v:.1f}%\n")
 
     # Load labels from output/config.json (created by process_data.py)
     import json
@@ -409,7 +482,6 @@ def main():
         labels = sorted(config.get('data', {}).get('classes', ['silence', 'unknown', 'yes']))
         label_to_id = {l: i for i, l in enumerate(labels)}
 
-    save_path = config["output"]["model_save_path"]
     torch.save({
         'model_state_dict': model.state_dict(),
         'config': config,

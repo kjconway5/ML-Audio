@@ -25,9 +25,9 @@ data:
 
   include_silence: true
   num_silence_samples: 500
-  unknown_max_train: 3000
-  unknown_max_val: 300
-  unknown_max_test: 300
+  unknown_max_train: 500
+  unknown_max_val: 63
+  unknown_max_test: 63
   random_seed: 42
 
 
@@ -86,5 +86,5 @@ vad:
   default_energy_threshold: 0.0001
 
 output:
-  model_save_path: "/home/dnocera/branch/ML-Audio/src/ml/models/dscnn-pow2-v7/dscnn-pow2-v7.pt"
-  log_file: "/home/dnocera/branch/ML-Audio/src/ml/models/dscnn-pow2-v7/training_log_pow2_v7.txt"
+  model_save_path: "/home/dnocera/branch/ML-Audio/src/ml/models/dscnn-pow2-v4/dscnn-pow2-v5.pt"
+  log_file: "/home/dnocera/branch/ML-Audio/src/ml/models/dscnn-pow2-v4/training_log_pow2_v5.txt"

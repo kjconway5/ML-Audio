@@ -3,8 +3,8 @@
 export.py — Extract weights, biases, and requantization shifts from a trained
             QAT DSCNN checkpoint for use in the RTL testbench.
 
-Usage (run from src/ml/models/dscnn/):
-    python3 export.py [--ckpt dscnn-4-10.pt]
+Usage (run from src/ml/Pipeline/):
+    python3 export.py [--ckpt ../models/dscnn/dscnn-pow2-v3.pt]
 
 Outputs written to the same directory as the checkpoint:
     weights.hex  — all INT8 weights concatenated, one byte per line (2-digit hex)
@@ -21,8 +21,9 @@ from pathlib import Path
 import numpy as np
 import torch
 
-HERE = Path(__file__).resolve().parent
-sys.path.insert(0, str(HERE))
+HERE      = Path(__file__).resolve().parent
+MODEL_DIR = HERE.parent / "models" / "dscnn"
+sys.path.insert(0, str(MODEL_DIR))
 from dscnn import DSCNN
 
 
@@ -62,7 +63,7 @@ def load_model(ckpt_path: Path) -> torch.nn.Module:
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--ckpt", type=Path, default=HERE / "dscnn-4-13.pt")
+    parser.add_argument("--ckpt", type=Path, default=MODEL_DIR.parent / "dscnn-pow2-v4" / "dscnn-pow2-v4.pt")
     args = parser.parse_args()
 
     ckpt_path = args.ckpt

@@ -26,6 +26,7 @@ Quantization to INT8 uses model.quant.scale (QuantStub's learned input scale).
 """
 
 import argparse
+import json
 import math
 import sys
 from pathlib import Path
@@ -38,12 +39,15 @@ import soundfile as sf
 SCRIPT_DIR   = Path(__file__).parent                                  # src/rtl/dscnn/kws_top/
 REPO_ROOT    = SCRIPT_DIR.parent.parent.parent.parent                 # ML-Audio/
 ML_DIR       = REPO_ROOT / "src" / "ml"                              # src/ml/
-MODEL_DIR    = REPO_ROOT / "src" / "ml" / "models" / "dscnn"         # src/ml/models/dscnn/
+MODEL_DIR    = REPO_ROOT / "src" / "ml" / "models" / "dscnn-pow2-v4"  # src/ml/models/dscnn-pow2-v4/
+DSCNN_DIR    = REPO_ROOT / "src" / "ml" / "models" / "dscnn"         # src/ml/models/dscnn/ (dscnn.py lives here)
 sys.path.insert(0, str(ML_DIR))            # for golden_model.py
-sys.path.insert(0, str(MODEL_DIR))         # for dscnn.py
+sys.path.insert(0, str(DSCNN_DIR))         # for dscnn.py
+sys.path.insert(0, str(SCRIPT_DIR))        # for rtl_golden.py
 
 from golden_model import GoldenExtractor
 from dscnn import DSCNN
+from rtl_golden import rtl_golden_predict, load_layer_cfgs, load_hex_file as rtl_load_hex
 
 # ── Constants (must match FSM hardcoded values and training config) ────────────
 SAMPLE_RATE  = 16000
@@ -59,7 +63,7 @@ CLASS_NAMES  = None   # set in main() from checkpoint
 CLASS_MAP    = None   # set in main() from checkpoint
 
 DEFAULT_DATASET = ML_DIR / "Pipeline" / "speech_commands_v0.02"
-DEFAULT_CKPT    = MODEL_DIR / "dscnn-pow2.pt"
+DEFAULT_CKPT    = MODEL_DIR / "dscnn-pow2-v4.pt"
 
 
 # ── Audio loading ─────────────────────────────────────────────────────────────
@@ -172,12 +176,16 @@ def main():
     parser = argparse.ArgumentParser(description="Generate RTL test vectors for kws_top")
     parser.add_argument("--keyword", default="yes",
                         help="Keyword to use (default: yes)")
+    parser.add_argument("--n-samples", type=int, default=10,
+                        help="Number of WAV samples to generate test vectors for (default: 10)")
     parser.add_argument("--dataset-dir", type=Path, default=DEFAULT_DATASET,
                         help="Path to speech_commands dataset root")
     parser.add_argument("--out-dir", type=Path, default=Path("."),
                         help="Output directory for generated files")
     parser.add_argument("--ckpt", type=Path, default=DEFAULT_CKPT,
                         help="Path to model checkpoint (.pt)")
+    parser.add_argument("--wav-file", type=Path, default=None,
+                        help="Use a specific WAV file (overrides --n-samples, generates 1 sample)")
     args = parser.parse_args()
 
     args.out_dir.mkdir(parents=True, exist_ok=True)
@@ -208,60 +216,126 @@ def main():
     print("Building GoldenExtractor (RTL-accurate spectrogram pipeline)...")
     extractor = GoldenExtractor()
 
-    # Find a WAV file for the requested keyword
-    keyword_dir = args.dataset_dir / args.keyword
-    if not keyword_dir.exists():
-        print(f"ERROR: keyword directory not found: {keyword_dir}", file=sys.stderr)
-        sys.exit(1)
+    # Load RTL arithmetic golden (weights, biases, layer configs from scales.txt)
+    scales_path = args.ckpt.parent / "scales.txt"
+    weights_path = args.ckpt.parent / "weights.hex"
+    bias_path    = args.ckpt.parent / "bias.hex"
+    rtl_available = all(p.exists() for p in [scales_path, weights_path, bias_path])
+    if rtl_available:
+        layer_cfgs  = load_layer_cfgs(scales_path)
+        rtl_weights = rtl_load_hex(str(weights_path), signed=True, width=8)
+        rtl_biases  = rtl_load_hex(str(bias_path),   signed=True, width=32)
+        print(f"RTL arithmetic : loaded ({len(rtl_weights)} weights, {len(rtl_biases)} biases)")
+    else:
+        print("WARNING: weights.hex/bias.hex/scales.txt not found — RTL arithmetic column unavailable")
+        print("         Run export.py first to generate these files")
 
-    wav_files = sorted(keyword_dir.glob("*.wav"))
-    if not wav_files:
-        print(f"ERROR: no WAV files in {keyword_dir}", file=sys.stderr)
-        sys.exit(1)
+    # Collect WAV files to process
+    if args.wav_file is not None:
+        if not args.wav_file.exists():
+            print(f"ERROR: WAV file not found: {args.wav_file}", file=sys.stderr)
+            sys.exit(1)
+        wav_list = [args.wav_file]
+    else:
+        keyword_dir = args.dataset_dir / args.keyword
+        if not keyword_dir.exists():
+            print(f"ERROR: keyword directory not found: {keyword_dir}", file=sys.stderr)
+            sys.exit(1)
+        wav_files = sorted(keyword_dir.glob("*.wav"))
+        if not wav_files:
+            print(f"ERROR: no WAV files in {keyword_dir}", file=sys.stderr)
+            sys.exit(1)
+        wav_list = wav_files[:args.n_samples]
 
-    wav_path = wav_files[0]
-    print(f"Input WAV      : {wav_path}")
-
-    # Extract spectrogram (50 x 40, matching both training and RTL hardware)
-    audio_i16 = load_wav(wav_path)
-    spect_float, spect_int8 = extract_spectrogram(audio_i16, extractor)
-    print(f"Spectrogram    : {spect_float.shape} float32, range [{spect_float.min():.2f}, {spect_float.max():.2f}]")
-    print(f"Quantized INT8 : range [{spect_int8.min()}, {spect_int8.max()}], non-zero={np.count_nonzero(spect_int8)}")
-
-    # Write spectrogram.hex
-    spect_hex_path = args.out_dir / "spectrogram.hex"
-    write_spectrogram_hex(spect_int8, spect_hex_path)
-    print(f"Written        : {spect_hex_path}")
-
-    # Golden inference on the same 50-frame spectrogram the RTL will process
-    expected_class = golden_inference(model, spect_float)
-    expected_name  = CLASS_NAMES[expected_class]
-    print(f"Golden class   : {expected_class} ({expected_name})")
-    print(f"Input keyword  : {args.keyword} (class {CLASS_MAP[args.keyword]})")
-
-    if expected_name != args.keyword:
-        print(f"WARNING: model predicted '{expected_name}' but input was '{args.keyword}'")
-        print(f"         The testbench will check for RTL class == {expected_class} ('{expected_name}')")
-
-    # Write ground_truth_class.txt — the label of the WAV file we actually fed in.
-    # This is what the testbench should compare against: did the chip correctly
-    # identify the spoken word?  The model prediction (expected_class) may differ
-    # from ground truth if the sample is borderline or the model is wrong.
     ground_truth_class = CLASS_MAP[args.keyword]
-    ground_truth_name  = args.keyword
-    (args.out_dir / "ground_truth_class.txt").write_text(str(ground_truth_class) + "\n")
-    (args.out_dir / "ground_truth_name.txt").write_text(ground_truth_name + "\n")
 
-    # Also write the model's own prediction for reference/debugging.
-    (args.out_dir / "expected_class.txt").write_text(str(expected_class) + "\n")
-    (args.out_dir / "class_name.txt").write_text(expected_name + "\n")
+    # ── Process each WAV and write numbered spectrogram files ─────────────────
+    # Collect table output so it can be printed to stdout and saved to the results file.
+    out_lines = []
+    out_lines.append(f"\nGenerating {len(wav_list)} test vector(s) for keyword '{args.keyword}'")
+    out_lines.append(f"{'#':<4}  {'wav':<35}  {'nz':>5}  {'pytorch':>8}  {'arith':>8}  {'match':>6}")
+    out_lines.append("-" * 80)
+
+    samples = []
+    for i, wav_path in enumerate(wav_list):
+        audio_i16 = load_wav(wav_path)
+        spect_float, spect_int8 = extract_spectrogram(audio_i16, extractor)
+
+        # Write spectrogram_{i}.hex
+        hex_filename = f"spectrogram_{i}.hex"
+        write_spectrogram_hex(spect_int8, args.out_dir / hex_filename)
+
+        # PyTorch model prediction (float QAT model)
+        pytorch_class = golden_inference(model, spect_float)
+        pytorch_name  = CLASS_NAMES[pytorch_class]
+
+        # RTL integer arithmetic prediction (canonical — matches what RTL chip does)
+        if rtl_available:
+            spect_list = [int(v) for v in spect_int8.flatten()]
+            arith_class, arith_gap = rtl_golden_predict(spect_list, rtl_weights, rtl_biases, layer_cfgs)
+            arith_name = CLASS_NAMES[arith_class]
+            sorted_gap = sorted(enumerate(arith_gap), key=lambda x: x[1], reverse=True)
+            margin     = sorted_gap[0][1] - sorted_gap[1][1]
+            gap_str    = "  ".join(f"{CLASS_NAMES[c]}:{v}" for c, v in sorted_gap)
+        else:
+            arith_class, arith_name, margin, gap_str = None, "N/A", 0, "N/A"
+
+        # match is based on RTL arithmetic (the true ground truth for RTL verification)
+        if rtl_available:
+            match = "OK" if arith_name == args.keyword else "MISS"
+            if pytorch_name != arith_name:
+                match += " (pytorch≠arith)"
+        else:
+            match = "OK" if pytorch_name == args.keyword else "MISS"
+
+        out_lines.append(f"{i:<4}  {wav_path.name:<35}  {np.count_nonzero(spect_int8):>5}  "
+                         f"{pytorch_name:>8}  {arith_name:>8}  {match}")
+        if rtl_available:
+            out_lines.append(f"      GAP: {gap_str}  margin={margin}")
+
+        samples.append({
+            "index":               i,
+            "hex_file":            hex_filename,
+            "wav":                 str(wav_path),
+            "ground_truth_class":  ground_truth_class,
+            "ground_truth_name":   args.keyword,
+            "pytorch_class":       pytorch_class,
+            "pytorch_name":        pytorch_name,
+            "arith_class":         arith_class,
+            "arith_name":          arith_name,
+            "non_zero":            int(np.count_nonzero(spect_int8)),
+        })
+
+    # ── Write manifest ────────────────────────────────────────────────────────
+    manifest = {
+        "keyword":            args.keyword,
+        "ground_truth_class": ground_truth_class,
+        "class_names":        CLASS_NAMES,
+        "input_scale":        INPUT_SCALE,
+        "spect_shift":        spect_shift,
+        "samples":            samples,
+    }
+    manifest_path = args.out_dir / "test_vectors.json"
+    with open(manifest_path, "w") as f:
+        json.dump(manifest, f, indent=2)
+
+    # Write class_names.txt for testbench backward compat
     (args.out_dir / "class_names.txt").write_text("\n".join(CLASS_NAMES) + "\n")
-    print(f"Written        : {args.out_dir / 'ground_truth_class.txt'}  ({ground_truth_name})")
-    print(f"Written        : {args.out_dir / 'expected_class.txt'}  (model prediction: {expected_name})")
-    print(f"Written        : {args.out_dir / 'class_names.txt'}")
 
-    print(f"\nSpectrogram INT8 sample (first 8 values of frame 0):")
-    print("  " + "  ".join(f"{int(v):4d}" for v in spect_int8[0, :8]))
+    correct = sum(1 for s in samples if s["arith_name"] == args.keyword)
+    out_lines.append(f"\nGolden model accuracy on these samples: {correct}/{len(samples)}")
+    out_lines.append(f"Written: {manifest_path}")
+    out_lines.append(f"Written: {len(samples)} spectrogram hex file(s) in {args.out_dir}")
+
+    # ── Print to stdout and append to per-model results file ─────────────────
+    output = "\n".join(out_lines)
+    print(output)
+
+    from datetime import datetime
+    results_path = args.ckpt.parent / "gen_spect_results.txt"
+    with open(results_path, "a") as rf:
+        rf.write(f"=== {args.keyword}  ({datetime.now().strftime('%Y-%m-%d %H:%M:%S')}) ===\n")
+        rf.write(output + "\n\n")
 
 
 if __name__ == "__main__":

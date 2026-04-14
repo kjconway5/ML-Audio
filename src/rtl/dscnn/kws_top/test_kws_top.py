@@ -2,10 +2,16 @@
 # End-to-end cocotb testbench for kws_top.sv
 
 
+import json
 import os
+import sys
 import cocotb
 from cocotb.clock import Clock
 from cocotb.triggers import RisingEdge, FallingEdge, ClockCycles, First, Timer
+
+# Import shared RTL arithmetic golden model
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from rtl_golden import rtl_golden_predict, load_layer_cfgs, load_hex_file
 
 CLK_PERIOD_NS = 100
 
@@ -25,16 +31,16 @@ FSM_STATES = {
 }
 
 LAYER_NAMES = [
-    "first_conv      ",   
-    "ds0.depthwise   ",   
-    "ds0.pointwise   ",   
-    "ds1.depthwise   ",   
-    "ds1.pointwise   ",   
-    "ds2.depthwise   ",   
-    "ds2.pointwise   ",   
-    "ds3.depthwise   ",   
-    "ds3.pointwise   ",   
-    "classifier      ",   
+    "first_conv      ",
+    "ds0.depthwise   ",
+    "ds0.pointwise   ",
+    "ds1.depthwise   ",
+    "ds1.pointwise   ",
+    "ds2.depthwise   ",
+    "ds2.pointwise   ",
+    "ds3.depthwise   ",
+    "ds3.pointwise   ",
+    "classifier      ",
 ]
 
 
@@ -65,79 +71,11 @@ async def monitor_fsm_progress(dut, log_every_cycles=50_000):
             f"kh={kh:2d} kw={kw:2d} ic={ic:3d}"
         )
 
-LAYER_CFGS = [
-    (  0,     1,  24, 10,  4,  2, 2, 4, 1, 0,     0,   10,   1, 25, 20,   0),
-    (  1,     1,  24,  3,  3,  1, 1, 1, 1, 1,   960,    5,   1, 25, 20,  24),
-    (  2,    24,  24,  1,  1,  1, 1, 0, 0, 0,  1176,    7,   1, 25, 20,  48),
-    (  3,     1,  24,  3,  3,  1, 1, 1, 1, 1,  1752,    5,   1, 25, 20,  72),
-    (  4,    24,  24,  1,  1,  1, 1, 0, 0, 0,  1968,    7,   1, 25, 20,  96),
-    (  5,     1,  24,  3,  3,  1, 1, 1, 1, 1,  2544,    7,   1, 25, 20, 120),
-    (  6,    24,  24,  1,  1,  1, 1, 0, 0, 0,  2760,    7,   1, 25, 20, 144),
-    (  7,     1,  24,  3,  3,  1, 1, 1, 1, 1,  3336,    7,   1, 25, 20, 168),
-    (  8,    24,  24,  1,  1,  1, 1, 0, 0, 0,  3552,    6,   1, 25, 20, 192),
-    (  9,    24,   7,  1,  1,  1, 1, 0, 0, 0,  4128,    4,   0, 25, 20, 216),
-]
-
-def rtl_golden_predict(spect_int8, weights, biases):
-    feat = list(spect_int8)   
-
-    for (layer, in_ch, out_ch, kH, kW, sh, sw, ph, pw,
-         dw, w_off, shift, relu, ofmap_h, ofmap_w, bias_off) in LAYER_CFGS:
-
-        if layer == 0:
-            ifmap_h, ifmap_w = 50, 40
-        else:
-            _, _, _, _, _, _, _, _, _, _, _, _, _, prev_h, prev_w, _ = LAYER_CFGS[layer - 1]
-            ifmap_h, ifmap_w = prev_h, prev_w
-
-        out = [0] * (out_ch * ofmap_h * ofmap_w)
-
-        for oc in range(out_ch):
-            bias = biases[bias_off + oc]
-            for oh in range(ofmap_h):
-                for ow in range(ofmap_w):
-                    acc = bias
-                    if dw:
-                        for kh in range(kH):
-                            for kw in range(kW):
-                                ih = oh * sh + kh - ph
-                                iw = ow * sw + kw - pw
-                                if 0 <= ih < ifmap_h and 0 <= iw < ifmap_w:
-                                    if layer == 0:
-                                        fv = feat[ih * ifmap_w + iw]
-                                    else:
-                                        fv = feat[oc * ifmap_h * ifmap_w + ih * ifmap_w + iw]
-                                    acc += fv * weights[w_off + oc * kH * kW + kh * kW + kw]
-                    else:
-                        for ic in range(in_ch):
-                            for kh in range(kH):
-                                for kw in range(kW):
-                                    ih = oh * sh + kh - ph
-                                    iw = ow * sw + kw - pw
-                                    if 0 <= ih < ifmap_h and 0 <= iw < ifmap_w:
-                                        if layer == 0:
-                                            fv = feat[ih * ifmap_w + iw]
-                                        else:
-                                            fv = feat[ic * ifmap_h * ifmap_w + ih * ifmap_w + iw]
-                                        widx = (w_off + oc * in_ch * kH * kW
-                                                + ic * kH * kW + kh * kW + kw)
-                                        acc += fv * weights[widx]
-
-                    shifted = acc >> shift if acc >= 0 else -((-acc) >> shift)
-                    sat = max(-128, min(127, shifted))
-                    out[oc * ofmap_h * ofmap_w + oh * ofmap_w + ow] = max(0, sat) if relu else sat
-
-        feat = out
-
-    n_classes = LAYER_CFGS[-1][2]   # out_ch of last layer = 7
-    spatial   = LAYER_CFGS[-1][13] * LAYER_CFGS[-1][14]  # ofmap_h * ofmap_w = 500
-    gap = [sum(feat[c * spatial:(c + 1) * spatial]) for c in range(n_classes)]
-    return gap.index(max(gap)), gap
-
 def _load_class_names(test_dir):
     path = os.path.join(test_dir, "class_names.txt")
     if os.path.exists(path):
-        names = [l.strip() for l in open(path).readlines() if l.strip()]
+        with open(path) as f:
+            names = [l.strip() for l in f.readlines() if l.strip()]
         if names:
             return names
     return ["no", "off", "on", "silence", "unknown", "wow", "yes"]
@@ -239,10 +177,10 @@ async def write_cfg(dut, addr, data):
     await RisingEdge(dut.clk)
 
 
-async def program_layers(dut):
+async def program_layers(dut, layer_cfgs):
     dut._log.info("Programming layer configs...")
     for (layer, in_ch, out_ch, kH, kW, sh, sw, ph, pw,
-         dw, w_off, shift, relu, ofmap_h, ofmap_w, bias_off) in LAYER_CFGS:
+         dw, w_off, shift, relu, ofmap_h, ofmap_w, bias_off) in layer_cfgs:
 
         base = layer << 4
         await write_cfg(dut, base | 0x0, in_ch)
@@ -267,94 +205,21 @@ async def program_layers(dut):
 
 
 
-@cocotb.test()
-async def test_kws_inference(dut):
-    test_dir = get_test_dir()
-
-    weights_path = os.path.join(test_dir, "..", "..", "..", "ml", "models", "dscnn", "weights.hex")
-    bias_path    = os.path.join(test_dir, "..", "..", "..", "ml", "models", "dscnn", "bias.hex")
-    spect_path   = os.path.join(test_dir, "spectrogram.hex")
-
-    for p in [weights_path, bias_path, spect_path]:
-        if not os.path.exists(p):
-            raise FileNotFoundError(
-                f"Missing test vector: {p}\n"
-                f"Run: cd src/ml/models/dscnn && python3 export.py\n"
-                f"     cd src/rtl/dscnn/kws_top && make gen-spect"
-            )
-
-    weights        = load_hex_file(weights_path, signed=True,  width=8)
-    biases_raw     = load_hex_file(bias_path,    signed=True,  width=32)
-    spect_int8     = load_hex_file(spect_path,   signed=True,  width=8)
-
-    assert len(weights)    == 4296, f"Expected 4296 weights, got {len(weights)}"
-    assert len(spect_int8) == 2000, f"Expected 2000 spectrogram values, got {len(spect_int8)}"
-
-    # Ground truth: the label of the WAV file we actually fed in.
-    # This is the real test — did the chip correctly identify the spoken word?
-    gt_path = os.path.join(test_dir, "ground_truth_class.txt")
-    gn_path = os.path.join(test_dir, "ground_truth_name.txt")
-    if not os.path.exists(gt_path):
-        raise FileNotFoundError(
-            "Missing ground_truth_class.txt — re-run generate_spect.py to regenerate test vectors"
-        )
-    expected_class = int(open(gt_path).read().strip())
-    expected_name  = open(gn_path).read().strip() if os.path.exists(gn_path) else \
-                     (CLASS_NAMES[expected_class] if expected_class < len(CLASS_NAMES) else f"class{expected_class}")
-
-    # RTL arithmetic golden — logged for debug only, not used for pass/fail.
-    # If this disagrees with ground truth, the power-of-2 quantization is lossy
-    # on this sample (model quality issue, not RTL correctness issue).
-    rtl_arith_class, rtl_arith_gap = rtl_golden_predict(spect_int8, weights, biases_raw)
-    rtl_arith_name  = CLASS_NAMES[rtl_arith_class] if rtl_arith_class < len(CLASS_NAMES) else f"class{rtl_arith_class}"
-
-    sorted_gap  = sorted(enumerate(rtl_arith_gap), key=lambda x: x[1], reverse=True)
-    gap_margin  = sorted_gap[0][1] - sorted_gap[1][1]
-    gap_summary = "  ".join(f"{CLASS_NAMES[c]}:{v}" for c, v in sorted_gap)
-
-    dut._log.info(f"Ground truth   : {expected_class} ({expected_name})")
-    dut._log.info(f"RTL arithmetic : {rtl_arith_class} ({rtl_arith_name})" +
-                  ("" if rtl_arith_class == expected_class else "  ← quantization differs from ground truth"))
-    dut._log.info(f"GAP scores     : {gap_summary}")
-    dut._log.info(f"Margin (1st-2nd): {gap_margin}")
-    dut._log.info(f"Spectrogram    : {len(spect_int8)} INT8 values, "
-                  f"range [{min(spect_int8)}, {max(spect_int8)}]")
-
-    cocotb.start_soon(Clock(dut.clk, CLK_PERIOD_NS, unit="ns").start())
-
-    # reset 
-    await reset_dut(dut)
-    # load weight SRAM
-    await load_weight_sram(dut, weights)
-    # load spect bank A 
+async def run_single_inference(dut, spect_int8, sample_idx, timeout_ns, layer_cfgs):
+    """Load spectrogram, run one inference, return RTL class_out."""
     await load_spectrogram(dut, spect_int8)
-
-    # ── Phase 4: Signal spectrogram ready ────────────────────────────────────
     await signal_spect_done(dut)
+    await program_layers(dut, layer_cfgs)
 
-    # ── Phase 5: Program layer configs ───────────────────────────────────────
-    await program_layers(dut)
-
-    # ── Phase 6: Assert start ────────────────────────────────────────────────
     await FallingEdge(dut.clk)
     dut.start.value = 1
     await RisingEdge(dut.clk)
     await FallingEdge(dut.clk)
     dut.start.value = 0
-    dut._log.info("Inference started — FSM monitor will log every 50K cycles")
 
-    # ── Phase 7: Launch FSM progress monitor ─────────────────────────────────
-    # Logs state/layer/oh/ow/oc every 50K cycles so we can see exact progress.
-    # Cocotb kills this coroutine automatically when the test ends.
-    cocotb.start_soon(monitor_fsm_progress(dut, log_every_cycles=50_000))
-
-    # ── Phase 8: Wait for done ────────────────────────────────────────────────
-    # Sleep until done rises (or timeout). No per-cycle Python wake-ups.
-    TIMEOUT_NS = 12_000_000 * CLK_PERIOD_NS
-    result = await First(RisingEdge(dut.done), Timer(TIMEOUT_NS, units="ns"))
+    result = await First(RisingEdge(dut.done), Timer(timeout_ns, units="ns"))
 
     if isinstance(result, Timer):
-        # Log final FSM state before raising so the user can see where it stopped
         try:
             state = FSM_STATES.get(int(dut.inst_ctrl.state.value), "?")
             layer = int(dut.inst_ctrl.layer.value)
@@ -362,41 +227,147 @@ async def test_kws_inference(dut):
             ow    = int(dut.inst_ctrl.ow.value)
             oc    = int(dut.inst_ctrl.oc.value)
             dut._log.error(
-                f"Timeout! Last FSM state: {state}  "
+                f"[sample {sample_idx}] Timeout! Last FSM state: {state}  "
                 f"L{layer}={LAYER_NAMES[layer] if layer < len(LAYER_NAMES) else '?'}  "
                 f"oh={oh} ow={ow} oc={oc}"
             )
         except Exception:
             pass
         raise AssertionError(
-            f"Timeout: done not asserted within {TIMEOUT_NS // CLK_PERIOD_NS:,} cycles"
+            f"[sample {sample_idx}] Timeout: done not asserted within "
+            f"{timeout_ns // CLK_PERIOD_NS:,} cycles"
         )
 
-    dut._log.info("Done pulse received")
+    return int(dut.class_out.value)
 
-    # ── Phase 9: Check class_out ──────────────────────────────────────────────
-    # done and class_out are set in the same OUTPUT state cycle
-    rtl_class = int(dut.class_out.value)
-    rtl_name  = CLASS_NAMES[rtl_class] if rtl_class < len(CLASS_NAMES) else f"unknown({rtl_class})"
 
-    dut._log.info(f"RTL  class_out : {rtl_class} ({rtl_name})")
-    dut._log.info(f"Ground truth   : {expected_class} ({expected_name})")
-    dut._log.info(f"RTL arithmetic : {rtl_arith_class} ({rtl_arith_name})")
-    dut._log.info(f"GAP scores     : {gap_summary}")
-    dut._log.info(f"Margin (1st-2nd): {gap_margin}")
+@cocotb.test()
+async def test_kws_inference(dut):
+    test_dir = get_test_dir()
 
-    if rtl_class == expected_class:
-        dut._log.info("PASS: RTL correctly identified the spoken keyword")
-    else:
-        # Distinguish between RTL bug and quantization/model quality issue
-        if rtl_class == rtl_arith_class:
-            raise AssertionError(
-                f"FAIL: RTL predicted '{rtl_name}' but ground truth is '{expected_name}'. "
-                f"RTL arithmetic is internally consistent — this is a model quality issue "
-                f"(power-of-2 quantization degraded accuracy on this sample)."
+    MODEL_DIR     = os.path.join(test_dir, "..", "..", "..", "ml", "models", "dscnn-pow2-v4")
+    weights_path  = os.path.join(MODEL_DIR, "weights.hex")
+    bias_path     = os.path.join(MODEL_DIR, "bias.hex")
+    scales_path   = os.path.join(MODEL_DIR, "scales.txt")
+    manifest_path = os.path.join(test_dir, "test_vectors.json")
+
+    for p in [weights_path, bias_path, scales_path, manifest_path]:
+        if not os.path.exists(p):
+            raise FileNotFoundError(
+                f"Missing file: {p}\n"
+                f"Run: python3 src/ml/Pipeline/export.py\n"
+                f"     python3 src/ml/Pipeline/update_rtl.py\n"
+                f"     cd src/rtl/dscnn/kws_top && python3 generate_spect.py --keyword <kw>"
             )
-        else:
-            raise AssertionError(
-                f"FAIL: RTL predicted '{rtl_name}' but ground truth is '{expected_name}'. "
-                f"RTL arithmetic golden predicts '{rtl_arith_name}' — likely an RTL bug."
-            )
+
+    from pathlib import Path
+    layer_cfgs = load_layer_cfgs(Path(scales_path))
+
+    with open(manifest_path) as f:
+        manifest = json.load(f)
+
+    weights    = load_hex_file(weights_path, signed=True, width=8)
+    biases_raw = load_hex_file(bias_path,   signed=True, width=32)
+    assert len(weights) == 4296, f"Expected 4296 weights, got {len(weights)}"
+
+    keyword     = manifest["keyword"]
+    class_names = manifest["class_names"]
+    samples     = manifest["samples"]
+
+    # ── PHASE 1: Print golden arithmetic for all samples before RTL sim ───────
+    dut._log.info("=" * 72)
+    dut._log.info(f"GOLDEN ARITHMETIC PREVIEW — keyword='{keyword}'  ({len(samples)} samples)")
+    dut._log.info("=" * 72)
+
+    sample_data = []  # pre-computed data reused in Phase 2
+    for s in samples:
+        hex_path = os.path.join(test_dir, s["hex_file"])
+        spect_int8 = load_hex_file(hex_path, signed=True, width=8)
+        assert len(spect_int8) == 2000, \
+            f"Sample {s['index']}: expected 2000 values, got {len(spect_int8)}"
+
+        arith_class, arith_gap = rtl_golden_predict(spect_int8, weights, biases_raw, layer_cfgs)
+        arith_name = class_names[arith_class] if arith_class < len(class_names) else f"cls{arith_class}"
+
+        sorted_gap = sorted(enumerate(arith_gap), key=lambda x: x[1], reverse=True)
+        margin     = sorted_gap[0][1] - sorted_gap[1][1]
+        gap_str    = "  ".join(f"{class_names[c]}:{v}" for c, v in sorted_gap)
+        match      = "OK" if arith_name == keyword else "MISS"
+
+        dut._log.info(
+            f"[{s['index']}] {s['wav'].split('/')[-1]:<30}  "
+            f"arith={arith_name:<8}  gt={keyword:<8}  {match}  margin={margin}"
+        )
+        dut._log.info(f"    GAP: {gap_str}")
+
+        sample_data.append({
+            "spect_int8":   spect_int8,
+            "arith_class":  arith_class,
+            "arith_name":   arith_name,
+            "gt_class":     s["ground_truth_class"],
+            "gt_name":      keyword,
+            "gap_str":      gap_str,
+            "margin":       margin,
+        })
+
+    dut._log.info("=" * 72)
+    dut._log.info("STARTING RTL SIMULATION")
+    dut._log.info("=" * 72)
+
+    # ── PHASE 2: RTL simulation for each sample ───────────────────────────────
+    cocotb.start_soon(Clock(dut.clk, CLK_PERIOD_NS, unit="ns").start())
+
+    # Reset and load weights once — SRAMs retain content across resets
+    await reset_dut(dut)
+    await load_weight_sram(dut, weights)
+
+    TIMEOUT_NS = 12_000_000 * CLK_PERIOD_NS
+    results = []
+
+    for i, sd in enumerate(sample_data):
+        dut._log.info(f"--- RTL inference {i+1}/{len(sample_data)}: {samples[i]['wav'].split('/')[-1]} ---")
+
+        # Reset FSM state between inferences (weights stay loaded)
+        if i > 0:
+            await reset_dut(dut)
+
+        cocotb.start_soon(monitor_fsm_progress(dut, log_every_cycles=50_000))
+
+        rtl_class = await run_single_inference(dut, sd["spect_int8"], i, TIMEOUT_NS, layer_cfgs)
+        rtl_name  = class_names[rtl_class] if rtl_class < len(class_names) else f"cls{rtl_class}"
+
+        passed = (rtl_class == sd["gt_class"])
+        status = "PASS" if passed else "FAIL"
+        consistent = (rtl_class == sd["arith_class"])
+
+        dut._log.info(
+            f"[{i}] RTL={rtl_name:<8}  GT={sd['gt_name']:<8}  "
+            f"arith={sd['arith_name']:<8}  margin={sd['margin']}  {status}"
+        )
+        if not passed:
+            if consistent:
+                dut._log.warning(
+                    f"[{i}] RTL matches arithmetic golden ({rtl_name}) — model quality issue"
+                )
+            else:
+                dut._log.error(
+                    f"[{i}] RTL ({rtl_name}) disagrees with arithmetic golden "
+                    f"({sd['arith_name']}) — possible RTL bug"
+                )
+
+        results.append({"passed": passed, "rtl_name": rtl_name, "consistent": consistent})
+
+    # ── Final summary ─────────────────────────────────────────────────────────
+    n_pass = sum(1 for r in results if r["passed"])
+    dut._log.info("=" * 72)
+    dut._log.info(f"FINAL RESULT: {n_pass}/{len(results)} samples correctly classified as '{keyword}'")
+    for i, r in enumerate(results):
+        mark = "PASS" if r["passed"] else "FAIL"
+        dut._log.info(f"  [{i}] {mark}  RTL={r['rtl_name']}")
+    dut._log.info("=" * 72)
+
+    if n_pass < len(results):
+        raise AssertionError(
+            f"{len(results) - n_pass}/{len(results)} sample(s) misclassified. "
+            f"See per-sample logs above."
+        )
