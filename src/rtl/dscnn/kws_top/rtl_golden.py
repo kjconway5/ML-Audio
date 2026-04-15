@@ -17,7 +17,9 @@ from pathlib import Path
 # ── Architecture-fixed layer parameters ───────────────────────────────────────
 # Format: (layer, in_ch, out_ch, kH, kW, sh, sw, ph, pw, dw, w_off, relu, ofmap_h, ofmap_w, bias_off)
 # 'shift' (field 11 in full LAYER_CFGS) is omitted here and filled in by load_layer_cfgs().
-LAYER_CFGS_ARCH = [
+
+# 24-filter model (v1–v8): 4296 weights total, 223 biases total
+LAYER_CFGS_ARCH_24 = [
     #  layer  in  out  kH  kW  sh sw ph pw  dw   w_off  relu  oh  ow bias_off
     (   0,    1,  24, 10,  4,  2, 2, 4, 1,  0,     0,    1,  25, 20,   0),
     (   1,    1,  24,  3,  3,  1, 1, 1, 1,  1,   960,    1,  25, 20,  24),
@@ -30,6 +32,26 @@ LAYER_CFGS_ARCH = [
     (   8,   24,  24,  1,  1,  1, 1, 0, 0,  0,  3552,    1,  25, 20, 192),
     (   9,   24,   7,  1,  1,  1, 1, 0, 0,  0,  4128,    0,  25, 20, 216),
 ]
+
+# 32-filter model (v9+): 6752 weights total, 295 biases total
+LAYER_CFGS_ARCH_32 = [
+    #  layer  in  out  kH  kW  sh sw ph pw  dw   w_off  relu  oh  ow bias_off
+    (   0,    1,  32, 10,  4,  2, 2, 4, 1,  0,     0,    1,  25, 20,   0),
+    (   1,    1,  32,  3,  3,  1, 1, 1, 1,  1,  1280,    1,  25, 20,  32),
+    (   2,   32,  32,  1,  1,  1, 1, 0, 0,  0,  1568,    1,  25, 20,  64),
+    (   3,    1,  32,  3,  3,  1, 1, 1, 1,  1,  2592,    1,  25, 20,  96),
+    (   4,   32,  32,  1,  1,  1, 1, 0, 0,  0,  2880,    1,  25, 20, 128),
+    (   5,    1,  32,  3,  3,  1, 1, 1, 1,  1,  3904,    1,  25, 20, 160),
+    (   6,   32,  32,  1,  1,  1, 1, 0, 0,  0,  4192,    1,  25, 20, 192),
+    (   7,    1,  32,  3,  3,  1, 1, 1, 1,  1,  5216,    1,  25, 20, 224),
+    (   8,   32,  32,  1,  1,  1, 1, 0, 0,  0,  5504,    1,  25, 20, 256),
+    (   9,   32,   7,  1,  1,  1, 1, 0, 0,  0,  6528,    0,  25, 20, 288),
+]
+
+# Default (current RTL target); backward-compat alias
+LAYER_CFGS_ARCH = LAYER_CFGS_ARCH_32
+
+_ARCH_BY_FILTERS = {24: LAYER_CFGS_ARCH_24, 32: LAYER_CFGS_ARCH_32}
 
 LAYER_NAMES = [
     "first_conv",
@@ -57,21 +79,71 @@ def load_shifts(scales_path: Path) -> list:
     return shifts
 
 
-def load_layer_cfgs(scales_path: Path) -> list:
+def load_mults(scales_path: Path) -> list:
     """
-    Build the full LAYER_CFGS list by merging LAYER_CFGS_ARCH with shift values
-    from scales.txt. Returns tuples in the format expected by rtl_golden_predict():
-      (layer, in_ch, out_ch, kH, kW, sh, sw, ph, pw, dw, w_off, shift, relu, ofmap_h, ofmap_w, bias_off)
+    Parse mult values (second-to-last column) from scales.txt.
+
+    Returns a list of 32-bit unsigned ints, one per layer.
+    Falls back to (2^32 - 1) per layer if scales.txt uses the old format
+    (no mult column), which reproduces the legacy power-of-2 shift behaviour
+    to within 1 LSB.
     """
+    mults = []
+    with open(scales_path) as f:
+        for line in f:
+            s = line.strip()
+            if not s or s.startswith("layer") or s.startswith("-"):
+                continue
+            parts = s.split()
+            if len(parts) < 6:          # old format: layer mw_scale in_scale out_scale shift
+                return None
+            try:
+                mults.append(int(parts[-2]))
+            except ValueError:
+                return None
+    return mults
+
+
+def load_layer_cfgs(scales_path: Path, n_filters: int = 32) -> list:
+    """
+    Build the full LAYER_CFGS list by merging the architecture table for n_filters
+    with per-layer (mult, shift) values from scales.txt.
+
+    Returns tuples in the format expected by rtl_golden_predict():
+      (layer, in_ch, out_ch, kH, kW, sh, sw, ph, pw, dw, w_off,
+       mult, shift, relu, ofmap_h, ofmap_w, bias_off)
+
+    mult and shift encode the multiply-shift requantization:
+        effective_scale = mult * 2^-(shift + 32)
+
+    If scales.txt was produced by an older export.py (no mult column), mult
+    defaults to (2^32 - 1) which reproduces the legacy power-of-2 shift
+    behaviour to within 1 LSB.  Re-run export.py to get accurate mult values.
+
+    Args:
+        scales_path : path to scales.txt produced by export.py
+        n_filters   : number of DS-block filters (24 or 32)
+    """
+    arch = _ARCH_BY_FILTERS.get(n_filters)
+    if arch is None:
+        raise ValueError(f"No LAYER_CFGS_ARCH defined for n_filters={n_filters}; "
+                         f"supported: {sorted(_ARCH_BY_FILTERS)}")
     shifts = load_shifts(scales_path)
-    if len(shifts) != len(LAYER_CFGS_ARCH):
+    mults  = load_mults(scales_path)
+    if mults is None:
+        print("WARNING: scales.txt has no mult column (old export.py format).")
+        print("         Using mult=0xFFFFFFFF, which approximates the legacy shift.")
+        print("         Re-run export.py to get accurate multiply-shift values.")
+        mults = [(1 << 32) - 1] * len(shifts)
+    if len(shifts) != len(arch) or len(mults) != len(arch):
         raise ValueError(
-            f"scales.txt has {len(shifts)} shifts but architecture has {len(LAYER_CFGS_ARCH)} layers"
+            f"scales.txt has {len(shifts)} rows but architecture has {len(arch)} layers"
         )
     cfgs = []
-    for arch, shift in zip(LAYER_CFGS_ARCH, shifts):
-        layer, in_ch, out_ch, kH, kW, sh, sw, ph, pw, dw, w_off, relu, oh, ow, bias_off = arch
-        cfgs.append((layer, in_ch, out_ch, kH, kW, sh, sw, ph, pw, dw, w_off, shift, relu, oh, ow, bias_off))
+    for a, mult, shift in zip(arch, mults, shifts):
+        layer, in_ch, out_ch, kH, kW, sh, sw, ph, pw, dw, w_off, relu, oh, ow, bias_off = a
+        cfgs.append((layer, in_ch, out_ch, kH, kW, sh, sw, ph, pw, dw, w_off,
+                     mult, shift, relu, oh, ow, bias_off))
     return cfgs
 
 
@@ -121,13 +193,13 @@ def rtl_golden_predict(spect_int8: list, weights: list, biases: list,
     feat = list(spect_int8)
 
     for (layer, in_ch, out_ch, kH, kW, sh, sw, ph, pw,
-         dw, w_off, shift, relu, ofmap_h, ofmap_w, bias_off) in layer_cfgs:
+         dw, w_off, mult, shift, relu, ofmap_h, ofmap_w, bias_off) in layer_cfgs:
 
         if layer == 0:
             ifmap_h, ifmap_w = 50, 40
         else:
             prev = layer_cfgs[layer - 1]
-            ifmap_h, ifmap_w = prev[13], prev[14]   # ofmap_h, ofmap_w of previous layer
+            ifmap_h, ifmap_w = prev[14], prev[15]   # ofmap_h, ofmap_w of previous layer
 
         out = [0] * (out_ch * ofmap_h * ofmap_w)
 
@@ -158,13 +230,21 @@ def rtl_golden_predict(spect_int8: list, weights: list, biases: list,
                                                 + ic * kH * kW + kh * kW + kw)
                                         acc += fv * weights[widx]
 
-                    shifted = acc >> shift if acc >= 0 else -((-acc) >> shift)
+                    # ── Legacy power-of-2 shift (commented out — kept for reference) ──
+                    # shifted = acc >> shift if acc >= 0 else -((-acc) >> shift)
+
+                    # ── Multiply-shift (matches new requant.sv) ──────────────────────
+                    # Mirrors: product[63:0] = acc * mult; result = product[63:32] >>> shift
+                    product  = acc * mult                         # exact Python int
+                    raw      = (product >> 32) & 0xFFFFFFFF       # upper 32 bits, unsigned
+                    upper32  = raw if raw < (1 << 31) else raw - (1 << 32)  # to signed
+                    shifted  = upper32 >> shift                   # arithmetic right shift
                     sat = max(-128, min(127, shifted))
                     out[oc * ofmap_h * ofmap_w + oh * ofmap_w + ow_idx] = max(0, sat) if relu else sat
 
         feat = out
 
     n_classes = layer_cfgs[-1][2]
-    spatial   = layer_cfgs[-1][13] * layer_cfgs[-1][14]
+    spatial   = layer_cfgs[-1][14] * layer_cfgs[-1][15]
     gap = [sum(feat[c * spatial:(c + 1) * spatial]) for c in range(n_classes)]
     return gap.index(max(gap)), gap

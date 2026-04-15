@@ -1,4 +1,5 @@
 import copy
+import math
 import random
 import yaml
 import torch
@@ -258,47 +259,44 @@ def main():
     model = create_model(config)
     model = model.to(device)          
 
-    # Class weights: boost underperforming classes
-    # Order matches label_to_id: [no=0, off=1, on=2, silence=3, unknown=4, wow=5, yes=6]
-    # unknown: 3000 samples already gives natural advantage — 1.5x weight is enough
-    # wow: was at 35% before weighting; keep boost to maintain gains
-    class_weights = torch.tensor([1.0, 1.0, 1.0, 1.0, 1.5, 2.5, 1.0]).to(device)
+    # Uniform weights — let the model learn naturally with balanced unknown data.
+    # Order: [no=0, off=1, on=2, silence=3, unknown=4, wow=5, yes=6]
+    class_weights = torch.tensor([1.0, 1.0, 1.5, 1.0, 1.0, 1.5, 1.0]).to(device)
     criterion = nn.CrossEntropyLoss(label_smoothing=0.1, weight=class_weights)
 
     train_cfg = config["training"]
-    optimizer = optim.Adam(
+
+    n_epochs        = train_cfg["n_epochs"]
+    val_every       = train_cfg.get("val_every", 5)
+    qat_start_epoch = train_cfg.get("qat_start_epoch", max(1, int(n_epochs * 0.7)))
+    freeze_bn_epoch = train_cfg.get("freeze_bn_epoch", n_epochs - 2)
+    qat_backend     = "qnnpack"  # per-tensor symmetric weights; non-pow2 scales; matches RTL per-layer multiply-shift
+
+    optimizer = optim.SGD(
         model.parameters(),
         lr=train_cfg["learning_rate"],
+        momentum=train_cfg.get("momentum", 0.9),
         weight_decay=train_cfg.get("weight_decay", 0.0001),
+        nesterov=True,
     )
 
-    lr_schedule    = train_cfg["lr_schedule"]
-    warmup_epochs  = train_cfg.get("warmup_epochs", 5)
-    milestones     = lr_schedule["milestones"]
-    gamma          = lr_schedule["gamma"]
+    lr_schedule   = train_cfg["lr_schedule"]
+    warmup_epochs = train_cfg.get("warmup_epochs", 5)
+    base_lr       = train_cfg["learning_rate"]
+    eta_min_float = lr_schedule.get("eta_min_float", 1e-4)
+    # Float phase: warmup_epochs of linear ramp, then cosine decay to eta_min_float
+    float_T_cos   = max(qat_start_epoch - 1 - warmup_epochs, 1)
 
-    def lr_lambda(epoch):
-        if epoch < warmup_epochs:
-            return (epoch + 1) / warmup_epochs
-        factor = 1.0
-        for m in milestones:
-            if epoch >= m:
-                factor *= gamma
-        return factor
+    def lr_lambda(ep):
+        # ep is 0-indexed: ep=0 is the step taken at the end of epoch 1
+        if ep < warmup_epochs:
+            return (ep + 1) / warmup_epochs
+        cos_ep = ep - warmup_epochs
+        ratio  = eta_min_float / base_lr
+        return ratio + 0.5 * (1.0 - ratio) * (1.0 + math.cos(math.pi * cos_ep / float_T_cos))
 
-    scheduler = optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
-
-    n_epochs  = train_cfg["n_epochs"]
-    val_every = train_cfg.get("val_every", 5)
-
-   
-    qat_start_epoch = train_cfg.get("qat_start_epoch", max(1, int(n_epochs * 0.7)))
-
-    
-    freeze_bn_epoch = train_cfg.get("freeze_bn_epoch", n_epochs - 2)
-
-    
-    qat_backend = "pow2"  # always power-of-2; config value ignored
+    scheduler     = optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
+    qat_scheduler = None   # replaced at qat_start_epoch with a cosine warm restart
 
     print(f"\nTraining configuration:")
     print(f"  - Total epochs        : {n_epochs}")
@@ -333,7 +331,8 @@ def main():
     else:
         class_names = None
 
-    best_val_acc = 0.0
+    best_val_acc     = 0.0   # tracks float phase best (for logging only)
+    best_qat_val_acc = 0.0   # tracks QAT phase best (used for conversion)
     best_model_state = None
     qat_prepared = False
 
@@ -352,10 +351,10 @@ def main():
             if gpu_available:
                 print(f"\n>>> Migrating model and optimizer: {device} → {cpu_device} <<<\n")
 
-
+                
                 model.to(cpu_device)
 
-
+                
                 migrate_optimizer_to_cpu(optimizer)
 
                 if criterion.weight is not None:
@@ -373,19 +372,34 @@ def main():
             model.train()  # Back to train mode for QAT
 
             # ── QAT qconfig selection ──────────────────────────────────────────
-            # Option A — Power-of-2 QAT (matches RTL exactly, revert to Option B
-            #            if this model is unneeded):
-            model.qconfig = get_pow2_qat_qconfig()
+            # Option A — Power-of-2 QAT (snaps scales to powers of 2 during training;
+            #            exact RTL match but lower accuracy — use for fallback):
+            # model.qconfig = get_pow2_qat_qconfig()
 
-            # Option B — Standard fbgemm QAT (per-channel float scales, higher
-            #            accuracy but requires rounding at export → RTL mismatch):
-            # model.qconfig = torch.quantization.get_default_qat_qconfig(qat_backend)
+            # Option B — qnnpack QAT (per-tensor symmetric weights; continuous
+            #            non-pow2 scales; requant.sv multiply-shift encodes each
+            #            layer's single scale with 31-bit precision — best RTL match):
+            # Option C — fbgemm QAT (per-channel weights; DO NOT USE — export.py
+            #            uses mean_wscale which causes shift errors per-channel,
+            #            collapsing intermediate activations to zero in the arith model):
+            model.qconfig = torch.quantization.get_default_qat_qconfig(qat_backend)
             # ───────────────────────────────────────────────────────────────────
 
             torch.quantization.prepare_qat(model, inplace=True)
 
             qat_prepared = True
             print("  → prepare_qat() complete: fake quantizers active.\n")
+
+            # Warm restart: give QAT its own cosine schedule starting from a usable LR
+            qat_start_lr = train_cfg.get("qat_start_lr", 1e-3)
+            eta_min_qat  = lr_schedule.get("eta_min_qat", 1e-6)
+            qat_T_max    = n_epochs - qat_start_epoch + 1
+            for pg in optimizer.param_groups:
+                pg["lr"] = qat_start_lr
+            qat_scheduler = optim.lr_scheduler.CosineAnnealingLR(
+                optimizer, T_max=qat_T_max, eta_min=eta_min_qat
+            )
+            print(f"  → QAT LR warm restart: {qat_start_lr:.2e} cosine → {eta_min_qat:.2e} over {qat_T_max} epochs.\n")
         
         if epoch == freeze_bn_epoch and qat_prepared:
             print(f"\n>>> Epoch {epoch}: Freezing BatchNorm statistics <<<")
@@ -417,18 +431,23 @@ def main():
                 print(f"{'':11s}  Per-class: {cls_str}")
                 log_msg += f" | {cls_str}"
 
-            if val_acc > best_val_acc:
-                best_val_acc = val_acc
-                if qat_prepared:  # only save QAT state dicts — float keys are incompatible at convert time
+            if qat_prepared:
+                if val_acc > best_qat_val_acc:
+                    best_qat_val_acc = val_acc
                     best_model_state = copy.deepcopy(model.state_dict())
-                    print(f"{'':11s}  *** New best QAT validation accuracy! Checkpoint saved. ***")
-                else:
-                    print(f"{'':11s}  *** New best float validation accuracy (not saved — QAT not started yet). ***")
+                    print(f"{'':11s}  *** New best QAT val accuracy ({val_acc:.2f}%)! Checkpoint saved. ***")
+            else:
+                if val_acc > best_val_acc:
+                    best_val_acc = val_acc
+                    print(f"{'':11s}  *** New best float val accuracy ({val_acc:.2f}%) — not saved, QAT not started. ***")
 
         with open(log_file, 'a') as f:
             f.write(log_msg + '\n')
 
-        scheduler.step()
+        if qat_scheduler is not None:
+            qat_scheduler.step()
+        else:
+            scheduler.step()
 
     
     print("\n" + "="*70)
@@ -437,9 +456,9 @@ def main():
 
     if best_model_state is not None:
         model.load_state_dict(best_model_state)
-        print(f"\n>>> Restoring best val checkpoint ({best_val_acc:.2f}%) for INT8 conversion <<<\n")
+        print(f"\n>>> Restoring best QAT checkpoint ({best_qat_val_acc:.2f}%) for INT8 conversion <<<\n")
     else:
-        print("\n>>> No val checkpoint found — converting final epoch weights <<<\n")
+        print("\n>>> No QAT checkpoint saved — converting final epoch weights <<<\n")
 
     print(">>> Converting QAT model to INT8 <<<\n")
     model.eval()
@@ -461,7 +480,8 @@ def main():
     with open(log_file, 'a') as f:
         f.write(f"\n{'='*70}\n")
         f.write(f"Training completed at {datetime.now()}\n")
-        f.write(f"Best validation accuracy  : {best_val_acc:.2f}%\n")
+        f.write(f"Best float val accuracy   : {best_val_acc:.2f}%\n")
+        f.write(f"Best QAT val accuracy     : {best_qat_val_acc:.2f}%\n")
         f.write(f"Final INT8 test accuracy  : {test_acc:.2f}%\n")
         f.write(f"Final INT8 test loss      : {test_loss:.4f}\n")
         if test_per_class:
@@ -498,7 +518,8 @@ def main():
     print(f"{'='*70}")
     print(f"  Float warmup on      : {'GPU (CUDA)' if gpu_available else 'CPU (no GPU found)'}")
     print(f"  QAT + convert on     : CPU")
-    print(f"  Best val accuracy    : {best_val_acc:.2f}%")
+    print(f"  Best float val acc   : {best_val_acc:.2f}%")
+    print(f"  Best QAT val acc     : {best_qat_val_acc:.2f}%")
     print(f"  Final INT8 test acc  : {test_acc:.2f}%")
     print(f"  Model saved to       : {save_path}")
     print(f"{'='*70}\n")

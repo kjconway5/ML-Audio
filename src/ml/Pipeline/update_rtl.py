@@ -20,28 +20,28 @@ import sys
 from pathlib import Path
 
 HERE      = Path(__file__).resolve().parent
-MODEL_DIR = HERE.parent / "models" / "dscnn-pow2-v4"
+MODEL_DIR = HERE.parent / "models" / "dscnn-pow2-v12"
 REPO_ROOT = HERE.parents[2]   # Pipeline → ml → src → repo root
 
 TEST_FILE = REPO_ROOT / "src/rtl/dscnn/kws_top/test_kws_top.py"
 BIAS_SV   = REPO_ROOT / "src/rtl/dscnn/bias_dff/bias_DFFs.sv"
 
 # Architecture-fixed layer order, bias offsets, and channel counts.
-# These match the DSCNN(24 filters, 7 classes) architecture and never change
+# These match the DSCNN(32 filters, 7 classes) architecture and never change
 # between training runs — only the values in bias.hex change.
 BIAS_LAYERS = [
-    ("first_conv",             0,  24),
-    ("ds_blocks.0.depthwise", 24,  24),
-    ("ds_blocks.0.pointwise", 48,  24),
-    ("ds_blocks.1.depthwise", 72,  24),
-    ("ds_blocks.1.pointwise", 96,  24),
-    ("ds_blocks.2.depthwise",120,  24),
-    ("ds_blocks.2.pointwise",144,  24),
-    ("ds_blocks.3.depthwise",168,  24),
-    ("ds_blocks.3.pointwise",192,  24),
-    ("classifier",            216,  7),
+    ("first_conv",             0,  32),
+    ("ds_blocks.0.depthwise", 32,  32),
+    ("ds_blocks.0.pointwise", 64,  32),
+    ("ds_blocks.1.depthwise", 96,  32),
+    ("ds_blocks.1.pointwise",128,  32),
+    ("ds_blocks.2.depthwise",160,  32),
+    ("ds_blocks.2.pointwise",192,  32),
+    ("ds_blocks.3.depthwise",224,  32),
+    ("ds_blocks.3.pointwise",256,  32),
+    ("classifier",            288,   7),
 ]
-TOTAL_BIASES = sum(n for _, _, n in BIAS_LAYERS)   # 223
+TOTAL_BIASES = sum(n for _, _, n in BIAS_LAYERS)   # 295
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────
@@ -143,7 +143,7 @@ def update_bias_sv(sv_path: Path, biases: list, dry_run: bool) -> bool:
         for i in range(n_ch):
             idx = bias_off + i
             u   = int(biases[idx]) & 0xFFFFFFFF
-            case_lines.append(f"            8'd{idx}: data = 32'sh{u:08X};")
+            case_lines.append(f"            9'd{idx}: data = 32'sh{u:08X};")
         case_lines.append("")
     case_lines.append("            default: data = 32'sh00000000;")
     new_case_body = "\n".join(case_lines)

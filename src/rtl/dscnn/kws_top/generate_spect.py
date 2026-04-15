@@ -28,6 +28,7 @@ Quantization to INT8 uses model.quant.scale (QuantStub's learned input scale).
 import argparse
 import json
 import math
+import random
 import sys
 from pathlib import Path
 
@@ -39,7 +40,7 @@ import soundfile as sf
 SCRIPT_DIR   = Path(__file__).parent                                  # src/rtl/dscnn/kws_top/
 REPO_ROOT    = SCRIPT_DIR.parent.parent.parent.parent                 # ML-Audio/
 ML_DIR       = REPO_ROOT / "src" / "ml"                              # src/ml/
-MODEL_DIR    = REPO_ROOT / "src" / "ml" / "models" / "dscnn-pow2-v4"  # src/ml/models/dscnn-pow2-v4/
+MODELS_DIR   = REPO_ROOT / "src" / "ml" / "models"                   # src/ml/models/  (base for --ckpt)
 DSCNN_DIR    = REPO_ROOT / "src" / "ml" / "models" / "dscnn"         # src/ml/models/dscnn/ (dscnn.py lives here)
 sys.path.insert(0, str(ML_DIR))            # for golden_model.py
 sys.path.insert(0, str(DSCNN_DIR))         # for dscnn.py
@@ -63,7 +64,6 @@ CLASS_NAMES  = None   # set in main() from checkpoint
 CLASS_MAP    = None   # set in main() from checkpoint
 
 DEFAULT_DATASET = ML_DIR / "Pipeline" / "speech_commands_v0.02"
-DEFAULT_CKPT    = MODEL_DIR / "dscnn-pow2-v4.pt"
 
 
 # ── Audio loading ─────────────────────────────────────────────────────────────
@@ -180,13 +180,25 @@ def main():
                         help="Number of WAV samples to generate test vectors for (default: 10)")
     parser.add_argument("--dataset-dir", type=Path, default=DEFAULT_DATASET,
                         help="Path to speech_commands dataset root")
-    parser.add_argument("--out-dir", type=Path, default=Path("."),
-                        help="Output directory for generated files")
-    parser.add_argument("--ckpt", type=Path, default=DEFAULT_CKPT,
-                        help="Path to model checkpoint (.pt)")
+    parser.add_argument("--out-dir", type=Path, default=Path("spectrograms"),
+                        help="Output directory for generated files (default: spectrograms/)")
+    parser.add_argument("--ckpt", type=Path, required=True,
+                        help="Model checkpoint relative to src/ml/models/  "
+                             "(e.g. dscnn-pow2-v7/dscnn-pow2-v7.pt) "
+                             "or an absolute path")
     parser.add_argument("--wav-file", type=Path, default=None,
                         help="Use a specific WAV file (overrides --n-samples, generates 1 sample)")
+    parser.add_argument("--seed", type=int, default=None,
+                        help="Random seed for reproducible file selection (default: random)")
     args = parser.parse_args()
+
+    # Resolve --ckpt: if not absolute, treat as relative to src/ml/models/
+    if not args.ckpt.is_absolute():
+        args.ckpt = MODELS_DIR / args.ckpt
+    if not args.ckpt.exists():
+        print(f"ERROR: checkpoint not found: {args.ckpt}", file=sys.stderr)
+        print(f"       (looked in {MODELS_DIR} for relative paths)", file=sys.stderr)
+        sys.exit(1)
 
     args.out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -216,16 +228,19 @@ def main():
     print("Building GoldenExtractor (RTL-accurate spectrogram pipeline)...")
     extractor = GoldenExtractor()
 
+    # Detect filter count from checkpoint config so the correct architecture table is used
+    n_filters = ckpt["config"]["model"]["ds_blocks"]["filters"]
+
     # Load RTL arithmetic golden (weights, biases, layer configs from scales.txt)
-    scales_path = args.ckpt.parent / "scales.txt"
+    scales_path  = args.ckpt.parent / "scales.txt"
     weights_path = args.ckpt.parent / "weights.hex"
     bias_path    = args.ckpt.parent / "bias.hex"
     rtl_available = all(p.exists() for p in [scales_path, weights_path, bias_path])
     if rtl_available:
-        layer_cfgs  = load_layer_cfgs(scales_path)
+        layer_cfgs  = load_layer_cfgs(scales_path, n_filters=n_filters)
         rtl_weights = rtl_load_hex(str(weights_path), signed=True, width=8)
         rtl_biases  = rtl_load_hex(str(bias_path),   signed=True, width=32)
-        print(f"RTL arithmetic : loaded ({len(rtl_weights)} weights, {len(rtl_biases)} biases)")
+        print(f"RTL arithmetic : loaded ({len(rtl_weights)} weights, {len(rtl_biases)} biases, {n_filters} filters)")
     else:
         print("WARNING: weights.hex/bias.hex/scales.txt not found — RTL arithmetic column unavailable")
         print("         Run export.py first to generate these files")
@@ -245,7 +260,9 @@ def main():
         if not wav_files:
             print(f"ERROR: no WAV files in {keyword_dir}", file=sys.stderr)
             sys.exit(1)
-        wav_list = wav_files[:args.n_samples]
+        rng = random.Random(args.seed)
+        n = min(args.n_samples, len(wav_files))
+        wav_list = sorted(rng.sample(wav_files, n))
 
     ground_truth_class = CLASS_MAP[args.keyword]
 
@@ -264,6 +281,8 @@ def main():
         # Write spectrogram_{i}.hex
         hex_filename = f"spectrogram_{i}.hex"
         write_spectrogram_hex(spect_int8, args.out_dir / hex_filename)
+        # Store path relative to SCRIPT_DIR (kws_top/) so test_kws_top.py can resolve it
+        hex_filename = str((args.out_dir / hex_filename).resolve().relative_to(SCRIPT_DIR.resolve()))
 
         # PyTorch model prediction (float QAT model)
         pytorch_class = golden_inference(model, spect_float)
@@ -313,6 +332,7 @@ def main():
         "class_names":        CLASS_NAMES,
         "input_scale":        INPUT_SCALE,
         "spect_shift":        spect_shift,
+        "seed":               args.seed,
         "samples":            samples,
     }
     manifest_path = args.out_dir / "test_vectors.json"
@@ -322,7 +342,9 @@ def main():
     # Write class_names.txt for testbench backward compat
     (args.out_dir / "class_names.txt").write_text("\n".join(CLASS_NAMES) + "\n")
 
-    correct = sum(1 for s in samples if s["arith_name"] == args.keyword)
+    # When RTL arithmetic files are unavailable, fall back to pytorch prediction for scoring
+    correct = sum(1 for s in samples if
+                  (s["arith_name"] if rtl_available else s["pytorch_name"]) == args.keyword)
     out_lines.append(f"\nGolden model accuracy on these samples: {correct}/{len(samples)}")
     out_lines.append(f"Written: {manifest_path}")
     out_lines.append(f"Written: {len(samples)} spectrogram hex file(s) in {args.out_dir}")
@@ -333,8 +355,9 @@ def main():
 
     from datetime import datetime
     results_path = args.ckpt.parent / "gen_spect_results.txt"
+    seed_str = str(args.seed) if args.seed is not None else "random"
     with open(results_path, "a") as rf:
-        rf.write(f"=== {args.keyword}  ({datetime.now().strftime('%Y-%m-%d %H:%M:%S')}) ===\n")
+        rf.write(f"=== {args.keyword}  ({datetime.now().strftime('%Y-%m-%d %H:%M:%S')})  seed={seed_str} ===\n")
         rf.write(output + "\n\n")
 
 

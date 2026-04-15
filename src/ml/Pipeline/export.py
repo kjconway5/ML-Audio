@@ -27,6 +27,29 @@ sys.path.insert(0, str(MODEL_DIR))
 from dscnn import DSCNN
 
 
+def compute_mult_shift(scale: float) -> tuple:
+    """
+    Decompose a float requantization scale into (mult, shift) for the RTL
+    multiply-shift requantizer.
+
+    RTL operation:
+        product[63:0] = acc * mult          (32-bit signed × 32-bit unsigned)
+        result        = product[63:32] >>> shift
+
+    Effective scale: mult * 2^-(shift + 32)
+
+    mult is chosen to fall in [2^31, 2^32) for maximum 32-bit precision.
+    shift (exponent n) is clamped to [0, 31].
+    """
+    if scale <= 0:
+        raise ValueError(f"requant scale must be positive, got {scale}")
+    raw_exp = -math.log2(scale)
+    shift   = max(0, min(31, math.ceil(raw_exp) - 1))
+    mult    = round(scale * (1 << (shift + 32)))
+    mult    = min(max(mult, 0), (1 << 32) - 1)   # clamp to 32-bit unsigned
+    return mult, shift
+
+
 def load_model(ckpt_path: Path) -> torch.nn.Module:
     checkpoint = torch.load(str(ckpt_path), map_location="cpu", weights_only=False)
     cfg     = checkpoint["config"]["model"]
@@ -63,7 +86,7 @@ def load_model(ckpt_path: Path) -> torch.nn.Module:
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--ckpt", type=Path, default=MODEL_DIR.parent / "dscnn-pow2-v4" / "dscnn-pow2-v4.pt")
+    parser.add_argument("--ckpt", type=Path, default=MODEL_DIR.parent / "dscnn-pow2-v12" / "dscnn-pow2-v12.pt")
     args = parser.parse_args()
 
     ckpt_path = args.ckpt
@@ -115,21 +138,25 @@ def main():
             f.write(f"{int(v) & 0xFF:02x}\n")
     print(f"\nweights.hex  : {weights_path}  ({len(all_weights)} INT8 values)")
 
-    # ── scales.txt (requant shifts for LAYER_CFGS) ────────────────────────────
-    # shift = round(-log2(true_input_scale * mean_wscale / output_scale))
+    # ── scales.txt (requant mult + shift for LAYER_CFGS) ─────────────────────
+    # Multiply-shift: effective scale = mult * 2^-(shift+32)
+    # mult falls in [2^31, 2^32) for maximum 32-bit precision.
+    # shift (last column) is kept last so update_rtl.py's load_shifts() still works.
     scales_path = out_dir / "scales.txt"
-    print(f"\n{'layer':<35s}  {'mean_w_scale':>14s}  {'in_scale':>10s}  {'out_scale':>10s}  {'shift':>6s}")
-    print("-" * 83)
+    hdr = f"{'layer':<35s}  {'mean_w_scale':>14s}  {'in_scale':>10s}  {'out_scale':>10s}  {'mult':>10s}  {'shift':>6s}"
+    sep = "-" * 95
+    print(f"\n{hdr}")
+    print(sep)
     with open(scales_path, "w") as f:
-        f.write(f"{'layer':<35s}  {'mean_w_scale':>14s}  {'in_scale':>10s}  {'out_scale':>10s}  {'shift':>6s}\n")
-        f.write("-" * 83 + "\n")
+        f.write(hdr + "\n")
+        f.write(sep + "\n")
         for l in layers:
             mean_wscale   = float(np.mean(l["w_scale"]))
             requant_scale = l["true_input_scale"] * mean_wscale / l["output_scale"]
-            shift = round(-math.log2(requant_scale))
-            shift = max(0, min(31, shift))
+            mult, shift   = compute_mult_shift(requant_scale)
             line = (f"{l['name']:<35s}  {mean_wscale:>14.8f}  "
-                    f"{l['true_input_scale']:>10.6f}  {l['output_scale']:>10.6f}  {shift:>6d}")
+                    f"{l['true_input_scale']:>10.6f}  {l['output_scale']:>10.6f}  "
+                    f"{mult:>10d}  {shift:>6d}")
             print(line)
             f.write(line + "\n")
     print(f"\nscales.txt   : {scales_path}")
@@ -166,6 +193,8 @@ def main():
     print("  (Update SPECT_SHIFT in spect_buffer_ctrl.sv if needed)")
 
     # ── bias_DFFs.sv case statement snippet ───────────────────────────────────
+    total_biases = len(all_biases)
+    addr_bits = max(8, total_biases - 1).bit_length()   # 8 for ≤255, 9 for ≤511, etc.
     print("\n" + "="*70)
     print("Paste the following into bias_dff/bias_DFFs.sv case statement:")
     print("="*70)
@@ -174,9 +203,9 @@ def main():
         print(f"\n    // {l['name']} (bias_off={l['offset']}, {len(l['bias'])} channels)")
         for i, val in enumerate(l["bias"]):
             u = int(val) & 0xFFFFFFFF
-            print(f"    8'd{offset + i}: data = 32'sh{u:08X};")
+            print(f"    {addr_bits}'d{offset + i}: data = 32'sh{u:08X};")
         offset += len(l["bias"])
-    print(f"\n    // Total entries: {offset}")
+    print(f"\n    // Total entries: {offset}  (addr_bits={addr_bits})")
 
     # ── Summary for updating LAYER_CFGS in test_kws_top.py ───────────────────
     print("\n" + "="*70)

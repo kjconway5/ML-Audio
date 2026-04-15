@@ -180,7 +180,7 @@ async def write_cfg(dut, addr, data):
 async def program_layers(dut, layer_cfgs):
     dut._log.info("Programming layer configs...")
     for (layer, in_ch, out_ch, kH, kW, sh, sw, ph, pw,
-         dw, w_off, shift, relu, ofmap_h, ofmap_w, bias_off) in layer_cfgs:
+         dw, w_off, mult, shift, relu, ofmap_h, ofmap_w, bias_off) in layer_cfgs:
 
         base = layer << 4
         await write_cfg(dut, base | 0x0, in_ch)
@@ -194,11 +194,20 @@ async def program_layers(dut, layer_cfgs):
         await write_cfg(dut, base | 0x8, dw)
         await write_cfg(dut, base | 0x9, w_off & 0xFF)           # w_off[7:0]
         await write_cfg(dut, base | 0xA, (w_off >> 8) & 0x1F)    # w_off[12:8]
-        await write_cfg(dut, base | 0xB, shift)
-        await write_cfg(dut, base | 0xC, relu)
+        await write_cfg(dut, base | 0xB, shift)                   # exponent n
+        # bit[0] = relu, bit[1] = bias_off[8] (high bit for 32-filter model where bias_off ≥ 256)
+        await write_cfg(dut, base | 0xC, (relu & 0x1) | ((bias_off >> 7) & 0x2))
         await write_cfg(dut, base | 0xD, ofmap_h)
         await write_cfg(dut, base | 0xE, ofmap_w)
-        await write_cfg(dut, base | 0xF, bias_off)
+        await write_cfg(dut, base | 0xF, bias_off & 0xFF)
+
+        # Multiply-shift multiplier: 32-bit mult sent as 4 bytes to addresses 0xA0+(layer*4)+byte
+        # Address map: 0xA0=L0B0 ... 0xC7=L9B3  (see FSM.sv config decoder)
+        mult_base = 0xA0 + layer * 4
+        await write_cfg(dut, mult_base + 0, (mult >>  0) & 0xFF)  # mult[7:0]
+        await write_cfg(dut, mult_base + 1, (mult >>  8) & 0xFF)  # mult[15:8]
+        await write_cfg(dut, mult_base + 2, (mult >> 16) & 0xFF)  # mult[23:16]
+        await write_cfg(dut, mult_base + 3, (mult >> 24) & 0xFF)  # mult[31:24]
 
     await write_cfg(dut, 0xFF, 1)
     dut._log.info("Layer configs programmed, cfg_load_done set.")
@@ -245,11 +254,11 @@ async def run_single_inference(dut, spect_int8, sample_idx, timeout_ns, layer_cf
 async def test_kws_inference(dut):
     test_dir = get_test_dir()
 
-    MODEL_DIR     = os.path.join(test_dir, "..", "..", "..", "ml", "models", "dscnn-pow2-v4")
+    MODEL_DIR     = os.path.join(test_dir, "..", "..", "..", "ml", "models", "dscnn-pow2-v9")
     weights_path  = os.path.join(MODEL_DIR, "weights.hex")
     bias_path     = os.path.join(MODEL_DIR, "bias.hex")
     scales_path   = os.path.join(MODEL_DIR, "scales.txt")
-    manifest_path = os.path.join(test_dir, "test_vectors.json")
+    manifest_path = os.path.join(test_dir, "spectrograms", "test_vectors.json")
 
     for p in [weights_path, bias_path, scales_path, manifest_path]:
         if not os.path.exists(p):
@@ -268,7 +277,7 @@ async def test_kws_inference(dut):
 
     weights    = load_hex_file(weights_path, signed=True, width=8)
     biases_raw = load_hex_file(bias_path,   signed=True, width=32)
-    assert len(weights) == 4296, f"Expected 4296 weights, got {len(weights)}"
+    assert len(weights) == 6752, f"Expected 6752 weights, got {len(weights)}"
 
     keyword     = manifest["keyword"]
     class_names = manifest["class_names"]

@@ -60,12 +60,13 @@ module kws_top (
     wire signed [31:0]   mac_bias, mac_acc;
 
     // Requant Signals
+    wire [31:0]          rq_mult;
     wire [4:0]           rq_shift;
     wire                 rq_relu_en;
     wire signed [7:0]    rq_out;
 
     // Bias signals
-    wire [7:0]           bias_addr;
+    wire [8:0]           bias_addr;   // 9-bit for 32-filter model (up to 295 bias entries)
     wire signed [31:0]   bias_data;
 
     // Shared spectrogram read address 
@@ -104,7 +105,7 @@ module kws_top (
     );
 
     requant inst_rq (
-        .acc(mac_acc), .shift(rq_shift),
+        .acc(mac_acc), .mult(rq_mult), .shift(rq_shift),
         .relu_en(rq_relu_en), .out(rq_out)
     );
 
@@ -129,7 +130,7 @@ module kws_top (
         .mac_en(mac_en), .mac_clear(mac_clear),
         .mac_ifmap(mac_ifmap), .mac_weight(mac_weight),
         .mac_bias(mac_bias), .mac_acc(mac_acc),
-        .rq_shift(rq_shift), .rq_relu_en(rq_relu_en), .rq_out(rq_out),
+        .rq_mult(rq_mult), .rq_shift(rq_shift), .rq_relu_en(rq_relu_en), .rq_out(rq_out),
         .bias_addr(bias_addr), .bias_data(bias_data)
     );
 

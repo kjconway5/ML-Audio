@@ -25,9 +25,9 @@ data:
 
   include_silence: true
   num_silence_samples: 500
-  unknown_max_train: 3000
-  unknown_max_val: 300
-  unknown_max_test: 300
+  unknown_max_train: 1000
+  unknown_max_val: 150
+  unknown_max_test: 150
   random_seed: 42
 
 
@@ -47,18 +47,18 @@ preprocessing:
 
 #ds-cnn
 model:
-  n_classes: 7  # yes, no, stop, go, silence, unknown
+  n_classes: 7  
   
   # First convolution layer
   first_conv:
-    filters: 24
+    filters: 32
     kernel_size: [10, 4]
     stride: [2, 2]
-  
+
   # Depthwise Separable blocks
   ds_blocks:
     n_blocks: 4
-    filters: 24
+    filters: 32
     kernel_size: [3, 3]
     stride: [1, 1]
 
@@ -66,18 +66,22 @@ training:
   n_epochs: 80
   batch_size: 64
 
-  optimizer: "adam"
-  learning_rate: 0.001
+  optimizer: "sgd"
+  learning_rate: 0.01
+  momentum: 0.9
   weight_decay: 0.0005
   warmup_epochs: 5
 
-  # Float warmup: epochs 1-49, QAT: epochs 50-80 (30 QAT epochs vs 18 before)
-  qat_start_epoch: 50
-  freeze_bn_epoch: 75
+  # Float phase: epochs 1-59  (warmup 1-5, cosine 6-59 → eta_min_float)
+  # QAT phase:   epochs 60-80 (warm restart at qat_start_lr, cosine → eta_min_qat)
+  # 20 QAT epochs gives the fbgemm per-channel scales time to settle with multiply-shift.
+  qat_start_epoch: 60
+  qat_start_lr: 0.001
+  freeze_bn_epoch: 77
 
   lr_schedule:
-    milestones: [25, 40, 55]
-    gamma: 0.1
+    eta_min_float: 0.0001
+    eta_min_qat:   0.000001
   val_every: 5
 
 vad:
@@ -86,5 +90,5 @@ vad:
   default_energy_threshold: 0.0001
 
 output:
-  model_save_path: "/home/dnocera/branch/ML-Audio/src/ml/models/dscnn-pow2-v7/dscnn-pow2-v7.pt"
-  log_file: "/home/dnocera/branch/ML-Audio/src/ml/models/dscnn-pow2-v7/training_log_pow2_v7.txt"
+  model_save_path: "/home/dnocera/branch/ML-Audio/src/ml/models/dscnn-pow2-v12/dscnn-pow2-v12.pt"
+  log_file: "/home/dnocera/branch/ML-Audio/src/ml/models/dscnn-pow2-v12/training_log_pow2_v12.txt"

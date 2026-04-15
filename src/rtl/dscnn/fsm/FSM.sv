@@ -37,7 +37,7 @@ module FSM #(
     output wire                     inference_idle, // to UART
 
     // Bias ROM interface
-    output wire [7:0]               bias_addr,
+    output wire [8:0]               bias_addr,   // 9-bit: supports up to 511 bias entries
     input  wire signed [31:0]       bias_data,
 
     //Feature SRAM signals
@@ -63,7 +63,8 @@ module FSM #(
     input  wire signed [ACC_W-1:0]  mac_acc,
 
     // Requant module signals
-    output reg  [4:0]               rq_shift,
+    output reg  [31:0]              rq_mult,      // Q0.32 multiplier for multiply-shift requant
+    output reg  [4:0]               rq_shift,     // exponent n; effective scale = rq_mult * 2^-(n+32)
     output reg                      rq_relu_en,
     input  wire signed [DATA_W-1:0] rq_out
 );
@@ -81,11 +82,13 @@ module FSM #(
     reg [3:0]  cfg_pad_w    [0:N_LAYERS-1];
     reg        cfg_dw       [0:N_LAYERS-1];
     reg [12:0] cfg_w_off    [0:N_LAYERS-1];
-    reg [4:0]  cfg_shift    [0:N_LAYERS-1];
+    reg [31:0] cfg_mult     [0:N_LAYERS-1]; // Q0.32 multiplier for multiply-shift requant
+    reg [4:0]  cfg_shift    [0:N_LAYERS-1]; // exponent n for multiply-shift
     reg        cfg_relu     [0:N_LAYERS-1];
     reg [7:0]  cfg_ofmap_h  [0:N_LAYERS-1];
     reg [7:0]  cfg_ofmap_w  [0:N_LAYERS-1];
     reg [7:0]  cfg_bias_off [0:N_LAYERS-1];
+    reg        cfg_bias_hi  [0:N_LAYERS-1]; // bit 8 of bias_off; packed into bit[1] of cfg_relu write
 
     reg        cfg_load_done;   // set by UART control
 
@@ -100,6 +103,20 @@ module FSM #(
         end else if (cfg_we) begin
             if (cfg_addr == 8'hFF) begin
                 cfg_load_done <= 1'b1;
+            end else if (cfg_addr >= 8'hA0 && cfg_addr <= 8'hC7) begin
+                // Multiply-shift multiplier registers.
+                // Address map: base = 0xA0 + (layer * 4) + byte_index
+                //   layer     = (cfg_addr - 0xA0) >> 2   (layers 0-9)
+                //   byte_sel  = (cfg_addr - 0xA0) & 2'b11
+                // Reuse cfg_layer/cfg_field as temporaries for the decode.
+                cfg_layer = cfg_addr[7:2] - 6'd40;   // (addr >> 2) - 40 → layer 0-9
+                cfg_field = {2'b0, cfg_addr[1:0]};   // byte select 0-3
+                case (cfg_field[1:0])
+                    2'd0: cfg_mult[cfg_layer][ 7: 0] <= cfg_wdata;
+                    2'd1: cfg_mult[cfg_layer][15: 8] <= cfg_wdata;
+                    2'd2: cfg_mult[cfg_layer][23:16] <= cfg_wdata;
+                    2'd3: cfg_mult[cfg_layer][31:24] <= cfg_wdata;
+                endcase
             end else begin
                 // Decode layer index and field offset from address
                 // layer  = cfg_addr[7:4]  upper 4-bits (layers 0-9)
@@ -119,7 +136,10 @@ module FSM #(
                     4'd9:  cfg_w_off   [cfg_layer][7:0]  <= cfg_wdata;       // Weight offset split into two (bot 8 bits)
                     4'd10: cfg_w_off   [cfg_layer][12:8] <= cfg_wdata[4:0];  // high 5 bits
                     4'd11: cfg_shift   [cfg_layer] <= cfg_wdata[4:0];
-                    4'd12: cfg_relu    [cfg_layer] <= cfg_wdata[0];
+                    4'd12: begin
+                               cfg_relu    [cfg_layer] <= cfg_wdata[0];
+                               cfg_bias_hi [cfg_layer] <= cfg_wdata[1]; // bias_off[8]: 1 for offsets ≥ 256
+                           end
                     4'd13: cfg_ofmap_h [cfg_layer] <= cfg_wdata;
                     4'd14: cfg_ofmap_w [cfg_layer] <= cfg_wdata;
                     4'd15: cfg_bias_off[cfg_layer] <= cfg_wdata;
@@ -272,6 +292,7 @@ module FSM #(
                 end
 
                 LOAD_LAYER: begin
+                    rq_mult    <= cfg_mult[layer];
                     rq_shift   <= cfg_shift[layer];
                     rq_relu_en <= cfg_relu[layer];
                     oh <= 8'd0; ow <= 8'd0; oc <= 8'd0;
@@ -419,7 +440,7 @@ module FSM #(
 
     assign inference_idle = (state == IDLE);
 
-    // Bias address: base offset for current layer + current output channel
-    assign bias_addr = cfg_bias_off[layer] + oc;
+    // Bias address: 9-bit = {cfg_bias_hi[layer], cfg_bias_off[layer]} + oc
+    assign bias_addr = {cfg_bias_hi[layer], cfg_bias_off[layer]} + {1'b0, oc};
 
 endmodule
