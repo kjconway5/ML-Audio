@@ -251,6 +251,36 @@ def main():
             print(f"ERROR: WAV file not found: {args.wav_file}", file=sys.stderr)
             sys.exit(1)
         wav_list = [args.wav_file]
+    elif args.keyword == "silence":
+        # Silence has no named directory — use _generated_silence_/
+        silence_dir = args.dataset_dir / "_generated_silence_"
+        if not silence_dir.exists():
+            print(f"ERROR: silence directory not found: {silence_dir}", file=sys.stderr)
+            sys.exit(1)
+        wav_files = sorted(silence_dir.glob("*.wav"))
+        if not wav_files:
+            print(f"ERROR: no WAV files in {silence_dir}", file=sys.stderr)
+            sys.exit(1)
+        rng = random.Random(args.seed)
+        n = min(args.n_samples, len(wav_files))
+        wav_list = sorted(rng.sample(wav_files, n))
+    elif args.keyword == "unknown":
+        # Unknown is assembled from all non-target, non-special word directories
+        target_keywords = {k for k in CLASS_NAMES if k not in ("silence", "unknown")}
+        unknown_dirs = [
+            d for d in sorted(args.dataset_dir.iterdir())
+            if d.is_dir() and not d.name.startswith("_") and d.name not in target_keywords
+        ]
+        if not unknown_dirs:
+            print(f"ERROR: no unknown word directories found in {args.dataset_dir}", file=sys.stderr)
+            sys.exit(1)
+        wav_files = sorted(p for d in unknown_dirs for p in d.glob("*.wav"))
+        if not wav_files:
+            print(f"ERROR: no WAV files found in unknown directories", file=sys.stderr)
+            sys.exit(1)
+        rng = random.Random(args.seed)
+        n = min(args.n_samples, len(wav_files))
+        wav_list = sorted(rng.sample(wav_files, n))
     else:
         keyword_dir = args.dataset_dir / args.keyword
         if not keyword_dir.exists():

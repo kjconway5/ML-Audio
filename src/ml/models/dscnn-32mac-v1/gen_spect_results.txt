@@ -418,3 +418,213 @@ Golden model accuracy on these samples: 12/30
 Written: spectrograms/test_vectors.json
 Written: 30 spectrogram hex file(s) in spectrograms
 
+=== off  (2026-04-15 00:25:38)  seed=random ===
+
+Generating 30 test vector(s) for keyword 'off'
+#     wav                                     nz   pytorch     arith   match
+--------------------------------------------------------------------------------
+0     050170cb_nohash_1.wav                  533       off       off  OK
+      GAP: off:2995  on:2250  unknown:74  wow:-1461  silence:-1487  yes:-1704  no:-2499  margin=745
+1     099d52ad_nohash_2.wav                   26       off       off  OK
+      GAP: off:891  unknown:55  no:-102  on:-187  wow:-477  yes:-505  silence:-1469  margin=836
+2     0d90d8e1_nohash_4.wav                  652       yes       off  OK (pytorch≠arith)
+      GAP: off:3125  yes:2434  wow:-742  silence:-1090  no:-1424  unknown:-1678  on:-2118  margin=691
+3     1b4c9b89_nohash_0.wav                  743        on        on  MISS
+      GAP: on:2697  off:1852  unknown:463  wow:-847  silence:-1086  no:-2169  yes:-2559  margin=845
+4     1b4c9b89_nohash_4.wav                  488   unknown        on  MISS (pytorch≠arith)
+      GAP: on:641  unknown:530  off:423  no:119  wow:-809  yes:-1255  silence:-1384  margin=111
+5     1d919a90_nohash_0.wav                  264        on   unknown  MISS (pytorch≠arith)
+      GAP: unknown:503  off:239  on:42  wow:-278  yes:-422  no:-618  silence:-1117  margin=264
+6     2f0ce4d9_nohash_1.wav                  773       off       off  OK
+      GAP: off:3060  unknown:611  on:583  yes:-977  wow:-1226  silence:-1444  no:-2371  margin=2449
+7     2fee065a_nohash_3.wav                 1622       off   silence  MISS (pytorch≠arith)
+      GAP: silence:3857  wow:672  off:285  yes:37  on:-458  unknown:-1842  no:-3121  margin=3185
+8     333d7ddb_nohash_1.wav                  309   unknown       off  OK (pytorch≠arith)
+      GAP: off:1383  unknown:1099  on:577  wow:-425  yes:-1338  no:-1469  silence:-1604  margin=284
+9     3983ba0d_nohash_0.wav                  801       off       off  OK
+      GAP: off:1208  on:173  unknown:-134  no:-267  yes:-451  wow:-505  silence:-1493  margin=1035
+10    3bfd30e6_nohash_0.wav                  345        on       off  OK (pytorch≠arith)
+      GAP: off:1140  on:986  unknown:688  yes:-653  wow:-954  no:-1443  silence:-1569  margin=154
+11    5f8097e1_nohash_1.wav                  754       off       off  OK
+      GAP: off:1816  wow:173  no:148  unknown:-112  on:-548  yes:-1152  silence:-1819  margin=1643
+12    6c429c7b_nohash_3.wav                  487       off       off  OK
+      GAP: off:3466  on:748  unknown:373  wow:-733  yes:-1431  no:-1969  silence:-2246  margin=2718
+13    6ceeb9aa_nohash_0.wav                  711        on       off  OK (pytorch≠arith)
+      GAP: off:1488  on:1486  unknown:1032  silence:-874  yes:-962  wow:-1880  no:-2002  margin=2
+14    6fca237d_nohash_1.wav                  395       off       off  OK
+      GAP: off:2287  on:1480  wow:-110  unknown:-222  no:-1450  silence:-1610  yes:-2054  margin=807
+15    7cf14c54_nohash_0.wav                  439       off       off  OK
+      GAP: off:2267  on:1224  unknown:1184  wow:-1127  no:-1333  yes:-1908  silence:-2178  margin=1043
+16    7fd25f7c_nohash_3.wav                  298       off       off  OK
+      GAP: off:1200  unknown:160  wow:14  on:-207  no:-378  silence:-1180  yes:-1189  margin=1040
+17    86402da1_nohash_0.wav                   61       off       off  OK
+      GAP: off:472  unknown:266  no:122  on:-174  wow:-354  yes:-685  silence:-1429  margin=206
+18    8769c34c_nohash_2.wav                  399        no       off  OK (pytorch≠arith)
+      GAP: off:947  no:653  on:290  unknown:-181  yes:-639  wow:-748  silence:-2043  margin=294
+19    a527cb3c_nohash_0.wav                  743       off       off  OK
+      GAP: off:1836  wow:272  unknown:-314  no:-554  on:-676  yes:-891  silence:-1132  margin=1564
+20    af30314d_nohash_1.wav                  350       off       off  OK
+      GAP: off:1831  on:1779  unknown:305  wow:-564  no:-1568  silence:-1711  yes:-1904  margin=52
+21    aff582a1_nohash_0.wav                  390       off       off  OK
+      GAP: off:2277  on:1146  unknown:531  yes:263  wow:-1957  no:-2014  silence:-2153  margin=1131
+22    c84f9b5c_nohash_0.wav                  252       off       off  OK
+      GAP: off:3381  unknown:1086  on:757  wow:-1090  no:-1703  yes:-1882  silence:-2372  margin=2295
+23    ceef6d96_nohash_2.wav                  556        on       off  OK (pytorch≠arith)
+      GAP: off:1443  on:1144  unknown:534  wow:-400  silence:-1418  yes:-1457  no:-1566  margin=299
+24    d3831f6a_nohash_2.wav                  658       off       off  OK
+      GAP: off:2946  on:1244  unknown:227  no:-554  wow:-908  yes:-2138  silence:-2528  margin=1702
+25    dae01802_nohash_0.wav                  336       off       off  OK
+      GAP: off:1501  no:294  wow:11  unknown:-480  on:-599  yes:-832  silence:-1532  margin=1207
+26    e3e0f145_nohash_0.wav                  451   unknown   unknown  MISS
+      GAP: unknown:1092  off:1018  on:938  yes:-864  wow:-1031  no:-1255  silence:-1802  margin=74
+27    f428ca69_nohash_1.wav                  836       off       off  OK
+      GAP: off:3667  yes:964  unknown:-110  on:-1318  wow:-1355  silence:-1770  no:-1843  margin=2703
+28    f9273a21_nohash_1.wav                   91        on        on  MISS
+      GAP: on:1573  off:1444  unknown:692  wow:-846  no:-1489  yes:-1511  silence:-1771  margin=129
+29    fbb56351_nohash_2.wav                  450       off       off  OK
+      GAP: off:1456  no:278  unknown:246  on:-242  wow:-390  yes:-1037  silence:-1971  margin=1178
+
+Golden model accuracy on these samples: 24/30
+Written: spectrograms/test_vectors.json
+Written: 30 spectrogram hex file(s) in spectrograms
+
+=== unknown  (2026-04-15 00:46:32)  seed=random ===
+
+Generating 30 test vector(s) for keyword 'unknown'
+#     wav                                     nz   pytorch     arith   match
+--------------------------------------------------------------------------------
+0     41474817_nohash_1.wav                  241        on   unknown  OK (pytorch≠arith)
+      GAP: unknown:565  off:397  on:167  no:2  yes:-553  wow:-665  silence:-1708  margin=168
+1     24ed94ab_nohash_0.wav                  351   unknown   unknown  OK
+      GAP: unknown:2122  yes:511  on:-73  off:-421  silence:-964  no:-1128  wow:-1739  margin=1611
+2     da76aa58_nohash_0.wav                  558        no        no  MISS
+      GAP: no:1722  unknown:1028  wow:150  yes:60  off:-1330  silence:-1447  on:-1721  margin=694
+3     890cc926_nohash_1.wav                 1111   unknown       yes  MISS (pytorch≠arith)
+      GAP: yes:978  silence:666  unknown:315  off:230  on:142  wow:-1228  no:-2315  margin=312
+4     b11a05d2_nohash_2.wav                  124   unknown   unknown  OK
+      GAP: unknown:886  on:568  off:265  no:-165  yes:-545  wow:-1076  silence:-1771  margin=318
+5     645ed69d_nohash_1.wav                  602        on        on  MISS
+      GAP: on:2308  unknown:1389  off:1174  wow:-1034  silence:-1643  yes:-1926  no:-2074  margin=919
+6     96d8bb6f_nohash_1.wav                 1155   unknown   unknown  OK
+      GAP: unknown:1403  off:894  on:772  silence:44  wow:-938  yes:-1329  no:-2230  margin=509
+7     5188de0d_nohash_0.wav                   71        no   unknown  OK (pytorch≠arith)
+      GAP: unknown:639  wow:255  no:-14  off:-196  yes:-343  on:-523  silence:-1578  margin=384
+8     9dcfba4b_nohash_0.wav                  344   unknown   unknown  OK
+      GAP: unknown:2829  off:400  on:-397  wow:-530  yes:-823  no:-1248  silence:-2002  margin=2429
+9     ddedba85_nohash_9.wav                  130   unknown   unknown  OK
+      GAP: unknown:2475  on:1197  off:636  yes:-561  silence:-1553  wow:-2022  no:-2041  margin=1278
+10    94d370bf_nohash_2.wav                   47        no        no  MISS
+      GAP: no:593  unknown:150  yes:-39  wow:-61  on:-448  off:-556  silence:-1409  margin=443
+11    c5a1e46c_nohash_0.wav                  195        on       off  MISS (pytorch≠arith)
+      GAP: off:810  unknown:550  on:509  wow:-7  no:-587  yes:-1155  silence:-1896  margin=260
+12    1a994c9f_nohash_0.wav                  644   unknown       off  MISS (pytorch≠arith)
+      GAP: off:1236  unknown:1121  yes:797  on:188  silence:-1179  wow:-1862  no:-1961  margin=115
+13    460209ac_nohash_4.wav                 1073   unknown   unknown  OK
+      GAP: unknown:1043  on:891  off:-174  silence:-357  no:-595  wow:-615  yes:-1552  margin=152
+14    f33660af_nohash_0.wav                  572   unknown   unknown  OK
+      GAP: unknown:2495  on:1785  no:-391  off:-583  yes:-1069  silence:-1841  wow:-2151  margin=710
+15    fbb2f6cc_nohash_0.wav                 1075   unknown   unknown  OK
+      GAP: unknown:728  on:389  yes:-30  no:-494  silence:-531  wow:-729  off:-767  margin=339
+16    71e6ab20_nohash_1.wav                  646       wow        no  MISS (pytorch≠arith)
+      GAP: no:1896  yes:1487  wow:1472  unknown:648  silence:-1380  on:-2647  off:-2914  margin=409
+17    94d370bf_nohash_0.wav                  564        on        on  MISS
+      GAP: on:1730  unknown:1041  no:346  off:-684  wow:-1010  silence:-1369  yes:-1719  margin=689
+18    b8897f1c_nohash_0.wav                   24       off   unknown  OK (pytorch≠arith)
+      GAP: unknown:341  off:252  on:-74  yes:-252  wow:-300  no:-434  silence:-1331  margin=89
+19    f5e44d34_nohash_0.wav                  434   unknown   unknown  OK
+      GAP: unknown:1972  off:709  on:-148  yes:-258  no:-1112  silence:-1486  wow:-1505  margin=1263
+20    3b4f8f24_nohash_2.wav                 1048   unknown   unknown  OK
+      GAP: unknown:1931  off:3  on:-133  no:-308  wow:-355  silence:-1299  yes:-1330  margin=1928
+21    cb62dbf1_nohash_4.wav                  972       off       off  MISS
+      GAP: off:2161  on:217  unknown:-79  wow:-303  yes:-1005  silence:-1069  no:-1354  margin=1944
+22    eaa83485_nohash_3.wav                  624   unknown   unknown  OK
+      GAP: unknown:2598  off:706  yes:629  on:-657  silence:-1245  wow:-1661  no:-1977  margin=1892
+23    1b4c9b89_nohash_4.wav                   79       off       off  MISS
+      GAP: off:1063  unknown:712  on:246  no:-349  yes:-736  wow:-821  silence:-1976  margin=351
+24    9ab86dd0_nohash_0.wav                  110   unknown   unknown  OK
+      GAP: unknown:2179  off:631  yes:20  on:-461  no:-1060  wow:-1186  silence:-1963  margin=1548
+25    dae01802_nohash_2.wav                  706        on        on  MISS
+      GAP: on:1340  unknown:393  no:288  wow:-357  off:-413  silence:-837  yes:-1970  margin=947
+26    2dc4f05d_nohash_6.wav                  197   unknown   unknown  OK
+      GAP: unknown:1079  off:677  yes:249  wow:-25  on:-582  no:-1311  silence:-1828  margin=402
+27    b0f5b16d_nohash_0.wav                  697   unknown   unknown  OK
+      GAP: unknown:2655  no:726  yes:128  on:81  off:-1476  wow:-1526  silence:-2214  margin=1929
+28    27b9a84f_nohash_1.wav                  285        no        no  MISS
+      GAP: no:1377  yes:915  unknown:546  on:-778  wow:-886  off:-1018  silence:-2025  margin=462
+29    8a5acefd_nohash_2.wav                  736   unknown   unknown  OK
+      GAP: unknown:2717  yes:1327  silence:-240  on:-682  off:-873  no:-1766  wow:-1950  margin=1390
+
+Golden model accuracy on these samples: 18/30
+Written: spectrograms/test_vectors.json
+Written: 30 spectrogram hex file(s) in spectrograms
+
+=== silence  (2026-04-15 00:48:00)  seed=random ===
+
+Generating 30 test vector(s) for keyword 'silence'
+#     wav                                     nz   pytorch     arith   match
+--------------------------------------------------------------------------------
+0     silence_00047.wav                     1999   silence   silence  OK
+      GAP: silence:7367  wow:1350  on:832  yes:22  off:-914  unknown:-3870  no:-4827  margin=6017
+1     silence_00055.wav                        5        no       off  MISS (pytorch≠arith)
+      GAP: off:291  unknown:215  on:5  no:-200  yes:-419  wow:-511  silence:-1194  margin=76
+2     silence_00180.wav                     1998   silence   silence  OK
+      GAP: silence:7398  wow:1349  on:865  yes:13  off:-943  unknown:-3863  no:-4852  margin=6049
+3     silence_00186.wav                     1318   silence   silence  OK
+      GAP: silence:6763  wow:1271  off:910  on:-156  yes:-198  no:-4007  unknown:-4672  margin=5492
+4     silence_00237.wav                     1998   silence   silence  OK
+      GAP: silence:7457  wow:1410  on:884  yes:4  off:-834  unknown:-3956  no:-4972  margin=6047
+5     silence_00255.wav                      905   silence   silence  OK
+      GAP: silence:2530  wow:398  off:371  on:-312  yes:-366  unknown:-846  no:-2726  margin=2132
+6     silence_00258.wav                     1366   silence   silence  OK
+      GAP: silence:4367  off:920  yes:912  wow:699  on:-253  unknown:-3232  no:-3901  margin=3447
+7     silence_00295.wav                     1998   silence   silence  OK
+      GAP: silence:7233  wow:1199  on:924  yes:-76  off:-1018  unknown:-3684  no:-4627  margin=6034
+8     silence_00304.wav                     1999   silence   silence  OK
+      GAP: silence:7079  wow:1116  on:870  yes:13  off:-946  unknown:-3495  no:-4595  margin=5963
+9     silence_00308.wav                       10        no   unknown  MISS (pytorch≠arith)
+      GAP: unknown:369  off:307  on:-261  yes:-278  wow:-302  no:-369  silence:-1257  margin=62
+10    silence_00335.wav                     1942   silence   silence  OK
+      GAP: silence:7542  wow:1446  yes:1150  off:317  on:-165  unknown:-4663  no:-5592  margin=6096
+11    silence_00348.wav                        0        no       off  MISS (pytorch≠arith)
+      GAP: off:266  unknown:218  on:1  no:-161  yes:-445  wow:-546  silence:-1144  margin=48
+12    silence_00353.wav                      559   silence   silence  OK
+      GAP: silence:1292  off:265  wow:111  on:88  yes:-433  unknown:-581  no:-1965  margin=1027
+13    silence_00394.wav                     1954   silence   silence  OK
+      GAP: silence:8256  wow:1698  yes:822  on:234  off:-522  unknown:-4491  no:-5810  margin=6558
+14    silence_00514.wav                     2000   silence   silence  OK
+      GAP: silence:7200  wow:1201  on:932  yes:-94  off:-980  unknown:-3669  no:-4620  margin=5999
+15    silence_00520.wav                     1028   silence   silence  OK
+      GAP: silence:1638  off:787  on:301  wow:243  unknown:-650  yes:-762  no:-2653  margin=851
+16    silence_00553.wav                     1461   silence   silence  OK
+      GAP: silence:5609  wow:851  off:750  yes:719  on:-409  unknown:-3313  no:-4459  margin=4758
+17    silence_00592.wav                     1337   silence   silence  OK
+      GAP: silence:6511  wow:940  yes:308  off:180  on:-657  unknown:-3108  no:-4232  margin=5571
+18    silence_00597.wav                      549   silence   silence  OK
+      GAP: silence:1074  off:334  on:162  wow:130  unknown:-568  yes:-589  no:-1788  margin=740
+19    silence_00607.wav                     1998   silence   silence  OK
+      GAP: silence:7230  wow:1210  on:911  yes:-69  off:-995  unknown:-3703  no:-4643  margin=6020
+20    silence_00619.wav                        0        no       off  MISS (pytorch≠arith)
+      GAP: off:266  unknown:218  on:1  no:-161  yes:-445  wow:-546  silence:-1144  margin=48
+21    silence_00639.wav                      573   silence   silence  OK
+      GAP: silence:1421  wow:673  off:515  on:243  yes:-775  unknown:-1232  no:-2129  margin=748
+22    silence_00653.wav                      836   silence   silence  OK
+      GAP: silence:1575  off:687  wow:571  yes:-287  on:-528  unknown:-871  no:-2207  margin=888
+23    silence_00658.wav                     1936   silence   silence  OK
+      GAP: silence:7874  wow:1335  yes:643  on:585  off:-383  unknown:-4264  no:-5661  margin=6539
+24    silence_00716.wav                     2000   silence   silence  OK
+      GAP: silence:7200  wow:1201  on:932  yes:-94  off:-980  unknown:-3669  no:-4620  margin=5999
+25    silence_00724.wav                        0        no       off  MISS (pytorch≠arith)
+      GAP: off:266  unknown:218  on:1  no:-161  yes:-445  wow:-546  silence:-1144  margin=48
+26    silence_00731.wav                     1302   silence   silence  OK
+      GAP: silence:7024  wow:1815  off:1013  yes:-28  on:-569  no:-4544  unknown:-4779  margin=5209
+27    silence_00806.wav                     1995   silence   silence  OK
+      GAP: silence:7330  wow:1295  on:760  yes:97  off:-766  unknown:-3829  no:-4870  margin=6035
+28    silence_00877.wav                     1950   silence   silence  OK
+      GAP: silence:6348  wow:1072  on:443  yes:400  off:-972  unknown:-3329  no:-4109  margin=5276
+29    silence_00984.wav                     1918   silence   silence  OK
+      GAP: silence:6598  yes:1648  wow:985  off:-395  on:-435  unknown:-3560  no:-4833  margin=4950
+
+Golden model accuracy on these samples: 25/30
+Written: spectrograms/test_vectors.json
+Written: 30 spectrogram hex file(s) in spectrograms
+
