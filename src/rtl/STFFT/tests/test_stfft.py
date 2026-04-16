@@ -226,3 +226,104 @@ async def test_consecutive_frames(dut):
         # Small gap between frames 
         for _ in range(20):
             await RisingEdge(dut.i_clk)
+
+@cocotb.test()
+async def test_ram_conflicts(dut):
+    """Check if R2FFT ever asserts ract and wact simultaneously."""
+    cocotb.start_soon(Clock(dut.i_clk, 10, units="ns").start())
+    await reset_dut(dut)
+
+    samples = make_tone(bin_k=8)
+    cocotb.start_soon(feed_samples(dut, samples, warmup_frames=0))
+
+    conflicts_ram0 = 0
+    conflicts_ram1 = 0
+
+    for _ in range(100000):
+        await RisingEdge(dut.i_clk)
+
+        r0 = dut.u_ram0.ract.value
+        w0 = dut.u_ram0.wact.value
+        r1 = dut.u_ram1.ract.value
+        w1 = dut.u_ram1.wact.value
+
+        if r0 == 1 and w0 == 1:
+            conflicts_ram0 += 1
+        if r1 == 1 and w1 == 1:
+            conflicts_ram1 += 1
+
+        if dut.o_fft_sync.value == 1:
+            break
+
+    dut._log.info(f"RAM0 simultaneous ract+wact conflicts: {conflicts_ram0}")
+    dut._log.info(f"RAM1 simultaneous ract+wact conflicts: {conflicts_ram1}")
+
+    if conflicts_ram0 == 0 and conflicts_ram1 == 0:
+        dut._log.info("No conflicts — single-port SRAMs will work for ASIC")
+    else:
+        dut._log.info("Conflicts exist — dual-port or time-multiplex needed")
+
+@cocotb.test()
+async def test_ram_access_pattern(dut):
+    """
+    Check if R2FFT reads from ram0 while writing to ram1 and vice versa.
+    If true, each bank is naturally single-port compatible.
+    """
+    cocotb.start_soon(Clock(dut.i_clk, 10, units="ns").start())
+    await reset_dut(dut)
+
+    samples = make_tone(bin_k=8)
+    cocotb.start_soon(feed_samples(dut, samples, warmup_frames=0))
+
+    # Count cross-bank vs same-bank simultaneous access
+    same_bank_conflicts = 0   # read ram0 + write ram0 simultaneously
+    cross_bank_ops      = 0   # read ram0 + write ram1 (or vice versa)
+
+    for _ in range(100000):
+        await RisingEdge(dut.i_clk)
+
+        r0 = int(dut.u_ram0.ract.value)
+        w0 = int(dut.u_ram0.wact.value)
+        r1 = int(dut.u_ram1.ract.value)
+        w1 = int(dut.u_ram1.wact.value)
+
+        # Same-bank conflict: read and write to same physical bank
+        if (r0 and w0) or (r1 and w1):
+            same_bank_conflicts += 1
+
+        # Cross-bank: read one, write the other
+        if (r0 and w1) or (r1 and w0):
+            cross_bank_ops += 1
+
+        if dut.o_fft_sync.value == 1:
+            break
+
+    dut._log.info(f"Same-bank conflicts (need dual-port): {same_bank_conflicts}")
+    dut._log.info(f"Cross-bank ops (single-port friendly): {cross_bank_ops}")
+
+    if same_bank_conflicts == 0:
+        dut._log.info("GOOD: each bank is naturally single-port compatible")
+        dut._log.info("Solution: keep ram0 and ram1 as separate single-port SRAMs")
+    else:
+        dut._log.info("PROBLEM: same-bank simultaneous read+write exists")
+        dut._log.info(f"Conflicts per total cross-bank: {same_bank_conflicts}/{cross_bank_ops}")
+
+@cocotb.test()
+async def test_next_stage_count(dut):
+    """Verify next_stage fires exactly FFT_N = 8 times per frame."""
+    cocotb.start_soon(Clock(dut.i_clk, 10, units="ns").start())
+    await reset_dut(dut)
+
+    samples = make_tone(bin_k=8)
+    cocotb.start_soon(feed_samples(dut, samples, warmup_frames=0))
+
+    count = 0
+    for _ in range(100000):
+        await RisingEdge(dut.i_clk)
+        if dut.u_ram0.next_stage.value == 1:
+            count += 1
+        if dut.o_fft_sync.value == 1:
+            break
+
+    dut._log.info(f"next_stage fired {count} times (expected 8 for 256-point FFT)")
+    assert count == 8, f"Expected 8 stage boundaries, got {count}"

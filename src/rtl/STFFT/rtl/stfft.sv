@@ -14,16 +14,11 @@ module stfft #(
     output wire signed [7:0] o_bfpexp
 );
 
-    // ----------------------------------------------------------------
-    // Registered reset (creator's template)
-    // ----------------------------------------------------------------
     reg rst;
     always @(posedge i_clk)
         rst <= i_reset;
 
-    // ----------------------------------------------------------------
-    // Simple Hanning window — 3-cycle pipeline matching windowfn depth
-    // ----------------------------------------------------------------
+    // Hanning window — 3-cycle pipeline matching windowfn depth
     reg [IW-1:0] hanning_rom [0:FFT_SIZE-1];
     initial $readmemh("hanning.hex", hanning_rom);
 
@@ -67,9 +62,7 @@ module stfft #(
 
     assign win_ce_o = win_ce;
 
-    // ----------------------------------------------------------------
     // Registered inputs to R2FFT
-    // ----------------------------------------------------------------
     reg              sact_istream;
     reg signed [15:0] sdw_istream_real;
     reg signed [15:0] sdw_istream_imag;
@@ -80,9 +73,8 @@ module stfft #(
         sdw_istream_imag <= 16'd0;
     end
 
-    // ----------------------------------------------------------------
-    // R2FFT status (registered)
-    // ----------------------------------------------------------------
+
+    // R2FFT status
     wire        done_w;
     wire [2:0]  status_w;
     wire signed [7:0] bfpexp_w;
@@ -95,9 +87,8 @@ module stfft #(
     end
     assign o_bfpexp = bfpexp_r;
 
-    // ----------------------------------------------------------------
+
     // DMA readout FSM
-    // ----------------------------------------------------------------
     reg [FFT_N-1:0]    dma_addr;
     reg                dmaact, dmaact_r;
     reg [FFT_N-1:0]    dmaa_r;
@@ -144,9 +135,8 @@ module stfft #(
         end
     end
 
-    // ----------------------------------------------------------------
-    // Twiddle ROM (direct connection — fft_twiddle_rom already registered)
-    // ----------------------------------------------------------------
+
+    // Twiddle ROM 
     wire [FFT_N-1-2:0] twa_w;
     wire               twact_w;
     wire [15:0]        twdr_cos_w;
@@ -158,40 +148,57 @@ module stfft #(
         .twdr_cos(twdr_cos_w)
     );
 
-    // ----------------------------------------------------------------
-    // Data RAMs (direct connection — fft_data_ram already registered)
-    // ----------------------------------------------------------------
+
+
     wire               ract_ram0_w, wact_ram0_w;
     wire [FFT_N-2:0]   ra_ram0_w,  wa_ram0_w;
     wire [31:0]        wdw_ram0_w, rdr_ram0_w;
-
-    fft_data_ram u_ram0 (
-        .clk   (i_clk),
-        .ract  (ract_ram0_w),
-        .ra    (ra_ram0_w),
-        .rdata (rdr_ram0_w),
-        .wact  (wact_ram0_w),
-        .wa    (wa_ram0_w),
-        .wdata (wdw_ram0_w)
-    );
 
     wire               ract_ram1_w, wact_ram1_w;
     wire [FFT_N-2:0]   ra_ram1_w,  wa_ram1_w;
     wire [31:0]        wdw_ram1_w, rdr_ram1_w;
 
-    fft_data_ram u_ram1 (
-        .clk   (i_clk),
-        .ract  (ract_ram1_w),
-        .ra    (ra_ram1_w),
-        .rdata (rdr_ram1_w),
-        .wact  (wact_ram1_w),
-        .wa    (wa_ram1_w),
-        .wdata (wdw_ram1_w)
+
+    wire fft_running = (status_w == 3'd3);  // ST_RUN_FFT
+    wire ram_active  = ract_ram0_w | wact_ram0_w |
+                       ract_ram1_w | wact_ram1_w;
+
+    reg ram_active_r;
+    reg fft_running_r;
+
+    always @(posedge i_clk) begin
+        ram_active_r  <= ram_active;
+        fft_running_r <= fft_running;
+    end
+
+    wire next_stage_w = ram_active_r & ~ram_active & fft_running_r;
+
+
+    fft_data_ram u_ram0 (
+        .clk        (i_clk),
+        .rst        (i_reset),
+        .next_stage (next_stage_w),
+        .ract       (ract_ram0_w),
+        .ra         (ra_ram0_w),
+        .rdata      (rdr_ram0_w),
+        .wact       (wact_ram0_w),
+        .wa         (wa_ram0_w),
+        .wdata      (wdw_ram0_w)
     );
 
-    // ----------------------------------------------------------------
-    // R2FFT core
-    // ----------------------------------------------------------------
+    fft_data_ram u_ram1 (
+        .clk        (i_clk),
+        .rst        (i_reset),
+        .next_stage (next_stage_w),
+        .ract       (ract_ram1_w),
+        .ra         (ra_ram1_w),
+        .rdata      (rdr_ram1_w),
+        .wact       (wact_ram1_w),
+        .wa         (wa_ram1_w),
+        .wdata      (wdw_ram1_w)
+    );
+
+    // R2FFT
     R2FFT #(
         .FFT_LENGTH(FFT_SIZE),
         .FFT_DW(16),
