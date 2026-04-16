@@ -1,24 +1,12 @@
 <testsuites name="results">
   <testsuite name="all" package="all">
-    <property name="random_seed" value="1776371293" />
-    <testcase name="test_tone_bin_location" classname="test_stfft" file="/workspace/src/rtl/STFFT/tests/test_stfft.py" lineno="115" time="1.0280373096466064" sim_time_ns="90580.001" ratio_time="88109.64363845646">
-      <failure message="Test failed with RANDOM_SEED=1776371293" />
-    </testcase>
-    <testcase name="test_pure_tone_snr" classname="test_stfft" file="/workspace/src/rtl/STFFT/tests/test_stfft.py" lineno="130" time="1.032923936843872" sim_time_ns="90590.001" ratio_time="87702.48976589726">
-      <failure message="Test failed with RANDOM_SEED=1776371293" />
-    </testcase>
-    <testcase name="test_dc_input" classname="test_stfft" file="/workspace/src/rtl/STFFT/tests/test_stfft.py" lineno="143" time="1.1474072933197021" sim_time_ns="90590.00100000002" ratio_time="78951.91317627342">
-      <failure message="Test failed with RANDOM_SEED=1776371293" />
-    </testcase>
-    <testcase name="test_nyquist_tone" classname="test_stfft" file="/workspace/src/rtl/STFFT/tests/test_stfft.py" lineno="156" time="1.090022087097168" sim_time_ns="90590.00099999999" ratio_time="83108.40860229699">
-      <failure message="Test failed with RANDOM_SEED=1776371293" />
-    </testcase>
-    <testcase name="test_zero_input" classname="test_stfft" file="/workspace/src/rtl/STFFT/tests/test_stfft.py" lineno="169" time="1.1510305404663086" sim_time_ns="90590.00099999999" ratio_time="78703.3860659335" />
-    <testcase name="test_debug_fsm" classname="test_stfft" file="/workspace/src/rtl/STFFT/tests/test_stfft.py" lineno="180" time="0.24884462356567383" sim_time_ns="19030.00099999999" ratio_time="76473.42637876075" />
-    <testcase name="test_window_coefficients" classname="test_stfft" file="/workspace/src/rtl/STFFT/tests/test_stfft.py" lineno="212" time="0.6004667282104492" sim_time_ns="51450.00099999999" ratio_time="85683.35027210366" />
-    <testcase name="test_debug_window" classname="test_stfft" file="/workspace/src/rtl/STFFT/tests/test_stfft.py" lineno="271" time="10.50558853149414" sim_time_ns="1002770.0009999999" ratio_time="95451.10185820142" />
-    <testcase name="test_consecutive_frames" classname="test_stfft" file="/workspace/src/rtl/STFFT/tests/test_stfft.py" lineno="304" time="1.0089385509490967" sim_time_ns="90590.00100000016" ratio_time="89787.43146922399">
-      <failure message="Test failed with RANDOM_SEED=1776371293" />
-    </testcase>
+    <property name="random_seed" value="1776375391" />
+    <testcase name="test_tone_bin_location" classname="test_stfft" file="/workspace/src/rtl/STFFT/tests/test_stfft.py" lineno="106" time="0.789790153503418" sim_time_ns="64950.001" ratio_time="82237.03563774413" />
+    <testcase name="test_pure_tone_snr" classname="test_stfft" file="/workspace/src/rtl/STFFT/tests/test_stfft.py" lineno="121" time="0.7817683219909668" sim_time_ns="64960.001" ratio_time="83093.67260438905" />
+    <testcase name="test_dc_input" classname="test_stfft" file="/workspace/src/rtl/STFFT/tests/test_stfft.py" lineno="134" time="0.7702016830444336" sim_time_ns="64960.001000000004" ratio_time="84341.54641577485" />
+    <testcase name="test_nyquist_tone" classname="test_stfft" file="/workspace/src/rtl/STFFT/tests/test_stfft.py" lineno="147" time="0.7740194797515869" sim_time_ns="64960.00099999999" ratio_time="83925.53766327456" />
+    <testcase name="test_zero_input" classname="test_stfft" file="/workspace/src/rtl/STFFT/tests/test_stfft.py" lineno="160" time="0.7779216766357422" sim_time_ns="64960.00100000002" ratio_time="83504.55187330794" />
+    <testcase name="test_debug_fsm" classname="test_stfft" file="/workspace/src/rtl/STFFT/tests/test_stfft.py" lineno="171" time="0.2186284065246582" sim_time_ns="16460.00099999999" ratio_time="75287.567894996" />
+    <testcase name="test_consecutive_frames" classname="test_stfft" file="/workspace/src/rtl/STFFT/tests/test_stfft.py" lineno="204" time="1.574854850769043" sim_time_ns="130110.00099999999" ratio_time="82617.13829465862" />
   </testsuite>
 </testsuites>

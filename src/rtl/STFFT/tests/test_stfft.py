@@ -56,13 +56,8 @@ async def reset_dut(dut, cycles=20):  # increase to 20 to fully flush pipelines
     dut.i_reset.value = 0
     await RisingEdge(dut.i_clk)
 
-async def feed_samples(dut, samples, warmup_frames=1):
-    """
-    Always feed warmup_frames extra frames to flush windowfn's first_block.
-    CE_EVERY spacing ensures alt_ce never collides with primary_ce.
-    """
-    all_samples = list(samples) * (warmup_frames + 1)
-    for s in all_samples:
+async def feed_samples(dut, samples, warmup_frames=0):
+    for s in samples:
         dut.i_ce.value = 1
         dut.i_sample.value = int(s) & 0xFFFF
         await RisingEdge(dut.i_clk)
@@ -89,12 +84,8 @@ async def collect_results(dut, N=256, timeout_cycles=200000):
         watcher.kill()
         raise TimeoutError("o_fft_sync never asserted")
 
-    # Pipeline latency from dma_addr to o_fft_result:
-    # 1 cycle: dmaact→dmaact_r, dmaa→dmaa_r (registered in stfft)
-    # 1 cycle: ract→ract_r, ra→ra_r (registered in stfft)  
-    # 1 cycle: SRAM read
-    # 1 cycle: dmadr_w→dmadr_r (registered in stfft)
-    # = 4 cycles total
+    # 4-cycle pipeline latency:
+    # dmaact→dmaact_r (1) + R2FFT internal DMA read (1) + SRAM (1) + dmadr→o_fft_result (1)
     await ClockCycles(dut.i_clk, 4)
 
     results = []
@@ -118,13 +109,13 @@ async def test_tone_bin_location(dut):
     cocotb.start_soon(Clock(dut.i_clk, 10, units="ns").start())
     await reset_dut(dut)
     samples = make_tone(bin_k=8)
-    cocotb.start_soon(feed_samples(dut, samples, warmup_frames=1))
+    cocotb.start_soon(feed_samples(dut, samples, warmup_frames=0))
     results_raw, bfpexp = await collect_results(dut)
     results_scaled = apply_bfp(results_raw, bfpexp)
     mags = [abs(complex(r, i)) for r, i in results_scaled]
     peak_bin = int(np.argmax(mags))
     dut._log.info(f"Peak bin: {peak_bin}, bfpexp: {bfpexp}")
-    dut._log.info(f"Top 5 bins: {sorted(enumerate(mags), key=lambda x: -x[1])[:5]}")
+    dut._log.info(f"Top 5: {sorted(enumerate(mags), key=lambda x: -x[1])[:5]}")
     assert peak_bin == 8, f"Expected peak at bin 8, got bin {peak_bin}"
 
 @cocotb.test()
@@ -209,97 +200,6 @@ async def test_debug_fsm(dut):
             )
 
     assert False, "Never got sync"
-@cocotb.test()
-async def test_window_coefficients(dut):
-    """Check if window coefficients are loaded correctly."""
-
-    cocotb.start_soon(Clock(dut.i_clk, 10, units="ns").start())
-    await reset_dut(dut)
-
-    u_win = dut.u_win
-
-    # Check coefficient memory 
-    dut._log.info("Checking window coefficients from memory:")
-
-    for i in range(5):
-        try:
-            if hasattr(u_win, "cmem"):
-                coeff = u_win.cmem[i].value
-                dut._log.info(f"cmem[{i}] = {coeff}")
-            else:
-                dut._log.info(f"cmem not directly accessible at index {i}")
-        except Exception as e:
-            dut._log.info(f"Cannot read cmem[{i}]: {e}")
-
-    # Feed samples using YOUR correct CE model
-    samples = [1000] * 256
-
-    cocotb.start_soon(feed_samples(dut, samples))
-
-    # Monitor internal window behavior
-    for i in range(100000):
-        await RisingEdge(dut.i_clk)
-        # SUCCESS CONDITION
-        if int(dut.win_ce_o.value) == 1:
-            dut._log.info(f"SUCCESS: win_ce_o asserted at cycle {i}")
-
-            # Optional sanity check: window actually producing data
-            try:
-                if hasattr(u_win, "product"):
-                    if int(u_win.product.value) != 0:
-                        dut._log.info(f"Product active: {u_win.product.value}")
-            except:
-                pass
-
-            return
-
-    # FAILURE HANDLING
-    dut._log.error("win_ce_o never asserted - window not producing output")
-
-    # Debug dump
-    dut._log.info("Final state dump:")
-    dut._log.info(f"i_ce={dut.i_ce.value}, alt_ce={dut.alt_ce.value}")
-    dut._log.info(f"win_ce_o={dut.win_ce_o.value}, inner o_ce={u_win.o_ce.value}")
-
-    if hasattr(u_win, "cmem"):
-        zero_count = 0
-        for i in range(10):
-            if int(u_win.cmem[i].value) == 0:
-                zero_count += 1
-        dut._log.info(f"cmem zeros in first 10 taps: {zero_count}/10")
-
-@cocotb.test()
-async def test_debug_window(dut):
-    """Debug windowing stage."""
-    cocotb.start_soon(Clock(dut.i_clk, 10, units="ns").start())
-    await reset_dut(dut)
-
-    samples = make_tone(bin_k=8)
-
-    for i, s in enumerate(samples):
-        dut.i_ce.value = 1
-        dut.i_sample.value = int(s) & 0xFFFF
-        await RisingEdge(dut.i_clk)
-
-        if i < 10:
-            dut._log.info(
-                f"sample {i}: i_ce={dut.i_ce.value} "
-                f"win_ce={dut.win_ce_o.value} "
-                f"i_sample={dut.i_sample.value} "
-                f"alt_delay={dut.alt_delay.value} "
-                f"streamBufferFull={dut.u_r2fft.streamBufferFull.value} "
-                f"sact_istream={dut.u_r2fft.sact_istream.value}"
-            )
-
-    dut.i_ce.value = 0
-    # Wait for window to flush
-    for i in range(100000):
-        await RisingEdge(dut.i_clk)
-        if dut.win_ce_o.value == 1:
-            dut._log.info(f"win_ce asserted at cycle {i}")
-            break
-    else:
-        dut._log.info("win_ce NEVER asserted - window not producing output")
 
 @cocotb.test()
 async def test_consecutive_frames(dut):
