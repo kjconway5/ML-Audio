@@ -5,10 +5,6 @@ from cocotb.triggers import RisingEdge, FallingEdge, with_timeout, ClockCycles, 
 import numpy as np
 from scipy.signal.windows import hann
 
-# ----------------------------------------------------------------
-# Helpers
-# ----------------------------------------------------------------
-
 
 CE_EVERY     = 20       # clocks between valid_i pulses (CKPCE=3 + logmel margin)
 
@@ -51,7 +47,7 @@ def snr_db(hw_vals, ref_fft):
     noise_power  = np.mean(np.abs(noise)**2)
     return 10 * np.log10(signal_power / (noise_power + 1e-12))
 
-async def reset_dut(dut, cycles=10):
+async def reset_dut(dut, cycles=20):  # increase to 20 to fully flush pipelines
     dut.i_reset.value = 1
     dut.i_ce.value    = 0
     dut.i_sample.value = 0
@@ -60,39 +56,22 @@ async def reset_dut(dut, cycles=10):
     dut.i_reset.value = 0
     await RisingEdge(dut.i_clk)
 
-# Add to test_stfft.py temporarily for debugging
-async def debug_r2fft_state(dut):
-    """Monitor R2FFT internal state."""
-    for i in range(1000):
-        await RisingEdge(dut.i_clk)
-        # Expose internal signals if possible
-        if hasattr(dut.u_r2fft, 'state'):
-            dut._log.info(f"Cycle {i}: state={dut.u_r2fft.state.value}, done={dut.u_r2fft.done.value}")
-        if dut.o_fft_sync.value == 1:
-            dut._log.info(f"SYNC asserted at cycle {i}")
-            break
-
 async def feed_samples(dut, samples, warmup_frames=1):
     """
-    Feed samples with proper CE spacing for windowfn.
-    windowfn requires i_ce and i_alt_ce to alternate strictly.
-    Feed warmup_frames extra frames first to clear first_block.
+    Always feed warmup_frames extra frames to flush windowfn's first_block.
+    CE_EVERY spacing ensures alt_ce never collides with primary_ce.
     """
     all_samples = list(samples) * (warmup_frames + 1)
-    
     for s in all_samples:
-        # Primary CE
         dut.i_ce.value = 1
         dut.i_sample.value = int(s) & 0xFFFF
         await RisingEdge(dut.i_clk)
         dut.i_ce.value = 0
-        # Gap — alt_ce fires 3 cycles later via alt_delay
         await ClockCycles(dut.i_clk, CE_EVERY - 1)
 
-async def collect_results(dut, N=256, timeout_cycles=50000):
-    OW = 16  # matches your stfft OW parameter
+async def collect_results(dut, N=256, timeout_cycles=200000):
+    OW = 16
 
-    # Use a background task to latch the sync pulse
     sync_event = cocotb.triggers.Event()
 
     async def watch_sync():
@@ -104,22 +83,25 @@ async def collect_results(dut, N=256, timeout_cycles=50000):
 
     watcher = cocotb.start_soon(watch_sync())
 
-    # Wait for sync with timeout
     try:
         await with_timeout(sync_event.wait(), timeout_cycles * 10, 'ns')
     except cocotb.result.SimTimeoutError:
         watcher.kill()
         raise TimeoutError("o_fft_sync never asserted")
 
-    # Sync was caught — now collect results
+    # Pipeline latency from dma_addr to o_fft_result:
+    # 1 cycle: dmaact→dmaact_r, dmaa→dmaa_r (registered in stfft)
+    # 1 cycle: ract→ract_r, ra→ra_r (registered in stfft)  
+    # 1 cycle: SRAM read
+    # 1 cycle: dmadr_w→dmadr_r (registered in stfft)
+    # = 4 cycles total
+    await ClockCycles(dut.i_clk, 4)
 
-    
-    # We're already on the cycle after sync, start reading
     results = []
     for _ in range(N):
         raw = int(dut.o_fft_result.value)
-        im_raw = (raw >> OW) & ((1 << OW) - 1)
-        re_raw =  raw        & ((1 << OW) - 1)
+        re_raw = (raw >> OW) & ((1 << OW) - 1)
+        im_raw =  raw        & ((1 << OW) - 1)
         if re_raw & (1 << (OW-1)): re_raw -= (1 << OW)
         if im_raw & (1 << (OW-1)): im_raw -= (1 << OW)
         results.append((re_raw, im_raw))
@@ -128,78 +110,73 @@ async def collect_results(dut, N=256, timeout_cycles=50000):
     bfpexp = int(dut.o_bfpexp.value.signed_integer)
     return results, bfpexp
 
-
-# ----------------------------------------------------------------
 # Tests
-# ----------------------------------------------------------------
+
+@cocotb.test()
+async def test_tone_bin_location(dut):
+    """Quick check: pure tone at bin 8 should peak at bin 8."""
+    cocotb.start_soon(Clock(dut.i_clk, 10, units="ns").start())
+    await reset_dut(dut)
+    samples = make_tone(bin_k=8)
+    cocotb.start_soon(feed_samples(dut, samples, warmup_frames=1))
+    results_raw, bfpexp = await collect_results(dut)
+    results_scaled = apply_bfp(results_raw, bfpexp)
+    mags = [abs(complex(r, i)) for r, i in results_scaled]
+    peak_bin = int(np.argmax(mags))
+    dut._log.info(f"Peak bin: {peak_bin}, bfpexp: {bfpexp}")
+    dut._log.info(f"Top 5 bins: {sorted(enumerate(mags), key=lambda x: -x[1])[:5]}")
+    assert peak_bin == 8, f"Expected peak at bin 8, got bin {peak_bin}"
 
 @cocotb.test()
 async def test_pure_tone_snr(dut):
     cocotb.start_soon(Clock(dut.i_clk, 10, units="ns").start())
     await reset_dut(dut)
-
     samples = make_tone(bin_k=8)
     ref_fft = numpy_reference(samples)
-
-    # Feed warmup frame first, then the real frame
     cocotb.start_soon(feed_samples(dut, samples, warmup_frames=1))
     results_raw, bfpexp = await collect_results(dut)
     results_scaled = apply_bfp(results_raw, bfpexp)
-
     snr = snr_db(results_scaled, ref_fft)
     dut._log.info(f"Pure tone SNR: {snr:.1f} dB  (bfpexp={bfpexp})")
     assert snr > 50.0, f"SNR too low: {snr:.1f} dB"
 
 @cocotb.test()
 async def test_dc_input(dut):
-    """DC input — all energy should be in bin 0."""
     cocotb.start_soon(Clock(dut.i_clk, 10, units="ns").start())
     await reset_dut(dut)
-
     samples = np.full(256, 4000, dtype=np.int16)
     ref_fft = numpy_reference(samples)
-
-    cocotb.start_soon(feed_samples(dut, samples))
+    cocotb.start_soon(feed_samples(dut, samples, warmup_frames=1))
     results_raw, bfpexp = await collect_results(dut)
     results_scaled = apply_bfp(results_raw, bfpexp)
-
-    # Bin 0 magnitude should dominate
     mags = [abs(complex(r, i)) for r, i in results_scaled]
     peak_bin = int(np.argmax(mags))
     assert peak_bin == 0, f"DC peak expected at bin 0, got bin {peak_bin}"
 
 @cocotb.test()
 async def test_nyquist_tone(dut):
-    """Tone at bin N/2 — tests highest frequency path."""
     cocotb.start_soon(Clock(dut.i_clk, 10, units="ns").start())
     await reset_dut(dut)
-
     samples = make_tone(bin_k=128)
     ref_fft = numpy_reference(samples)
-
-    cocotb.start_soon(feed_samples(dut, samples))
+    cocotb.start_soon(feed_samples(dut, samples, warmup_frames=1))
     results_raw, bfpexp = await collect_results(dut)
     results_scaled = apply_bfp(results_raw, bfpexp)
-
     snr = snr_db(results_scaled, ref_fft)
     dut._log.info(f"Nyquist tone SNR: {snr:.1f} dB")
     assert snr > 50.0
 
 @cocotb.test()
 async def test_zero_input(dut):
-    """All-zero input should produce all-zero output, no spurious energy."""
     cocotb.start_soon(Clock(dut.i_clk, 10, units="ns").start())
     await reset_dut(dut)
-
     samples = np.zeros(256, dtype=np.int16)
-    cocotb.start_soon(feed_samples(dut, samples))
+    cocotb.start_soon(feed_samples(dut, samples, warmup_frames=1))
     results_raw, bfpexp = await collect_results(dut)
-
     for k, (r, i) in enumerate(results_raw):
         assert r == 0 and i == 0, \
             f"Zero input: non-zero output at bin {k}: ({r}, {i})"
         
-# Add this test to test_stfft.py temporarily
 @cocotb.test()
 async def test_debug_fsm(dut):
     cocotb.start_soon(Clock(dut.i_clk, 10, units="ns").start())
@@ -241,9 +218,7 @@ async def test_window_coefficients(dut):
 
     u_win = dut.u_win
 
-    # ------------------------------------------------------------
-    # Check coefficient memory (safe introspection)
-    # ------------------------------------------------------------
+    # Check coefficient memory 
     dut._log.info("Checking window coefficients from memory:")
 
     for i in range(5):
@@ -256,21 +231,15 @@ async def test_window_coefficients(dut):
         except Exception as e:
             dut._log.info(f"Cannot read cmem[{i}]: {e}")
 
-    # ------------------------------------------------------------
     # Feed samples using YOUR correct CE model
-    # ------------------------------------------------------------
     samples = [1000] * 256
 
     cocotb.start_soon(feed_samples(dut, samples))
 
-    # ------------------------------------------------------------
     # Monitor internal window behavior
-    # ------------------------------------------------------------
     for i in range(100000):
         await RisingEdge(dut.i_clk)
-        # --------------------------------------------------------
         # SUCCESS CONDITION
-        # --------------------------------------------------------
         if int(dut.win_ce_o.value) == 1:
             dut._log.info(f"SUCCESS: win_ce_o asserted at cycle {i}")
 
@@ -284,9 +253,7 @@ async def test_window_coefficients(dut):
 
             return
 
-    # ------------------------------------------------------------
     # FAILURE HANDLING
-    # ------------------------------------------------------------
     dut._log.error("win_ce_o never asserted - window not producing output")
 
     # Debug dump
@@ -356,6 +323,6 @@ async def test_consecutive_frames(dut):
         assert snr > 50.0, \
             f"Frame {frame_idx} SNR too low: {snr:.1f} dB"
 
-        # Small gap between frames (simulates real audio stream)
+        # Small gap between frames 
         for _ in range(20):
             await RisingEdge(dut.i_clk)
