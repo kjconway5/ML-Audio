@@ -1,4 +1,3 @@
-
 module bitReverseCounter
   #(
     parameter BIT_WIDTH = 10

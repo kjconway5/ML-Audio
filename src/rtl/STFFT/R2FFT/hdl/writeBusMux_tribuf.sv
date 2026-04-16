@@ -1,4 +1,3 @@
-
 module writeBusMux_tribuf
   #(
     parameter FFT_N = 10,

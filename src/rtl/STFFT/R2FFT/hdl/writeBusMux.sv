@@ -1,4 +1,3 @@
-
 module writeBusMux
   #(
     parameter FFT_N = 10,

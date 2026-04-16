@@ -1,4 +1,3 @@
-
 module radix2Butterfly
   #(
     parameter FFT_DW = 16,

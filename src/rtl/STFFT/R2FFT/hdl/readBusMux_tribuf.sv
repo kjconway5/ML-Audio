@@ -1,4 +1,3 @@
-
 module readBusMux_tribuf
   #(
     parameter FFT_N = 10,

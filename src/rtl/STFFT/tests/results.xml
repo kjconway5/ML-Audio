@@ -1,0 +1,21 @@
+<testsuites name="results">
+  <testsuite name="all" package="all">
+    <property name="random_seed" value="1776330623" />
+    <testcase name="test_pure_tone_snr" classname="test_stfft" file="/workspace/src/rtl/STFFT/tests/test_stfft.py" lineno="136" time="1.0412862300872803" sim_time_ns="90600.001" ratio_time="87007.77786373487">
+      <failure message="Test failed with RANDOM_SEED=1776330623" />
+    </testcase>
+    <testcase name="test_dc_input" classname="test_stfft" file="/workspace/src/rtl/STFFT/tests/test_stfft.py" lineno="153" time="1.0380680561065674" sim_time_ns="90610.001" ratio_time="87287.14891762169">
+      <failure message="Test failed with RANDOM_SEED=1776330623" />
+    </testcase>
+    <testcase name="test_nyquist_tone" classname="test_stfft" file="/workspace/src/rtl/STFFT/tests/test_stfft.py" lineno="171" time="1.0256850719451904" sim_time_ns="90610.00100000002" ratio_time="88340.95715964749">
+      <failure message="Test failed with RANDOM_SEED=1776330623" />
+    </testcase>
+    <testcase name="test_zero_input" classname="test_stfft" file="/workspace/src/rtl/STFFT/tests/test_stfft.py" lineno="188" time="1.0300343036651611" sim_time_ns="90610.00099999999" ratio_time="87967.94502628047" />
+    <testcase name="test_debug_fsm" classname="test_stfft" file="/workspace/src/rtl/STFFT/tests/test_stfft.py" lineno="203" time="0.22380948066711426" sim_time_ns="18930.00099999999" ratio_time="84580.87183605843" />
+    <testcase name="test_window_coefficients" classname="test_stfft" file="/workspace/src/rtl/STFFT/tests/test_stfft.py" lineno="235" time="0.5814900398254395" sim_time_ns="51350.00099999999" ratio_time="88307.6191905454" />
+    <testcase name="test_debug_window" classname="test_stfft" file="/workspace/src/rtl/STFFT/tests/test_stfft.py" lineno="304" time="10.598271369934082" sim_time_ns="1002670.0009999999" ratio_time="94606.93786766438" />
+    <testcase name="test_consecutive_frames" classname="test_stfft" file="/workspace/src/rtl/STFFT/tests/test_stfft.py" lineno="337" time="1.0287957191467285" sim_time_ns="90610.00099999993" ratio_time="88073.85111900624">
+      <failure message="Test failed with RANDOM_SEED=1776330623" />
+    </testcase>
+  </testsuite>
+</testsuites>

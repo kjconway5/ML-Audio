@@ -1,4 +1,3 @@
-
 /* 
  Configurable Radix-2 FFT Processor
  with Block Floating-Point

@@ -1,4 +1,3 @@
-
 module bfp_bitWidthAcc
   #(
     parameter FFT_BFPDW = 5,

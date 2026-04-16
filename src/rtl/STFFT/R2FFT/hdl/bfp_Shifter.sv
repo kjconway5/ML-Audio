@@ -1,4 +1,3 @@
-
 module bfp_Shifter
   #(
     parameter FFT_DW = 16,

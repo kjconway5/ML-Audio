@@ -1,4 +1,3 @@
-
 module butterflyCore
   #(
     parameter FFT_N = 10,

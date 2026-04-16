@@ -1,4 +1,3 @@
-
 module butterflyUnit
   #(
     parameter FFT_N = 10,

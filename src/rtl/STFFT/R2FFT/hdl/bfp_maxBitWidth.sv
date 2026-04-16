@@ -1,4 +1,3 @@
-
 module bfp_maxBitWidth
   #
   (

@@ -1,5 +1,3 @@
-
-
 module fftAddressGenerator
   #(
     parameter FFT_N = 10,
