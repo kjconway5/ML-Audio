@@ -3,7 +3,7 @@ from cocotb.clock import Clock
 from cocotb.triggers import RisingEdge
 import math
 
-CLK_PERIOD_NS = 1  # 100 MHz clock
+CLK_PERIOD_NS = 1  # 10 MHz clock
 FS_IN = 1_008_000   # PDM sample rate
 TONE_FREQ = 1000    # 1 kHz audio tone
 
