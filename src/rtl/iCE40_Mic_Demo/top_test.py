@@ -3,7 +3,7 @@ from cocotb.clock import Clock
 from cocotb.triggers import RisingEdge
 import math
 
-CLK_PERIOD_NS = 10  # 100 MHz clock
+CLK_PERIOD_NS = 1  # 100 MHz clock
 FS_IN = 1_008_000   # PDM sample rate
 TONE_FREQ = 1000    # 1 kHz audio tone
 
@@ -76,7 +76,6 @@ async def test_cic_fir_chain(dut):
     print(f"Samples captured: {len(output_samples)}")
     print(f"Peak: {peak}, Trough: {trough}")
 
-    # Optional: crude frequency sanity check
     # Count zero crossings
     zero_crossings = 0
     for i in range(1, len(output_samples)):
