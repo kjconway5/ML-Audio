@@ -91,9 +91,7 @@ module fft_data_ram (
     end
 
 `else
-    // ----------------------------------------------------------------
-    // Simulation: behavioral true dual-port
-    // ----------------------------------------------------------------
+    // Simulation: behavioral  dual-port RAM
     reg [31:0] mem [0:127];
 
     integer i;
