@@ -3,6 +3,7 @@
 TOP        := log_lut
 IP_DIR     := ../../ip
 SOURCES    := log_lut.sv \
+			  log_lut_sram.sv \
               $(IP_DIR)/Log2.sv \
               $(IP_DIR)/LeadZeroDet.sv \
               $(IP_DIR)/Encode.sv \
