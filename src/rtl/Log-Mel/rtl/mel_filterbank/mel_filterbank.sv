@@ -1,4 +1,4 @@
-module mel_filterbank_new #(
+module mel_filterbank #(
     parameter int N_MELS     = 40,
     parameter int N_BINS     = 129,
     parameter int MAX_COEFFS = 16,    // max per filter (still used for bounds checking)
