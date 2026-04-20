@@ -1,0 +1,15 @@
+<testsuites name="results">
+  <testsuite name="all" package="all">
+    <property name="random_seed" value="1776380210" />
+    <testcase name="test_tone_bin_location" classname="test_stfft" file="/workspace/src/rtl/STFFT/tests/test_stfft.py" lineno="106" time="0.7640523910522461" sim_time_ns="64950.001" ratio_time="85007.26096878179" />
+    <testcase name="test_pure_tone_snr" classname="test_stfft" file="/workspace/src/rtl/STFFT/tests/test_stfft.py" lineno="121" time="0.7593939304351807" sim_time_ns="64960.001" ratio_time="85541.9017673394" />
+    <testcase name="test_dc_input" classname="test_stfft" file="/workspace/src/rtl/STFFT/tests/test_stfft.py" lineno="134" time="0.73708176612854" sim_time_ns="64960.001000000004" ratio_time="88131.33628470685" />
+    <testcase name="test_nyquist_tone" classname="test_stfft" file="/workspace/src/rtl/STFFT/tests/test_stfft.py" lineno="147" time="0.7188668251037598" sim_time_ns="64960.00099999999" ratio_time="90364.4440548829" />
+    <testcase name="test_zero_input" classname="test_stfft" file="/workspace/src/rtl/STFFT/tests/test_stfft.py" lineno="160" time="0.7384548187255859" sim_time_ns="64960.00100000002" ratio_time="87967.46849334262" />
+    <testcase name="test_debug_fsm" classname="test_stfft" file="/workspace/src/rtl/STFFT/tests/test_stfft.py" lineno="171" time="0.19973444938659668" sim_time_ns="16460.00099999999" ratio_time="82409.42436595292" />
+    <testcase name="test_consecutive_frames" classname="test_stfft" file="/workspace/src/rtl/STFFT/tests/test_stfft.py" lineno="204" time="1.4809741973876953" sim_time_ns="130110.00099999999" ratio_time="87854.33347150969" />
+    <testcase name="test_ram_conflicts" classname="test_stfft" file="/workspace/src/rtl/STFFT/tests/test_stfft.py" lineno="230" time="0.8648550510406494" sim_time_ns="62360.00100000005" ratio_time="72104.56934368883" />
+    <testcase name="test_ram_access_pattern" classname="test_stfft" file="/workspace/src/rtl/STFFT/tests/test_stfft.py" lineno="266" time="0.8775103092193604" sim_time_ns="62360.00099999993" ratio_time="71064.69330881804" />
+    <testcase name="test_next_stage_count" classname="test_stfft" file="/workspace/src/rtl/STFFT/tests/test_stfft.py" lineno="311" time="0.7687597274780273" sim_time_ns="62360.00100000005" ratio_time="81117.6740547747" />
+  </testsuite>
+</testsuites>
