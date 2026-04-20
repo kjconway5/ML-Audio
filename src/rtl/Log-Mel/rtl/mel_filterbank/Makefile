@@ -4,6 +4,9 @@ TOP        := mel_filterbank
 SOURCES    := mel_filterbank.sv ../mel_coeff_rom.sv
 TB_SOURCES := tb_mel_filterbank.sv
 
+TOP_NEW     := mel_filterbank_new
+SOURCES_NEW := mel_filterbank_new.sv ../mel_coeff_sram.sv
+
 TB_MODULE  := tb_$(TOP)
 RUN_DIR    := run
 
@@ -55,6 +58,15 @@ test-cocotb-verilator: link-hex
 wave: $(RUN_DIR)/$(TB_MODULE).vcd
 	$(GTKWAVE) $<
 .PHONY: wave
+
+# New cocotb test target
+test-new: link-hex
+	@ln -sf $(abspath mel_coeffs.hex) sim_build/mel_coeffs.hex 2>/dev/null || true
+	@ln -sf $(abspath mel_indices.hex) sim_build/mel_indices.hex 2>/dev/null || true
+	SIM=icarus TOPLEVEL_LANG=verilog TOPLEVEL=$(TOP_NEW) MODULE=test_mel_filterbank_new \
+		VERILOG_SOURCES="$(abspath $(SOURCES_NEW))" \
+		$(MAKE) -f $(COCOTB_MAKEFILES)/Makefile.sim
+.PHONY: test-new
 
 # Cleanup
 clean:
