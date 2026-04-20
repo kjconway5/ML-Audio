@@ -1,0 +1,21 @@
+{
+    "top": "mel_filterbank_new",
+    "files": [
+
+        "src/rtl/Log-Mel/ip/MulPPGenUns.sv",
+        "src/rtl/Log-Mel/ip/MulUns.sv",
+        "src/rtl/Log-Mel/ip/AddMopCsv.sv",
+        "src/rtl/Log-Mel/ip/Add.sv",
+        "src/rtl/Log-Mel/ip/Cpr.sv",
+        "src/rtl/Log-Mel/ip/PrefixAndOr.sv",
+        "src/rtl/Log-Mel/ip/FullAdder.sv",
+
+        "src/rtl/Log-Mel/rtl/mel_filterbank/mel_filterbank.sv",
+        "src/rtl/Log-Mel/rtl/mel_filterbank/mel_coeff_sram.sv",
+        "src/rtl/Log-Mel/rtl/mac_unit/mac_unit.sv",
+
+        "gf180mcu_ocd_ip_sram/cells/gf180mcu_ocd_ip_sram__sram256x8m8wm1/gf180mcu_ocd_ip_sram__sram256x8m8wm1.v",
+        "gf180mcu_ocd_ip_sram/cells/gf180mcu_ocd_ip_sram__sram512x8m8wm1/gf180mcu_ocd_ip_sram__sram512x8m8wm1.v",
+        "gf180mcu_ocd_ip_sram/cells/gf180mcu_ocd_ip_sram__sram1024x8m8wm1/gf180mcu_ocd_ip_sram__sram1024x8m8wm1.v"
+    ]
+}

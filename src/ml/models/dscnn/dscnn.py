@@ -126,9 +126,12 @@ class DSCNN(nn.Module):
         for ds_block in self.ds_blocks:
             x = ds_block(x)
 
-        x = self.global_pool(x)
-        x = self.classifier(x)
-        x = x.flatten(1)
+        # Apply classifier over full spatial map then sum — matches RTL execution order.
+        # In float this is identical to pool→classify, but in QAT the fake-quant node
+        # sits on per-pixel outputs, training the model to survive the RTL's per-pixel
+        # INT8 shift+saturate before the spatial sum.
+        x = self.classifier(x)          # (B, n_classes, H, W)
+        x = x.flatten(2).mean(dim=2)    # (B, n_classes) — mean matches pool→classify in float
 
         x = self.dequant(x)
 

@@ -1,11 +1,11 @@
-// Weight storage with write port for Subservient and read port for FSM: 4,296 × 8-bit INT8 values
-// Implemented as 5× cascaded gf180mcu_ocd_ip_sram__sram1024x8m8wm1 macros
-// (5 × 1024 = 5120) 
+// Weight storage with write port for Subservient and read port for FSM: 6,752 × 8-bit INT8 values
+// Implemented as 7× cascaded gf180mcu_ocd_ip_sram__sram1024x8m8wm1 macros
+// (7 × 1024 = 7168)
 
 module weight_sram #(
-    parameter DEPTH  = 4296,
+    parameter DEPTH  = 6752,
     parameter DATA_W = 8,
-    parameter ADDR_W = 13   // covers 0–8191; valid range 0–4295
+    parameter ADDR_W = 13   // covers 0–8191; valid range 0–6751
 )(
     input  wire              clk,
 
@@ -35,7 +35,7 @@ module weight_sram #(
 
 `else
 
-    localparam NUM_BANKS = 5;
+    localparam NUM_BANKS = 7;
 
     wire [ADDR_W-1:0] active_addr = we ? waddr : raddr;
 

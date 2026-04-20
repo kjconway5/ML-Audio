@@ -1,5 +1,3 @@
-
-
 TOP        := kws_top
 SOURCES    := kws_top.sv
 TB_SOURCES := tb_$(TOP).sv
@@ -49,12 +47,10 @@ wave: $(RUN_DIR)/$(TB_MODULE).vcd
 	$(GTKWAVE) $<
 .PHONY: wave
 
-# Cleanup
 clean:
 	rm -rf $(RUN_DIR) sim_build build waves __pycache__ .pytest_cache results.xml *.vcd *.fst *.log
 .PHONY: clean
 
-# Help
 help:
 	@echo "RTL Development Makefile"
 	@echo ""

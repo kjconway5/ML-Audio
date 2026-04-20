@@ -17,6 +17,16 @@ module frame_control #(
     output logic output_valid_o // high during OUTPUT state when buffer has valid data
 );
 
+
+    typedef enum logic[1:0] {
+        IDLE = 2'd0, // wait for new frame from STFT
+        ACCUMULATE = 2'd1, // stream 128 bins thru MACs in mel filterbank
+        LOG_COMPRESS = 2'd2, // one by one compress mel energies through log_lut
+        OUTPUT = 2'd3 // out_buffer sends values to CNN
+    } FRAME_CTRL_STATE;
+
+    FRAME_CTRL_STATE curr_state_q, next_state_d;
+
     // mel counter
     logic [$clog2(MEL_BINS)-1:0] mel_idx_l;
 
@@ -32,25 +42,6 @@ module frame_control #(
                 mel_idx_l <= mel_idx_l + 1'b1;
             else
                 mel_idx_l <= '0;
-        end
-    end
-
-    typedef enum logic[1:0] {
-        IDLE = 2'd0, // wait for new frame from STFT
-        ACCUMULATE = 2'd1, // stream 128 bins thru MACs in mel filterbank
-        LOG_COMPRESS = 2'd2, // one by one compress mel energies through log_lut
-        OUTPUT = 2'd3 // out_buffer sends values to CNN
-    } FRAME_CTRL_STATE;
-
-    FRAME_CTRL_STATE curr_state_q, next_state_d;
-
-    always_ff @(posedge clk) begin
-        if (reset) begin
-            curr_state_q <= IDLE;
-
-        end else begin
-            curr_state_q <= next_state_d;
-
         end
     end
 

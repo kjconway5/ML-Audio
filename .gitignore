@@ -68,3 +68,20 @@ src/rtl/Log-Mel/rtl/logmel_top/*.hex
 
 # Keep directory structure
 !.gitkeep
+                                                                                                                                   
+  # Generated from export.py
+  src/ml/models/dscnn/weights.hex
+  src/ml/models/dscnn/bias.hex   
+  src/ml/models/dscnn/scales.txt                                                                                                   
+                                
+  # Simulation results                                                                                                             
+  results.xml         
+             
+  # Training logs (generated at runtime)
+  training_log*.txt          
+
+  #Datasets 
+  src/ml/Pipeline/speech_commands_v0.02/                                                                                           
+  src/ml/Pipeline/speech_commands_v0.02.tar.gz                                                                                     
+  src/ml/output/                                                                                                                   
+  *.npy  

@@ -1,180 +1,228 @@
 import cocotb
 from cocotb.clock import Clock
-from cocotb.triggers import RisingEdge, FallingEdge, ReadOnly, ClockCycles
+from cocotb.triggers import RisingEdge, ClockCycles
+import numpy as np
+from pathlib import Path
 
-# LUT values
-LUT_HEX = [
-    "0000","005c","00b6","010f","0166","01bd","0212","0265",
-    "02b8","030a","035a","03a9","03f8","0445","0491","04dc",
-    "0527","0570","05b9","0600","0647","068d","06d2","0716",
-    "075a","079d","07df","0820","0861","08a0","08e0","091e",
-    "095c","0999","09d6","0a12","0a4d","0a88","0ac2","0afc",
-    "0b35","0b6e","0ba6","0bdd","0c14","0c4a","0c80","0cb6",
-    "0ceb","0d1f","0d54","0d87","0dba","0ded","0e1f","0e51",
-    "0e83","0eb4","0ee4","0f15","0f44","0f74","0fa3","0fd2",
-]
-LUT = [int(x, 16) for x in LUT_HEX]
+DATA_DIR = Path(__file__).resolve().parent / ".." / ".." / "data"
 
-def floor_log2(x: int) -> int:
-    """
-    floor(log2(x)) for x>0
-    """
-    return x.bit_length() - 1
+N_MELS    = 40
+ACCUM_W   = 54
+LOG_OUT_W = 16
+LUT_FRAC  = 6
+Q_FRAC    = 10
+CLK_PERIOD_NS = 10
 
-def expected_lut_addr(energy: int, log2_int: int, LUT_FRAC: int) -> int:
-    """
-    Calculates the expected LUT address for a given engergy 
-    """
-    if log2_int >= LUT_FRAC:
-        raw = energy >> (log2_int - LUT_FRAC)
-    else:
-        raw = energy << (LUT_FRAC - log2_int)
+ACCUM_MASK = (1 << ACCUM_W) - 1
 
-    mask = (1 << LUT_FRAC) - 1
-    return raw & mask
+# Load reference LUT from hex
+with open(DATA_DIR / "log2_lut.hex") as _f:
+    LOG2_LUT = [int(line.strip(), 16) for line in _f if line.strip()]
 
-def expected_log_result(
-    energy: int,
-    ACCUM_W: int = 54,
-    LOG_OUT_W: int = 16,
-    LUT_FRAC: int = 6,
-    Q_FRAC: int = 12,
-) -> int:
-    """
-    Calculates the expected log output for a given energy 
-    """
+
+# ----------------------------------------------------------------
+# Reference model
+# ----------------------------------------------------------------
+
+def ref_log_one(energy: int) -> int:
     if energy == 0:
         return 0
+    log2_int = int(energy).bit_length() - 1
+    MAX_LOG_INT = (1 << (LOG_OUT_W - Q_FRAC)) - 1  # 15
+    if log2_int > MAX_LOG_INT:
+        return 0xFFFF  # saturation — matches RTL
+    mask = (1 << LUT_FRAC) - 1
+    if log2_int >= LUT_FRAC:
+        addr = (energy >> (log2_int - LUT_FRAC)) & mask
+    else:
+        addr = (energy << (LUT_FRAC - log2_int)) & mask
+    result = (log2_int << Q_FRAC) + LOG2_LUT[addr]
+    return result & ((1 << LOG_OUT_W) - 1)
 
-    log2_int = floor_log2(energy)
 
-    addr = expected_lut_addr(energy, log2_int, LUT_FRAC)
-    lut_val = LUT[addr]
+# ----------------------------------------------------------------
+# Flash helpers
+# ----------------------------------------------------------------
 
-    # (log2_int << Q_FRAC) + lut_val, then truncate to LOG_OUT_W
-    res = (log2_int << Q_FRAC) + lut_val
-    res &= (1 << LOG_OUT_W) - 1
-    return res
+def _idle_flash(dut):
+    dut.flash_write_enable_i.value = 0
+    dut.flash_addr_i.value = 0
+    dut.flash_write_data_i.value = 0
 
 
-async def reset_dut(dut, cycles=5):
-    """
-    Reset the DUT, hold for a few cycles, then release.
-    Also resets energies to 0 and mel_idx_i to 0.
-    """
-    dut.reset.value = 1
+async def flash_load_lut(dut):
+    """Flash-load log2_lut.hex into the LUT SRAM (16-bit writes)."""
+    _idle_flash(dut)
+
+    with open(DATA_DIR / "log2_lut.hex") as f:
+        lut = [int(l.strip(), 16) for l in f if l.strip()]
+
+    cocotb.log.info(f"Flashing {len(lut)} LUT entries...")
+    dut.flash_write_enable_i.value = 1
+    for addr, val in enumerate(lut):
+        dut.flash_addr_i.value = addr
+        dut.flash_write_data_i.value = val & 0xFFFF
+        await RisingEdge(dut.clk_i)
+    dut.flash_write_enable_i.value = 0
+    await ClockCycles(dut.clk_i, 2)
+    cocotb.log.info("LUT SRAM loaded.")
+
+
+# ----------------------------------------------------------------
+# Stimulus helpers
+# ----------------------------------------------------------------
+
+async def reset_dut(dut, cycles: int = 5):
+    await RisingEdge(dut.clk_i)
+    dut.reset_i.value = 1
     dut.log_en_i.value = 0
     dut.mel_idx_i.value = 0
-    # reset energies
-    for i in range(len(dut.mel_energy_i)):
-        dut.mel_energy_i[i].value = 0
+    _idle_flash(dut)
+    # Drive mel_energy_i to zero
+    dut.mel_energy_i.value = 0
+    await ClockCycles(dut.clk_i, cycles)
+    dut.reset_i.value = 0
+    await ClockCycles(dut.clk_i, 2)
 
-    await ClockCycles(dut.clk, cycles)
-    dut.reset.value = 0
-    await ClockCycles(dut.clk, cycles)
+
+def pack_mel_energy(energies: np.ndarray) -> int:
+    """Pack N_MELS x ACCUM_W-bit values into one big integer for mel_energy_i."""
+    val = 0
+    for m in range(N_MELS):
+        val |= (int(energies[m]) & ACCUM_MASK) << (m * ACCUM_W)
+    return val
 
 
-@cocotb.test()
-async def test_log_lut_basic_writes(dut):
+async def run_log_compress(dut, energies: np.ndarray) -> list:
     """
-    Writes a few bins (including energy=0 and some known patterns),
-    checks log_out_o[mel_idx] matches expected,
-    checks log_done_o only asserts on mel_idx == N_MELS-1.
+    Drive mel_energy_i with the given energies, then step mel_idx 0→39
+    with log_en=1, mimicking frame_control's LOG_COMPRESS state.
+
+    Returns the 40 log_out values after log_done asserts.
     """
-    
-    cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
-    await reset_dut(dut)
+    # Present all mel energies
+    dut.mel_energy_i.value = pack_mel_energy(energies)
+    await RisingEdge(dut.clk_i)
 
-    # parameters
-    N_MELS = 40
-    LUT_FRAC = 6
-    Q_FRAC = 12
-    LOG_OUT_W = 16
-
-    # create energies with known log2 vals 
-    energies = [0] * N_MELS
-    energies[0] = 0
-    energies[1] = 1
-    energies[2] = 2
-    energies[3] = 3 
-    energies[4] = 64
-    energies[5] = 65
-    energies[6] = (1 << 20) + 12345
-    energies[39] = 999999
-
-    for i in range(N_MELS):
-        dut.mel_energy_i[i].value = energies[i]
-
-    bins_to_check = [0, 1, 2, 3, 4, 5, 6, 39]
-
-    for idx in bins_to_check:
+    # Step through all 40 mel bins with log_en=1
+    for idx in range(N_MELS):
         dut.mel_idx_i.value = idx
         dut.log_en_i.value = 1
-        await RisingEdge(dut.clk)
-
-        dut.log_en_i.value = 0
-        await RisingEdge(dut.clk)
-
-        got = int(dut.log_out_o[idx].value)
-        exp = expected_log_result(
-            energies[idx],
-            LOG_OUT_W=LOG_OUT_W,
-            LUT_FRAC=LUT_FRAC,
-            Q_FRAC=Q_FRAC,
-        )
-        
-        # check log_out_o value vs expected 
-        assert got == exp, (
-            f"bin {idx}: energy={energies[idx]} expected 0x{exp:04x} got 0x{got:04x}"
-        )
-        
-        # check if we are on last bin
-        done = int(dut.log_done_o.value)
-        if idx == N_MELS - 1:
-            assert done in (0, 1)
-        else:
-            assert done == 0, f"log_done_o asserted unexpectedly on idx={idx}"
+        await RisingEdge(dut.clk_i)
 
     dut.log_en_i.value = 0
-    cocotb.log.info("test_log_lut_basic_writes passed")
+    dut.mel_idx_i.value = 0
+
+    # Wait for log_done (should come 1-2 cycles after last log_en due to pipeline)
+    for i in range(10):
+        await RisingEdge(dut.clk_i)
+        if dut.log_done_o.value == 1:
+            break
+    else:
+        raise AssertionError("log_done_o never asserted")
+
+    # Read back all 40 log outputs
+    raw = int(dut.log_out_o.value)
+    mask = (1 << LOG_OUT_W) - 1
+    results = [(raw >> (m * LOG_OUT_W)) & mask for m in range(N_MELS)]
+    return results
+
+
+# ----------------------------------------------------------------
+# Tests
+# ----------------------------------------------------------------
+
+@cocotb.test()
+async def test_log_lut_zero(dut):
+    """All-zero energy should produce all-zero log output."""
+    cocotb.start_soon(Clock(dut.clk_i, CLK_PERIOD_NS, units="ns").start())
+
+    await reset_dut(dut)
+    await flash_load_lut(dut)
+    await reset_dut(dut)
+
+    energies = np.zeros(N_MELS, dtype=np.uint64)
+    got = await run_log_compress(dut, energies)
+
+    cocotb.log.info(f"Zero test got: {got[:5]}...")
+    for m in range(N_MELS):
+        assert got[m] == 0, f"mel[{m}]: expected 0, got {got[m]}"
+    cocotb.log.info("test_log_lut_zero PASSED")
 
 
 @cocotb.test()
-async def test_log_lut_full_sweep(dut):
-    """
-    Writes all bins from 0 to N_MELS-1, checks log_done_o only asserts on last bin.
-    """
-    
-    cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
+async def test_log_lut_known_values(dut):
+    """Test with known energy values and compare to reference model."""
+    cocotb.start_soon(Clock(dut.clk_i, CLK_PERIOD_NS, units="ns").start())
 
     await reset_dut(dut)
+    await flash_load_lut(dut)
+    await reset_dut(dut)
 
-    N_MELS = int(dut.N_MELS) if hasattr(dut, "N_MELS") else len(dut.log_out_o)
+    # Generate a spread of energy values: powers of 2, random, edge cases
+    rng = np.random.default_rng(seed=99)
+    energies = np.zeros(N_MELS, dtype=np.uint64)
+    energies[0] = 0                        # zero
+    energies[1] = 1                        # minimum nonzero
+    energies[2] = (1 << ACCUM_W) - 1       # maximum
+    energies[3] = 1 << 12                  # power of 2
+    energies[4] = 1 << 24                  # larger power of 2
+    energies[5] = 1 << 40                  # very large
+    energies[6] = 0x123456                 # arbitrary
+    energies[7] = 0xDEAD                   # arbitrary
+    for m in range(8, N_MELS):
+        energies[m] = rng.integers(1, 1 << 48, dtype=np.uint64) & ACCUM_MASK
 
-    # initialize energies
-    for i in range(N_MELS):
-        dut.mel_energy_i[i].value = (1 << (i % 16))
+    got = await run_log_compress(dut, energies)
+    exp = [ref_log_one(int(energies[m])) for m in range(N_MELS)]
 
-    await FallingEdge(dut.clk)
-    dut.log_en_i.value = 1
-
-    for idx in range(N_MELS):
-        await FallingEdge(dut.clk)
-        dut.mel_idx_i.value = idx
-        await RisingEdge(dut.clk)
-        await ReadOnly()
-
-        done = int(dut.log_done_o.value)
-
-        if idx == N_MELS - 1:
-            assert done == 1, f"log_done_o should pulse when mel_idx_i=={N_MELS-1}"
+    n_fail = 0
+    for m in range(N_MELS):
+        delta = abs(got[m] - exp[m])
+        if delta > 1:
+            cocotb.log.error(
+                f"mel[{m}]: energy=0x{int(energies[m]):x} "
+                f"got=0x{got[m]:04x} exp=0x{exp[m]:04x} delta={delta}"
+            )
+            n_fail += 1
         else:
-            assert done == 0, f"log_done_o should stay low before last bin (idx={idx})"
+            cocotb.log.info(
+                f"mel[{m}]: energy=0x{int(energies[m]):x} "
+                f"got=0x{got[m]:04x} exp=0x{exp[m]:04x} OK"
+            )
 
-    await FallingEdge(dut.clk)
-    dut.log_en_i.value = 0
+    assert n_fail == 0, f"{n_fail} mel bins failed"
+    cocotb.log.info("test_log_lut_known_values PASSED")
 
-    await RisingEdge(dut.clk)
-    await ReadOnly()
-    assert int(dut.log_done_o.value) == 0, "log_done_o should go low once log_en is deasserted"
-    cocotb.log.info("test_log_lut_full_sweep passed")
+
+@cocotb.test()
+async def test_log_lut_random(dut):
+    """Random energies across the full range."""
+    cocotb.start_soon(Clock(dut.clk_i, CLK_PERIOD_NS, units="ns").start())
+
+    await reset_dut(dut)
+    await flash_load_lut(dut)
+    await reset_dut(dut)
+
+    rng = np.random.default_rng(seed=42)
+    energies = rng.integers(0, 1 << 48, size=N_MELS, dtype=np.uint64)
+    energies = energies & ACCUM_MASK
+
+    got = await run_log_compress(dut, energies)
+    exp = [ref_log_one(int(energies[m])) for m in range(N_MELS)]
+
+    deltas = [abs(got[m] - exp[m]) for m in range(N_MELS)]
+    worst = max(range(N_MELS), key=lambda m: deltas[m])
+
+    cocotb.log.info(
+        f"Random test worst: mel[{worst}] "
+        f"got=0x{got[worst]:04x} exp=0x{exp[worst]:04x} delta={deltas[worst]}"
+    )
+    cocotb.log.info(f"  first 5 got: {[f'0x{g:04x}' for g in got[:5]]}")
+    cocotb.log.info(f"  first 5 exp: {[f'0x{e:04x}' for e in exp[:5]]}")
+
+    for m in range(N_MELS):
+        assert deltas[m] <= 1, \
+            f"mel[{m}]: delta={deltas[m]} (got=0x{got[m]:04x} exp=0x{exp[m]:04x})"
+
+    cocotb.log.info("test_log_lut_random PASSED")

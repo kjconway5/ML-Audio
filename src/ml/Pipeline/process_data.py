@@ -3,8 +3,12 @@
 Processes all Data from Speech Command Dataset.
 Reads all settings from config.yaml.
 Outputs train, val and test features and labels as npy files.
+
+Preprocessing uses GoldenExtractor (bit-accurate RTL replica) from golden_model.py.
+Features are cropped/padded to N_FRAMES x N_MELS to match RTL FSM fixed input size.
 """
 import json
+import sys
 import yaml
 import numpy as np
 import torch
@@ -14,9 +18,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from tqdm import tqdm
 import random
-from pipeline import SimplePipeline
+import multiprocessing
 
-print("Using soundfile for audio I/O (Docker-compatible)")
+# GoldenExtractor lives in src/ml/
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from golden_model import GoldenExtractor
+
+print("Using GoldenExtractor (bit-accurate RTL pipeline) for feature extraction")
 
 # Load configuration from config.yaml
 CONFIG_PATH = Path(__file__).parent / "config.yaml"
@@ -32,7 +40,6 @@ _preproc = _config["preprocessing"]
 N_MELS = _preproc["n_mels"]
 N_FFT = _preproc["n_fft"]
 HOP_LENGTH = _preproc["hop_length"]
-USE_FILTERS = _preproc["use_filters"]
 N_SAMPLES = None
 
 # Data processing settings
@@ -41,7 +48,9 @@ _target_kw_list = _data.get("target_keywords", None)
 TARGET_KEYWORDS = set(_target_kw_list) if _target_kw_list else None
 INCLUDE_SILENCE = _data.get("include_silence", True)
 SILENCE_COUNT = _data.get("num_silence_samples", 1000)
-UNKNOWN_MAX_PER_SPLIT = _data.get("unknown_max_per_split", None)
+UNKNOWN_MAX_TRAIN = _data.get("unknown_max_train", _data.get("unknown_max_per_split", None))
+UNKNOWN_MAX_VAL   = _data.get("unknown_max_val",   _data.get("unknown_max_per_split", None))
+UNKNOWN_MAX_TEST  = _data.get("unknown_max_test",  _data.get("unknown_max_per_split", None))
 RANDOM_SEED = _data.get("random_seed", 42)
 
 
@@ -83,7 +92,7 @@ def collect_examples_speech_commands(root: Path):
         wav = Path(wav_str)
         rel = wav.relative_to(root).as_posix()
         # Skip background noise (handled separately) and hidden files
-        if rel.startswith("_background_noise_/") or "/." in rel:
+        if rel.startswith("_background_noise_/") or rel.startswith("_generated_silence_/") or "/." in rel:
             continue
         label = wav.relative_to(root).parts[0]
 
@@ -157,15 +166,17 @@ def resample_audio(waveform: np.ndarray, orig_sr: int, target_sr: int) -> np.nda
     num_samples = int(len(waveform) * target_sr / orig_sr)
     return signal.resample(waveform, num_samples)
 
-#Cap the number of 'unknown' examples in each split.
-def subsample_unknown(examples: list, max_per_split: int) -> list:
+#Cap the number of 'unknown' examples per split with independent limits.
+def subsample_unknown(examples: list, max_train, max_val, max_test) -> list:
     rng = random.Random(RANDOM_SEED)
+    caps = {"train": max_train, "val": max_val, "test": max_test}
     kept = []
     for split in ["train", "val", "test"]:
         split_unknown = [ex for ex in examples if ex.split == split and ex.label == "unknown"]
-        split_other = [ex for ex in examples if ex.split == split and ex.label != "unknown"]
-        if len(split_unknown) > max_per_split:
-            split_unknown = rng.sample(split_unknown, max_per_split)
+        split_other   = [ex for ex in examples if ex.split == split and ex.label != "unknown"]
+        cap = caps[split]
+        if cap is not None and len(split_unknown) > cap:
+            split_unknown = rng.sample(split_unknown, cap)
         kept.extend(split_other + split_unknown)
     return kept
 
@@ -199,7 +210,34 @@ def load_wav_fixed(wav_path: Path, sr: int = 16_000, seconds: float = 1.0) -> to
 def torch_to_int16_np(waveform: torch.Tensor) -> np.ndarray:
     x = waveform.squeeze(0).numpy().astype(np.float32)
     x = np.clip(x, -1.0, 1.0)
-    return (x * 32767.0).astype(np.int16)
+    return np.clip(x * 32768.0, -32768, 32767).astype(np.int16)
+
+# ── Parallel worker for train split ──────────────────────────────────────────
+_worker_extractor = None
+
+def _worker_init():
+    global _worker_extractor
+    _worker_extractor = GoldenExtractor()
+
+def _process_one(args):
+    wav_path, label_id = args
+    try:
+        wav = load_wav_fixed(Path(wav_path))
+        audio_i16 = torch_to_int16_np(wav)
+        feats = _worker_extractor.extract_float(audio_i16)
+        feats_T = feats.T
+        n = feats_T.shape[0]
+        N_FRAMES = 50
+        if n >= N_FRAMES:
+            start = (n - N_FRAMES) // 2
+            feats_T = feats_T[start:start + N_FRAMES, :]
+        else:
+            feats_T = np.pad(feats_T, ((0, N_FRAMES - n), (0, 0)), mode="constant")
+        return feats_T, label_id
+    except Exception:
+        return None
+# ─────────────────────────────────────────────────────────────────────────────
+
 
 #Process examples and save as .npy files.
 def process_and_save():
@@ -210,21 +248,10 @@ def process_and_save():
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     print(f"[DEBUG] Output directory: {OUTPUT_DIR}")
 
-    # Feature Extractor
-    print(f"[DEBUG] Initializing pipeline with: n_mels={N_MELS}, n_fft={N_FFT}, hop_length={HOP_LENGTH}")
-    pipeline = SimplePipeline(
-        sample_rate=_preproc.get("sample_rate", 16_000),
-        use_filters=USE_FILTERS,
-        n_mels=N_MELS,
-        n_fft=N_FFT,
-        hop_length=HOP_LENGTH,
-        window_length=_preproc.get("window_length", N_FFT),
-        hpf_order=_preproc.get("hpf_order", 2),
-        lpf_order=_preproc.get("lpf_order", 4),
-        cutoff_hpf=_preproc.get("cutoff_hpf", 150),
-        cutoff_lpf=_preproc.get("cutoff_lpf", 4000),
-    )
-    print(f"[DEBUG] Pipeline initialized successfully")
+    # Feature Extractor — bit-accurate RTL replica
+    print(f"[DEBUG] Initializing GoldenExtractor (n_mels={N_MELS}, n_fft={N_FFT}, hop_length={HOP_LENGTH})")
+    extractor = GoldenExtractor()
+    print(f"[DEBUG] GoldenExtractor initialized successfully")
 
     # Collect examples and optionally remap labels
     print(f"\n[DEBUG] Target keywords: {TARGET_KEYWORDS}")
@@ -240,9 +267,9 @@ def process_and_save():
         print(f"[DEBUG] Silence generation is disabled")
 
     # Optionally subsample "unknown" to reduce imbalance
-    if TARGET_KEYWORDS is not None and UNKNOWN_MAX_PER_SPLIT is not None:
-        print(f"[DEBUG] Subsampling unknown class to max {UNKNOWN_MAX_PER_SPLIT} per split...")
-        examples = subsample_unknown(examples, UNKNOWN_MAX_PER_SPLIT)
+    if TARGET_KEYWORDS is not None and any(x is not None for x in [UNKNOWN_MAX_TRAIN, UNKNOWN_MAX_VAL, UNKNOWN_MAX_TEST]):
+        print(f"[DEBUG] Subsampling unknown class: train={UNKNOWN_MAX_TRAIN}, val={UNKNOWN_MAX_VAL}, test={UNKNOWN_MAX_TEST}")
+        examples = subsample_unknown(examples, UNKNOWN_MAX_TRAIN, UNKNOWN_MAX_VAL, UNKNOWN_MAX_TEST)
         print(f"[DEBUG] Total examples after subsampling: {len(examples)}")
 
     # Build label mapping
@@ -274,16 +301,40 @@ def process_and_save():
         skipped = 0
         # Process waveforms
         print(f"[DEBUG] Starting audio processing for {split} split...")
-        for ex in tqdm(split_examples, desc=f"Processing {split}"):
-            try:
-                wav = load_wav_fixed(Path(ex.wav_path))
-                audio_i16 = torch_to_int16_np(wav)
-                feats, _ = pipeline.process(audio_i16)
-                features_list.append(feats.T)  # (T, M)
-                labels_list.append(label_to_id[ex.label])
-            except Exception as e:
-                skipped += 1
-                continue
+        if split == "train":
+            n_workers = 4
+            chunksize = max(1, len(split_examples) // (n_workers * 4))
+            print(f"[DEBUG] Using {n_workers} parallel workers for train split (chunksize={chunksize})")
+            args = [(ex.wav_path, label_to_id[ex.label]) for ex in split_examples]
+            with multiprocessing.Pool(n_workers, initializer=_worker_init,
+                                      maxtasksperchild=500) as pool:
+                results = list(tqdm(pool.imap(_process_one, args, chunksize=chunksize),
+                                    total=len(args), desc="Processing train"))
+            for r in results:
+                if r is not None:
+                    features_list.append(r[0])
+                    labels_list.append(r[1])
+                else:
+                    skipped += 1
+        else:
+            for ex in tqdm(split_examples, desc=f"Processing {split}"):
+                try:
+                    wav = load_wav_fixed(Path(ex.wav_path))
+                    audio_i16 = torch_to_int16_np(wav)
+                    feats = extractor.extract_float(audio_i16)
+                    feats_T = feats.T
+                    n = feats_T.shape[0]
+                    N_FRAMES = 50
+                    if n >= N_FRAMES:
+                        start = (n - N_FRAMES) // 2
+                        feats_T = feats_T[start:start + N_FRAMES, :]
+                    else:
+                        feats_T = np.pad(feats_T, ((0, N_FRAMES - n), (0, 0)), mode="constant")
+                    features_list.append(feats_T)
+                    labels_list.append(label_to_id[ex.label])
+                except Exception:
+                    skipped += 1
+                    continue
         if skipped > 0:
             print(f"[DEBUG] Skipped {skipped} corrupted/invalid files")
 
@@ -301,7 +352,7 @@ def process_and_save():
         "label_to_id": label_to_id,
         "target_keywords": sorted(TARGET_KEYWORDS) if TARGET_KEYWORDS else None,
         "include_silence": INCLUDE_SILENCE,
-        "pipeline": pipeline.get_config(),
+        "pipeline": extractor.get_config(),
     }
     with open(OUTPUT_DIR / "config.json", "w") as f:
         json.dump(config, f, indent=2)

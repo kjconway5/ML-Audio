@@ -2,31 +2,32 @@
 # Based on Google Speech Commands dataset
 
 dataset:
-  data_dir: "/home/dnocera/ML-Audio/ml/data/speech_commands"
-
+  data_dir: "/home/dnocera/branch/ML-Audio/src/ml/Pipeline/speech_commands_v0.02"
+#  data_dir: "/Users/diegonocera/Documents/ML-Audio/ML-Audio/src/ml/Pipeline/speech_commands_v0.02"
 data:
-  output_dir: "/home/dnocera/ML-Audio/ml/output"
-
+  output_dir: "/home/dnocera/branch/ML-Audio/src/ml/output"
+#  output_dir: "/Users/diegonocera/Documents/ML-Audio/ML-Audio/src/ml/output"
   classes:
     - "yes"
     - "no"
-    - "left"
-    - "right"
-    - "go"
+    - "on"
+    - "off"
+    - "wow"
     - "silence"
     - "unknown"
 
   target_keywords:
     - "yes"
     - "no"
-    - "go"
-    - "left"
-    - "right"
+    - "on"
+    - "off"
+    - "wow"
 
   include_silence: true
-  num_silence_samples: 1000
-  num_true_silence_samples: 500
-  unknown_max_per_split: 4000
+  num_silence_samples: 500
+  unknown_max_train: 1000
+  unknown_max_val: 150
+  unknown_max_test: 150
   random_seed: 42
 
 
@@ -46,33 +47,41 @@ preprocessing:
 
 #ds-cnn
 model:
-  n_classes: 7  # yes, no, stop, go, silence, unknown
+  n_classes: 7  
   
   # First convolution layer
   first_conv:
-    filters: 24
+    filters: 32
     kernel_size: [10, 4]
     stride: [2, 2]
-  
+
   # Depthwise Separable blocks
   ds_blocks:
     n_blocks: 4
-    filters: 24
+    filters: 32
     kernel_size: [3, 3]
     stride: [1, 1]
 
 training:
-  n_epochs: 20
+  n_epochs: 80
   batch_size: 64
 
   optimizer: "sgd"
-  learning_rate: 0.1
+  learning_rate: 0.01
   momentum: 0.9
-  weight_decay: 0.0001
+  weight_decay: 0.0005
+  warmup_epochs: 5
+
+  # Float phase: epochs 1-59  (warmup 1-5, cosine 6-59 → eta_min_float)
+  # QAT phase:   epochs 60-80 (warm restart at qat_start_lr, cosine → eta_min_qat)
+  # 20 QAT epochs gives the fbgemm per-channel scales time to settle with multiply-shift.
+  qat_start_epoch: 60
+  qat_start_lr: 0.001
+  freeze_bn_epoch: 77
 
   lr_schedule:
-    milestones: [5, 10, 15]
-    gamma: 0.1
+    eta_min_float: 0.0001
+    eta_min_qat:   0.000001
   val_every: 5
 
 vad:
@@ -81,5 +90,5 @@ vad:
   default_energy_threshold: 0.0001
 
 output:
-  model_save_path: "tiny-7class.pt"
-  log_file: "tiny7txt.txt"
+  model_save_path: "/home/dnocera/branch/ML-Audio/src/ml/models/dscnn-pow2-v12/dscnn-pow2-v12.pt"
+  log_file: "/home/dnocera/branch/ML-Audio/src/ml/models/dscnn-pow2-v12/training_log_pow2_v12.txt"

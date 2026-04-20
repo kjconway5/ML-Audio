@@ -1,36 +1,25 @@
 // FSM.sv
 
-// MMIO cfg_addr map (Lower 4-bits address field (16 entries - 4-bits), upper 4-bits adresses layer  
-//   Per-layer fields: base = layer * 16 (computation for base adress based on number of fields per layer) 
-//   +0  cfg_in_ch       +1  cfg_out_ch      +2  cfg_kH          +3  cfg_kW
-//   +4  cfg_stride_h    +5  cfg_stride_w    +6  cfg_pad_h       +7  cfg_pad_w
-//   +8  cfg_dw[0]       +9  cfg_w_off[7:0]  +10 cfg_w_off[12:8] +11 cfg_shift
-//   +12 cfg_relu        +13 cfg_ofmap_h     +14 cfg_ofmap_w     +15 cfg_bias_off
-
-//   Special address: 8'hFF → write 1 to assert cfg_load_done internally
-
-
 module FSM #(
-    parameter N_MACS  = 16,
     parameter DATA_W  = 8,
     parameter ACC_W   = 32,
     parameter ADDR_W  = 14,
-    parameter SPECT_AW = 11   // matches spectrogram_sram ADDR_W 
+    parameter SPECT_AW = 11   // matches spectrogram_sram ADDR_W
 )(
     input  wire                     clk,
     input  wire                     reset,
 
-    // SERV config signals 
+    // SERV config signals
     input  wire                     cfg_we,
     input  wire [7:0]               cfg_addr,   // see address map above
-    input  wire [7:0]               cfg_wdata,  // Handled by SPI/Flash data input 
-                                                // During Verification use python input mimicing flash input 
-    // Spectrogram handshake signals 
+    input  wire [7:0]               cfg_wdata,  // Handled by UART data input
+                                                // During Verification use python input mimicing flash input
+    // Spectrogram handshake signals
     input  wire                     spect_done,       // new spectrogram ready for reading
     input  wire                     spect_write_sel,  // which bank preprocessor just finished writing
 
-    // Spectrogram SRAM read port 
-    output reg  [SPECT_AW-1:0]      sp_raddr,
+    // Spectrogram SRAM read port
+    output wire [SPECT_AW-1:0]      sp_raddr,   // 
     input  wire signed [DATA_W-1:0] sp_a_rdata,   // bank A read data
     input  wire signed [DATA_W-1:0] sp_b_rdata,   // bank B read data
 
@@ -39,44 +28,48 @@ module FSM #(
     output reg                      done,
     output reg  [2:0]               class_out,
 
-    // Weight SRAM signals 
-    output reg  [12:0]              w_addr,
+    // Weight SRAM signals
+    output wire [12:0]              w_addr,   
     input  wire signed [DATA_W-1:0] w_data,
 
     // Weight writing signals
-    input wire                      weights_ready, // from subservient GPIO
-    output wire                     inference_idle, // to Subservient, high when safe to write
+    input wire                      weights_ready, // from UART control
+    output wire                     inference_idle, // to UART
 
-    //Feature SRAM signals 
-    // Bank A 
+    // Bias ROM interface
+    output wire [8:0]               bias_addr,   // 9-bit: supports up to 511 bias entries
+    input  wire signed [31:0]       bias_data,
+
+    //Feature SRAM signals
+    // Bank A
     output reg                      fs_a_we,
     output reg  [ADDR_W-1:0]        fs_a_waddr,
     output reg  signed [DATA_W-1:0] fs_a_wdata,
-    output reg  [ADDR_W-1:0]        fs_a_raddr,
+    output wire [ADDR_W-1:0]        fs_a_raddr,   
     input  wire signed [DATA_W-1:0] fs_a_rdata,
-    // Bank B 
+    // Bank B
     output reg                      fs_b_we,
     output reg  [ADDR_W-1:0]        fs_b_waddr,
     output reg  signed [DATA_W-1:0] fs_b_wdata,
-    output reg  [ADDR_W-1:0]        fs_b_raddr,
+    output wire [ADDR_W-1:0]        fs_b_raddr,   
     input  wire signed [DATA_W-1:0] fs_b_rdata,
 
-    // Mac Array signals 
+    // MAC signals (scalar: one INT8 × INT8 per cycle)
     output reg                      mac_en,
     output reg                      mac_clear,
-    output reg  signed [DATA_W-1:0] mac_ifmap  [0:N_MACS-1],
-    output reg  signed [DATA_W-1:0] mac_weight [0:N_MACS-1],
+    output reg  signed [DATA_W-1:0] mac_ifmap,
+    output reg  signed [DATA_W-1:0] mac_weight,
     output reg  signed [ACC_W-1:0]  mac_bias,
     input  wire signed [ACC_W-1:0]  mac_acc,
-    input  wire                     mac_valid,
 
-    // Requant module signals 
-    output reg  [4:0]               rq_shift,
+    // Requant module signals
+    output reg  [31:0]              rq_mult,      // Q0.32 multiplier for multiply-shift requant
+    output reg  [4:0]               rq_shift,     // exponent n; effective scale = rq_mult * 2^-(n+32)
     output reg                      rq_relu_en,
     input  wire signed [DATA_W-1:0] rq_out
 );
 
-    // Model Config Parameters 
+    // Model Config Parameters
     localparam N_LAYERS = 10;
 
     reg [7:0]  cfg_in_ch    [0:N_LAYERS-1];
@@ -89,16 +82,17 @@ module FSM #(
     reg [3:0]  cfg_pad_w    [0:N_LAYERS-1];
     reg        cfg_dw       [0:N_LAYERS-1];
     reg [12:0] cfg_w_off    [0:N_LAYERS-1];
-    reg [4:0]  cfg_shift    [0:N_LAYERS-1];
+    reg [31:0] cfg_mult     [0:N_LAYERS-1]; // Q0.32 multiplier for multiply-shift requant
+    reg [4:0]  cfg_shift    [0:N_LAYERS-1]; // exponent n for multiply-shift
     reg        cfg_relu     [0:N_LAYERS-1];
     reg [7:0]  cfg_ofmap_h  [0:N_LAYERS-1];
     reg [7:0]  cfg_ofmap_w  [0:N_LAYERS-1];
     reg [7:0]  cfg_bias_off [0:N_LAYERS-1];
+    reg        cfg_bias_hi  [0:N_LAYERS-1]; // bit 8 of bias_off; packed into bit[1] of cfg_relu write
 
-    reg        cfg_load_done;   // set by SERV writing 1 to addr 8'hFF
+    reg        cfg_load_done;   // set by UART control
 
-    // Config decoder signals 
-    // cfg_layer/cfg_field are MMIO decode signals 
+    // Config decoder signals
     reg [3:0] cfg_layer;
     reg [3:0] cfg_field;
 
@@ -109,10 +103,24 @@ module FSM #(
         end else if (cfg_we) begin
             if (cfg_addr == 8'hFF) begin
                 cfg_load_done <= 1'b1;
+            end else if (cfg_addr >= 8'hA0 && cfg_addr <= 8'hC7) begin
+                // Multiply-shift multiplier registers.
+                // Address map: base = 0xA0 + (layer * 4) + byte_index
+                //   layer     = (cfg_addr - 0xA0) >> 2   (layers 0-9)
+                //   byte_sel  = (cfg_addr - 0xA0) & 2'b11
+                // Reuse cfg_layer/cfg_field as temporaries for the decode.
+                cfg_layer = cfg_addr[7:2] - 6'd40;   // (addr >> 2) - 40 → layer 0-9
+                cfg_field = {2'b0, cfg_addr[1:0]};   // byte select 0-3
+                case (cfg_field[1:0])
+                    2'd0: cfg_mult[cfg_layer][ 7: 0] <= cfg_wdata;
+                    2'd1: cfg_mult[cfg_layer][15: 8] <= cfg_wdata;
+                    2'd2: cfg_mult[cfg_layer][23:16] <= cfg_wdata;
+                    2'd3: cfg_mult[cfg_layer][31:24] <= cfg_wdata;
+                endcase
             end else begin
                 // Decode layer index and field offset from address
-                // layer  = cfg_addr[7:4]  upper 4-bits (layers 0-9) 
-                // field  = cfg_addr[3:0]  lower 4-bits (fields 0-15) 
+                // layer  = cfg_addr[7:4]  upper 4-bits (layers 0-9)
+                // field  = cfg_addr[3:0]  lower 4-bits (fields 0-15)
                 cfg_layer = cfg_addr[7:4];
                 cfg_field = cfg_addr[3:0];
                 case (cfg_field)
@@ -125,10 +133,13 @@ module FSM #(
                     4'd6:  cfg_pad_h   [cfg_layer] <= cfg_wdata[3:0];
                     4'd7:  cfg_pad_w   [cfg_layer] <= cfg_wdata[3:0];
                     4'd8:  cfg_dw      [cfg_layer] <= cfg_wdata[0];
-                    4'd9:  cfg_w_off   [cfg_layer][7:0]  <= cfg_wdata;       // Weight offset split into two (bot 8 bits) 
+                    4'd9:  cfg_w_off   [cfg_layer][7:0]  <= cfg_wdata;       // Weight offset split into two (bot 8 bits)
                     4'd10: cfg_w_off   [cfg_layer][12:8] <= cfg_wdata[4:0];  // high 5 bits
                     4'd11: cfg_shift   [cfg_layer] <= cfg_wdata[4:0];
-                    4'd12: cfg_relu    [cfg_layer] <= cfg_wdata[0];
+                    4'd12: begin
+                               cfg_relu    [cfg_layer] <= cfg_wdata[0];
+                               cfg_bias_hi [cfg_layer] <= cfg_wdata[1]; // bias_off[8]: 1 for offsets ≥ 256
+                           end
                     4'd13: cfg_ofmap_h [cfg_layer] <= cfg_wdata;
                     4'd14: cfg_ofmap_w [cfg_layer] <= cfg_wdata;
                     4'd15: cfg_bias_off[cfg_layer] <= cfg_wdata;
@@ -138,54 +149,116 @@ module FSM #(
         end
     end
 
-    
+
     reg spect_ready;      // at least one complete spectrogram available
     reg spect_read_sel;   // which bank FSM reads from (0=A, 1=B)
 
-    // Spectrogram Ping-Pong buffer logic 
+    // Spectrogram Ping-Pong buffer logic
     always @(posedge clk) begin
         if (reset) begin
             spect_ready    <= 1'b0;
             spect_read_sel <= 1'b0;
         end else if (spect_done) begin
-            spect_read_sel <= spect_write_sel;  // read from bank that just finished writing 
+            spect_read_sel <= spect_write_sel;  // read from bank that just finished writing
             spect_ready    <= 1'b1;
         end
     end
 
-    // select spectrogram read data from the correct bank 
+    // select spectrogram read data from the correct bank
     wire signed [DATA_W-1:0] sp_rdata =
         (spect_read_sel == 1'b0) ? sp_a_rdata : sp_b_rdata;
 
-    // FSM 
-    localparam  IDLE        = 3'd0,
-                LOAD_LAYER  = 3'd1,
-                CLEAR_ACC   = 3'd2,
-                COMPUTE     = 3'd3,
-                WRITE_OFMAP = 3'd4,
-                NEXT_PIXEL  = 3'd5,
-                NEXT_LAYER  = 3'd6,
-                OUTPUT      = 3'd7;
+    // FSM states
+    localparam  IDLE        = 4'd0,
+                LOAD_LAYER  = 4'd1,
+                CLEAR_ACC   = 4'd2,
+                FETCH       = 4'd3,   // 1 cycle latency state to match read latency of SRAM
+                COMPUTE     = 4'd4,   // read SRAM data, accumulate MAC
+                DRAIN       = 4'd5,   // flush last MAC product before WRITE_OFMAP
+                WRITE_OFMAP = 4'd6,
+                NEXT_PIXEL  = 4'd7,
+                NEXT_LAYER  = 4'd8,
+                GLOBAL_POOL = 4'd9,   // global-average-pool argmax scan
+                OUTPUT      = 4'd10;  // output class_out and assert done
 
-    reg [2:0]  state;
+    reg [3:0]  state;
     reg [3:0]  layer;       // FSM layer counter (0-9), separate from cfg_layer decode above
     reg        buf_sel;     // feature SRAM ping-pong: 0=read A write B, 1=read B write A
     reg [7:0]  oh, ow, oc;
     reg [7:0]  ic;
     reg [3:0]  kh, kw;
-    reg [3:0]  mac_idx;
 
     reg signed [ACC_W-1:0] max_val;
     reg [2:0]              max_idx;
 
-    //
-    reg signed [8:0]        ih_raw;     //ih_raw = oh * stride_h + kh - pad_h (If negative = In padding bits) 
-    reg signed [8:0]        iw_raw;     //iw_raw = ow * stride_w + kw - pad_w (If negative = In padding bits) 
-    reg [7:0]               ifmap_h;    // input feature map height for current layer
-    reg [7:0]               ifmap_w;    // input feature map width for current layer
-    reg                     in_bounds;  // is pixel within bounds of feature map (if not will feed 0 to MAC) 
-    reg [ADDR_W-1:0]        feat_addr;  // feat_addr = ic * H * W + ih * W + iw (flat SRAM feature addr) 
-    reg signed [DATA_W-1:0] ifmap_val;  // ifmap sample routed to MAC (0 if padding)
+    // Global average pool accumulators 
+    reg signed [ACC_W-1:0] global_pool_acc [0:6];
+    reg [2:0]              global_pool_idx;
+
+    reg signed [DATA_W-1:0] ifmap_val;  
+
+
+    reg signed [8:0]  comb_ih_raw;
+    reg signed [8:0]  comb_iw_raw;
+    reg               comb_in_bounds;
+    reg [7:0]         comb_ifmap_h;
+    reg [7:0]         comb_ifmap_w;
+    reg [ADDR_W-1:0]  comb_feat_addr;
+    reg [SPECT_AW-1:0] comb_sp_raddr;
+    reg [12:0]        comb_w_addr;
+
+    always @(*) begin
+        // Determine input feature-map dimensions for current layer
+        if (layer == 4'd0) begin
+            comb_ifmap_h = 8'd50;
+            comb_ifmap_w = 8'd40;
+        end else begin
+            comb_ifmap_h = cfg_ofmap_h[layer - 1];
+            comb_ifmap_w = cfg_ofmap_w[layer - 1];
+        end
+
+        // Input spatial coordinates
+        comb_ih_raw = ($signed({1'b0, oh}) * $signed({2'b0, cfg_stride_h[layer]}))
+                    + $signed({1'b0, kh})
+                    - $signed({1'b0, cfg_pad_h[layer]});
+        comb_iw_raw = ($signed({1'b0, ow}) * $signed({2'b0, cfg_stride_w[layer]}))
+                    + $signed({1'b0, kw})
+                    - $signed({1'b0, cfg_pad_w[layer]});
+
+        comb_in_bounds = (comb_ih_raw >= 9'sh0)
+                      && (comb_ih_raw < $signed({1'b0, comb_ifmap_h}))
+                      && (comb_iw_raw >= 9'sh0)
+                      && (comb_iw_raw < $signed({1'b0, comb_ifmap_w}));
+
+        // Spectrogram read address (layer 0 only)
+        comb_sp_raddr = (comb_in_bounds)
+            ? ($unsigned(comb_ih_raw[7:0]) * 8'd40 + $unsigned(comb_iw_raw[7:0]))
+            : {SPECT_AW{1'b0}};
+
+        // Feature SRAM read address (layers 1-9)
+        comb_feat_addr = (comb_in_bounds)
+            ? ((cfg_dw[layer] ? oc : ic) * comb_ifmap_h * comb_ifmap_w
+               + $unsigned(comb_ih_raw[7:0]) * comb_ifmap_w
+               + $unsigned(comb_iw_raw[7:0]))
+            : {ADDR_W{1'b0}};
+
+        // Weight SRAM read address
+        if (cfg_dw[layer])
+            comb_w_addr = cfg_w_off[layer]
+                        + oc * cfg_kH[layer] * cfg_kW[layer]
+                        + kh * cfg_kW[layer] + kw;
+        else
+            comb_w_addr = cfg_w_off[layer]
+                        + oc * cfg_in_ch[layer] * cfg_kH[layer] * cfg_kW[layer]
+                        + ic * cfg_kH[layer] * cfg_kW[layer]
+                        + kh * cfg_kW[layer] + kw;
+    end
+
+    // Drive SRAM read address ports combinationally
+    assign sp_raddr   = comb_sp_raddr;
+    assign w_addr     = comb_w_addr;
+    assign fs_a_raddr = comb_feat_addr;
+    assign fs_b_raddr = comb_feat_addr;
 
     always @(posedge clk) begin
         if (reset) begin
@@ -197,7 +270,9 @@ module FSM #(
             mac_clear <= 1'b0;
             fs_a_we   <= 1'b0;
             fs_b_we   <= 1'b0;
-            sp_raddr  <= {SPECT_AW{1'b0}};
+            global_pool_idx <= 3'd0;
+            for (int i = 0; i < 7; i = i + 1)
+                global_pool_acc[i] <= {ACC_W{1'b0}};
         end else begin
             mac_en    <= 1'b0;
             mac_clear <= 1'b0;
@@ -208,73 +283,42 @@ module FSM #(
             case (state)
 
                 IDLE: begin
-                    // Is spectrogram and config loading ready 
+                    // Is spectrogram and config loading ready
                     if (start && cfg_load_done && spect_ready && weights_ready) begin
                         layer   <= 4'd0;
-                        buf_sel <= 1'b0;   
+                        buf_sel <= 1'b0;
                         state   <= LOAD_LAYER;
                     end
                 end
 
                 LOAD_LAYER: begin
+                    rq_mult    <= cfg_mult[layer];
                     rq_shift   <= cfg_shift[layer];
                     rq_relu_en <= cfg_relu[layer];
                     oh <= 8'd0; ow <= 8'd0; oc <= 8'd0;
+                    // Zero the GAP accumulators at the start of the classifier layer
+                    if (layer == N_LAYERS-1) begin
+                        for (int i = 0; i < 7; i = i + 1)
+                            global_pool_acc[i] <= {ACC_W{1'b0}};
+                    end
                     state <= CLEAR_ACC;
                 end
 
                 CLEAR_ACC: begin
-                    mac_bias  <= 32'sh0;
+                    mac_bias  <= bias_data;
                     mac_clear <= 1'b1;
-                    ic <= 8'd0; kh <= 4'd0; kw <= 4'd0; mac_idx <= 4'd0;
+                    ic <= 8'd0; kh <= 4'd0; kw <= 4'd0;
+                    state <= FETCH;
+                end
+
+                FETCH: begin
                     state <= COMPUTE;
                 end
 
-                //Each pass through COMPUTE processes one kernel position for one output pixel 
+                
                 COMPUTE: begin
-                    // Compute input (ifmap) spatial coordinates
-                    ih_raw = ($signed({1'b0, oh}) * $signed({2'b0, cfg_stride_h[layer]})) //ih_raw = oh * stride_h + kh - pad_h
-                           + $signed({1'b0, kh})
-                           - $signed({1'b0, cfg_pad_h[layer]});
-                    iw_raw = ($signed({1'b0, ow}) * $signed({2'b0, cfg_stride_w[layer]})) //iw_raw = ow * stride_w + kw - pad_w
-                           + $signed({1'b0, kw})
-                           - $signed({1'b0, cfg_pad_w[layer]});
-
-                    // Layer 0 input: 50 rows × 40 cols (# of frames x # of N_MELS) 
-                    if (layer == 4'd0) begin
-                        ifmap_h = 8'd50;
-                        ifmap_w = 8'd40;
-                    end else begin
-                        ifmap_h = cfg_ofmap_h[layer - 1]; // ifmap_h/w based on ofmap_h/w of previous layer 
-                        ifmap_w = cfg_ofmap_w[layer - 1];
-                    end
-
-                    in_bounds = (ih_raw >= 9'sh0)
-                             && (ih_raw < $signed({1'b0, ifmap_h})) // ifmap_h is unsigned reg (need $signed to compute -ih_raw < ifmap_h) 
-                             && (iw_raw >= 9'sh0)
-                             && (iw_raw < $signed({1'b0, ifmap_w}));
-
-                    // Compute spectrogram addr (Row * 40 + Column) Row-Col indexing 
-                    if (layer == 4'd0) begin                        
-                        sp_raddr <= in_bounds       // if in_bounds -> can treat as unsigned
-                            ? ($unsigned(ih_raw[7:0]) * 8'd40 + $unsigned(iw_raw[7:0]))
-                            : {SPECT_AW{1'b0}};     
-                    end else begin
-                        // Compute feature SRAM addr = ic*H*W + ih*W + iw
-                        feat_addr = in_bounds
-                            ? (ic * ifmap_h * ifmap_w
-                               + $unsigned(ih_raw[7:0]) * ifmap_w
-                               + $unsigned(iw_raw[7:0]))
-                            : {ADDR_W{1'b0}};
-                        if (!buf_sel) fs_a_raddr <= feat_addr;
-                        else          fs_b_raddr <= feat_addr;
-                    end
-
-                    // Feed MAC_array 
-                    mac_en <= 1'b1;
-
-                    // Decide where to read from to feed MAC 
-                    if (!in_bounds) begin
+                    // Select ifmap value (zero for out-of-bounds / padding)
+                    if (!comb_in_bounds) begin
                         ifmap_val = {DATA_W{1'b0}};
                     end else if (layer == 4'd0) begin
                         ifmap_val = sp_rdata;
@@ -282,43 +326,36 @@ module FSM #(
                         ifmap_val = (!buf_sel) ? fs_a_rdata : fs_b_rdata;
                     end
 
-                    // Compute Weight Address
-                    // Depthwise: base + (ic*kH*kW + kh*kW + kw)
-                    // (pointwise: base + (oc*in_ch*kH*kW + ic*kH*kW + kh*kW + kw)
-                    if (cfg_dw[layer])    // depthwise 
-                        w_addr <= cfg_w_off[layer]                      // Row-Major flattened memory indexing
-                                + ic * cfg_kH[layer] * cfg_kW[layer]
-                                + kh * cfg_kW[layer] + kw;
-                    else
-                        w_addr <= cfg_w_off[layer]  // pointwise
-                                + oc * cfg_in_ch[layer] * cfg_kH[layer] * cfg_kW[layer]
-                                + ic * cfg_kH[layer] * cfg_kW[layer]
-                                + kh * cfg_kW[layer] + kw;
+                    // Accumulate — always enabled; DRAIN flushes the last product
+                    mac_en     <= 1'b1;
+                    mac_ifmap  <= ifmap_val;
+                    mac_weight <= w_data;
 
-                    // Select which MAC lane 
-                    mac_ifmap [mac_idx] <= ifmap_val;
-                    mac_weight[mac_idx] <= w_data;
-                    mac_idx            <= mac_idx + 1; // Counter that wraps naturally at 4'b1111 -> 4'b0000
-
-                    // Check if entire kernel is computed 
-                    if (kw == cfg_kW[layer]-1 && kh == cfg_kH[layer]-1 &&
-                        ic == cfg_in_ch[layer]-1) begin
-                        mac_en <= 1'b0;
-                        state  <= WRITE_OFMAP;
-                    end else begin  // increment kernel width if not at end of row 
-                        if (kw < cfg_kW[layer]-1) begin
-                            kw <= kw + 1;
+                    // Advance kernel position counters
+                    if (kw < cfg_kW[layer]-1) begin
+                        kw    <= kw + 1;
+                        state <= FETCH;          // pre-fetch next position
+                    end else begin
+                        kw <= 4'd0;
+                        if (kh < cfg_kH[layer]-1) begin
+                            kh    <= kh + 1;
+                            state <= FETCH;
                         end else begin
-                            kw <= 4'd0;
-                            if (kh < cfg_kH[layer]-1) begin // increment kernel height if not at end of column 
-                                kh <= kh + 1;
+                            kh <= 4'd0;
+                            if (!cfg_dw[layer] && ic < cfg_in_ch[layer]-1) begin
+                                ic    <= ic + 1;
+                                state <= FETCH;
                             end else begin
-                                kh <= 4'd0;
-                                if (!cfg_dw[layer]) // increment ic for pointwise 
-                                    ic <= ic + 1;
+                                // Last kernel element — drain before writing output
+                                state <= DRAIN;
                             end
                         end
                     end
+                end
+
+     
+                DRAIN: begin
+                    state <= WRITE_OFMAP;
                 end
 
                 WRITE_OFMAP: begin
@@ -334,12 +371,10 @@ module FSM #(
                         fs_a_wdata <= rq_out;
                     end
 
-                    // Argmax for classifier layer
-                    if (layer == 4'd9) begin
-                        if (oc == 8'd0 || $signed(mac_acc) > $signed(max_val)) begin
-                            max_val <= mac_acc;
-                            max_idx <= oc[2:0];
-                        end
+                    // Global average pool: accumulate INT8 outputs across the 25×20 spatial map.
+                    if (layer == N_LAYERS-1) begin
+                        global_pool_acc[oc[2:0]] <= global_pool_acc[oc[2:0]]
+                                                  + {{24{rq_out[7]}}, rq_out};
                     end
 
                     state <= NEXT_PIXEL;
@@ -369,12 +404,28 @@ module FSM #(
 
                 NEXT_LAYER: begin
                     buf_sel <= ~buf_sel;
-                    if (layer == N_LAYERS-1)
-                        state <= OUTPUT;
-                    else begin
+                    if (layer == N_LAYERS-1) begin
+                        // Classifier done — enter global pool argmax scan
+                        global_pool_idx <= 3'd0;
+                        state           <= GLOBAL_POOL;
+                    end else begin
                         layer <= layer + 1;
                         state <= LOAD_LAYER;
                     end
+                end
+
+                // Scan the 7 global_pool_acc entries and find the winning class.
+                // Takes exactly 7 cycles (one per class), then proceeds to OUTPUT.
+                GLOBAL_POOL: begin
+                    if (global_pool_idx == 3'd0 ||
+                            $signed(global_pool_acc[global_pool_idx]) > $signed(max_val)) begin
+                        max_val <= global_pool_acc[global_pool_idx];
+                        max_idx <= global_pool_idx;
+                    end
+                    if (global_pool_idx == 3'd6)
+                        state <= OUTPUT;
+                    else
+                        global_pool_idx <= global_pool_idx + 1;
                 end
 
                 OUTPUT: begin
@@ -388,5 +439,8 @@ module FSM #(
     end
 
     assign inference_idle = (state == IDLE);
+
+    // Bias address: 9-bit = {cfg_bias_hi[layer], cfg_bias_off[layer]} + oc
+    assign bias_addr = {cfg_bias_hi[layer], cfg_bias_off[layer]} + {1'b0, oc};
 
 endmodule

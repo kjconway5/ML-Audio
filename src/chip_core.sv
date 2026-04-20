@@ -49,53 +49,40 @@ module chip_core #(
     logic _unused;                  // TODO: Set ununsed wires here 
     assign _unused = &bidir_in;
  
-
-    // Example SRAM instantiation from Wafer Space
-    // logic [NUM_BIDIR_PADS-1:0] count;
-    // always_ff @(posedge clk) begin
-    //     if (!rst_n) begin
-    //         count <= '0;
-    //     end else begin
-    //         if (&input_in) begin
-    //             count <= count + 1;
-    //         end
-    //     end
-    // end
- 
-    // logic [7:0] sram_0_out;
-    // gf180mcu_fd_ip_sram__sram512x8m8wm1 sram_0 (
-    //     `ifdef USE_POWER_PINS
-    //     .VDD  (VDD),
-    //     .VSS  (VSS),
-    //     `endif
-    //     .CLK  (clk),
-    //     .CEN  (1'b1),
-    //     .GWEN (1'b0),
-    //     .WEN  (8'b0),
-    //     .A    ('0),
-    //     .D    ('0),
-    //     .Q    (sram_0_out)
-    // );
- 
-    // logic [7:0] sram_1_out;
-    // gf180mcu_fd_ip_sram__sram512x8m8wm1 sram_1 (
-    //     `ifdef USE_POWER_PINS
-    //     .VDD  (VDD),
-    //     .VSS  (VSS),
-    //     `endif
-    //     .CLK  (clk),
-    //     .CEN  (1'b1),
-    //     .GWEN (1'b0),
-    //     .WEN  (8'b0),
-    //     .A    ('0),
-    //     .D    ('0),
-    //     .Q    (sram_1_out)
-    // );
- 
-    // assign bidir_out = count ^ {24'd0, sram_0_out, sram_1_out};
  
     wire reset; 
     assign reset = ~rst_n; 
+
+    // SRAM loading signals 
+    // active during bootup, will be driven by UART/SPI controller
+ 
+    // Mel coeff SRAM flash (sparse coefficients, 256 x 16-bit)
+    logic        flash_mel_coeff_we;
+    logic [7:0]  flash_mel_coeff_addr;
+    logic [15:0] flash_mel_coeff_data;
+ 
+    // Mel index SRAM flash (starts/ends/offsets, 256 x 8-bit)
+    logic        flash_mel_index_we;
+    logic [7:0]  flash_mel_index_addr;
+    logic [7:0]  flash_mel_index_data;
+ 
+    // Log LUT SRAM flash (64 x 16-bit)
+    logic        flash_log_lut_we;
+    logic [5:0]  flash_log_lut_addr;
+    logic [15:0] flash_log_lut_data;
+ 
+    // TODO: Connect these to simple_flash instances 
+    // ALSO: Must figure out how the 16-bit values will be driven from the 8-bit UART/SPI loading interface
+    // For now, directly tie to zero (SRAMs will use $readmemh in simulation).
+    assign flash_mel_coeff_we   = 1'b0;
+    assign flash_mel_coeff_addr = 8'd0;
+    assign flash_mel_coeff_data = 16'd0;
+    assign flash_mel_index_we   = 1'b0;
+    assign flash_mel_index_addr = 8'd0;
+    assign flash_mel_index_data = 8'd0;
+    assign flash_log_lut_we     = 1'b0;
+    assign flash_log_lut_addr   = 6'd0;
+    assign flash_log_lut_data   = 16'd0;
 
     // Spectrogram signals 
     // Bank A 
@@ -117,29 +104,40 @@ module chip_core #(
     wire [2:0]      kws_class_out; 
 
     pipeline_top #(
-        .IW_STFFT(14),
-        .OW_STFFT(18),
-        .FFT_SIZE(256),
-        .N_MELS(40),
-        .N_BINS(129),
-        .N_FRAMES(50),
-        .SPECT_SHIFT(4),    // update this after retraining
-        .ADDR_W(11)
-    ) 
-    pipeline_inst (
-        .clk_i(clk),
-        .reset_i(reset),
-        .data_i('0),          // TODO: connect to audio input pads
-        .valid_i(1'b0),        // TODO: connect to audio valid pad
-        .sp_a_we(sp_a_we),
-        .sp_a_waddr(sp_a_waddr),
-        .sp_a_wdata(sp_a_wdata),
-        .sp_b_we(sp_b_we),
-        .sp_b_waddr(sp_b_waddr),
-        .sp_b_wdata(sp_b_wdata),
-        .spect_done(spect_done),
-        .spect_write_sel(spect_write_sel)
-    ); 
+        .IW_STFFT   (14),
+        .OW_STFFT   (18),
+        .FFT_SIZE   (256),
+        .N_MELS     (40),
+        .N_BINS     (129),
+        .N_FRAMES   (50),
+        .SPECT_SHIFT(4), // update after retraining
+        .ADDR_W     (11),
+        .LUT_FRAC   (6)
+    ) pipeline_inst (
+        .clk_i              (clk),
+        .reset_i            (reset),
+        .data_i             ('0),           // TODO: connect to audio input pads
+        .valid_i            (1'b0),         // TODO: connect to audio valid pad
+        .sp_a_we            (sp_a_we),
+        .sp_a_waddr         (sp_a_waddr),
+        .sp_a_wdata         (sp_a_wdata),
+        .sp_b_we            (sp_b_we),
+        .sp_b_waddr         (sp_b_waddr),
+        .sp_b_wdata         (sp_b_wdata),
+        .spect_done         (spect_done),
+        .spect_write_sel    (spect_write_sel),
+
+        // Flash ports
+        .flash_mel_coeff_we_i   (flash_mel_coeff_we),
+        .flash_mel_coeff_addr_i (flash_mel_coeff_addr),
+        .flash_mel_coeff_data_i (flash_mel_coeff_data),
+        .flash_mel_index_we_i   (flash_mel_index_we),
+        .flash_mel_index_addr_i (flash_mel_index_addr),
+        .flash_mel_index_data_i (flash_mel_index_data),
+        .flash_log_lut_we_i     (flash_log_lut_we),
+        .flash_log_lut_addr_i   (flash_log_lut_addr),
+        .flash_log_lut_data_i   (flash_log_lut_data)
+    );
 
     kws_top kws_inst (
         .clk(clk),

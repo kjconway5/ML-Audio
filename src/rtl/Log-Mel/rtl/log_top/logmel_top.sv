@@ -8,6 +8,7 @@ module logmel_top #(
     parameter int WEIGHT_W   = 16,   // mel coefficient width
     parameter int ACCUM_W    = 54,   // MAC accumulator width
     parameter int LOG_OUT_W  = 16,   // log_lut output width
+    parameter int LUT_FRAC   = 6,    // log2 LUT fractional bits
     parameter int OUT_W      = 16    // output width to CNN
 )(
     input  logic [0:0] clk_i,
@@ -22,7 +23,22 @@ module logmel_top #(
     // to CNN
     output logic [OUT_W-1:0]    cnn_data_ol,  // log-mel feature value
     output logic [0:0]          cnn_valid_ol, // valid handshake to CNN
-    input  logic [0:0]          cnn_ready_il  // backpressure from CNN
+    input  logic [0:0]          cnn_ready_il,  // backpressure from CNN
+
+    // Flash write for mel coeff SRAM (sparse, 256 x 16-bit via two sram256x8)
+    input  logic [0:0]          flash_mel_coeff_we_i,
+    input  logic [7:0]          flash_mel_coeff_addr_i,
+    input  logic [15:0]         flash_mel_coeff_data_i,
+ 
+    // Flash write for mel index SRAM (starts/ends/offsets, 256 x 8-bit)
+    input  logic [0:0]          flash_mel_index_we_i,
+    input  logic [7:0]          flash_mel_index_addr_i,
+    input  logic [7:0]          flash_mel_index_data_i,
+ 
+    // Flash write for log LUT SRAM (64 x 16-bit via two sram64x8)
+    input  logic [0:0]          flash_log_lut_we_i,
+    input  logic [LUT_FRAC-1:0] flash_log_lut_addr_i,
+    input  logic [LOG_OUT_W-1:0] flash_log_lut_data_i
 );
 
     // Internal Signals
@@ -66,19 +82,27 @@ module logmel_top #(
     // accumulates power*weight for all 40 filters across 129 bins
     // self-manages bin counter, pulses valid_ol when frame complete
     mel_filterbank #(
-        .N_MELS    (N_MELS),
-        .N_BINS    (N_BINS),
-        .MAX_COEFFS(MAX_COEFFS),
-        .POWER_W   (POWER_W),
-        .WEIGHT_W  (WEIGHT_W),
-        .ACCUM_W   (ACCUM_W)
+        .N_MELS     (N_MELS),
+        .N_BINS     (N_BINS),
+        .MAX_COEFFS (MAX_COEFFS),
+        .POWER_W    (POWER_W),
+        .WEIGHT_W   (WEIGHT_W),
+        .ACCUM_W    (ACCUM_W)
     ) u_mel_filterbank (
-        .clk_i    (clk_i),
-        .reset_i  (reset_i),
-        .power_il (power),
-        .valid_il (power_valid),
-        .mel_ol   (mel_energy),
-        .valid_ol (filterbank_done)
+        .clk_i               (clk_i),
+        .reset_i             (reset_i),
+        .power_il            (power),
+        .valid_il            (power_valid),
+        .mel_ol              (mel_energy),
+        .valid_ol            (filterbank_done),
+        // Flash coeff SRAM
+        .flash_coeff_we_i    (flash_mel_coeff_we_i),
+        .flash_coeff_addr_i  (flash_mel_coeff_addr_i),
+        .flash_coeff_data_i  (flash_mel_coeff_data_i),
+        // Flash index SRAM
+        .flash_index_we_i    (flash_mel_index_we_i),
+        .flash_index_addr_i  (flash_mel_index_addr_i),
+        .flash_index_data_i  (flash_mel_index_data_i)
     );
 
     // frame_controller
@@ -101,19 +125,23 @@ module logmel_top #(
     // compresses 40 mel energies one per cycle using Log2 IP + LUT
     // mel_idx steps 0->39 driven by frame_controller during LOG_COMPRESS state
     log_lut #(
-        .ACCUM_W  (ACCUM_W),
-        .N_MELS   (N_MELS),
-        .LOG_OUT_W(LOG_OUT_W),
-        .LUT_FRAC (6),
-        .Q_FRAC   (12)
+        .ACCUM_W   (ACCUM_W),
+        .N_MELS    (N_MELS),
+        .LOG_OUT_W (LOG_OUT_W),
+        .LUT_FRAC  (LUT_FRAC),
+        .Q_FRAC    (10) // changed from 12 to 10 for 6.10 because it was saturating very easily with 12 fractional bits
     ) u_log_lut (
-        .clk          (clk_i),
-        .reset        (reset_i),
-        .mel_energy_i (mel_energy),   // from mel_filterbank
-        .mel_idx_i    (mel_idx),      // from frame_controller
-        .log_en_i     (log_en),       // from frame_controller
-        .log_out_o    (log_out),      // to output_buffer
-        .log_done_o   (log_done)      // to output_buffer
+        .clk_i                 (clk_i),
+        .reset_i               (reset_i),
+        .mel_energy_i        (mel_energy), // from mel filterbank
+        .mel_idx_i           (mel_idx), // from frame controller
+        .log_en_i            (log_en), // from frame controller
+        .log_out_o           (log_out), // to output buffer
+        .log_done_o          (log_done), // to frame controller
+        // Flash log LUT SRAM
+        .flash_write_enable_i (flash_log_lut_we_i),
+        .flash_addr_i         (flash_log_lut_addr_i),
+        .flash_write_data_i   (flash_log_lut_data_i)
     );
 
     // output_buffer

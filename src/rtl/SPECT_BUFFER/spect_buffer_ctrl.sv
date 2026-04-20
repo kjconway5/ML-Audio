@@ -64,7 +64,7 @@ module spect_buffer_ctrl #(
             spect_done <= 1'b0;  // default: deassert each cycle
 
             if (cnn_valid_i) begin
-                if (wr_addr == ADDR_W'(TOTAL_SAMPLES - 1)) begin
+                if (wr_addr == TOTAL_SAMPLES-1) begin
                     // Last sample of this window just written
                     wr_addr         <= '0;
                     spect_done      <= 1'b1;

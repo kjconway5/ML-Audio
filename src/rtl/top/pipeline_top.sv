@@ -1,31 +1,27 @@
 
 module pipeline_top #(
+    // stfft params
+    parameter IW_STFFT = 14,
+    parameter OW_STFFT = 18,
+    parameter FFT_SIZE = 256,
 
-    // STFFT params
-    parameter int IW_STFFT  = 16,
-    parameter int OW_STFFT  = 16,
-    parameter int FFT_SIZE  = 256,
-
-
-    // LogMel params
-    parameter int IW_LOGMEL  = OW_STFFT,  // 16
-    parameter int SHIFT      = 6,
-    parameter int N_MELS     = 40,
-    parameter int N_BINS     = 129,        // first N/2+1 FFT bins (real signal)
-    parameter int MAX_COEFFS = 16,
-    // POWER_W = 2*IW_LOGMEL - SHIFT + 1 - 1
-    // With IW=16, SHIFT=6: 2*16 - 6 + 1 - 1 = 26
-    parameter int POWER_W    = 2*IW_LOGMEL - SHIFT,
-    parameter int WEIGHT_W   = 16,
-    parameter int ACCUM_W    = 54,
-    parameter int LOG_OUT_W  = 16,
+    // logmel params
+    parameter int IW_LOGMEL  = OW_STFFT,   // STFT output width
+    parameter int SHIFT      = 6,          // power_calc shift
+    parameter int N_MELS     = 40,         // mel bins
+    parameter int N_BINS     = 129,        // FFT bins
+    parameter int MAX_COEFFS = 16,         // sparse ROM depth
+    parameter int POWER_W    = 31,         // power_calc output width = 2*IW - SHIFT + 1 - 1
+    parameter int WEIGHT_W   = 16,         // mel coefficient width
+    parameter int ACCUM_W    = 54,         // MAC accumulator width
+    parameter int LOG_OUT_W  = 16,         // log_lut output width
     parameter int LUT_FRAC   = 6,
-    parameter int OUT_W      = 16,
+    parameter int OUT_W      = 16,         // output width to CNN
 
-    // Spectrogram buffer params
-    parameter int SPECT_SHIFT = 4,
-    parameter int N_FRAMES    = 50,
-    parameter int ADDR_W      = 11
+    //spect_buffer params 
+    parameter int SPECT_SHIFT = 4,       // first_conv SPECT_SHIFT from export.py
+    parameter int N_FRAMES    = 50,      // frames per inference window
+    parameter int ADDR_W      = 11       // must match spectrogram_sram ADDR_W
 ) (
     input  logic clk_i,
     input  logic reset_i,
@@ -40,10 +36,23 @@ module pipeline_top #(
     // log-domain correction:  true_log_power = computed_log + 2*bfpexp*log2(2)
     output logic signed [7:0]  bfpexp_o,
 
-    // Spectrogram SRAM — Bank A
-    output wire                sp_a_we,
-    output wire [ADDR_W-1:0]   sp_a_waddr,
-    output wire signed [7:0]   sp_a_wdata,
+    output logic                    spect_done,
+    output logic                    spect_write_sel,
+
+    // Flash write for mel coeff SRAM (sparse, 256 x 16-bit)
+    input  logic [0:0]            flash_mel_coeff_we_i,
+    input  logic [7:0]            flash_mel_coeff_addr_i,
+    input  logic [15:0]           flash_mel_coeff_data_i,
+ 
+    // Flash write for mel index SRAM (starts/ends/offsets, 256 x 8-bit)
+    input  logic [0:0]            flash_mel_index_we_i,
+    input  logic [7:0]            flash_mel_index_addr_i,
+    input  logic [7:0]            flash_mel_index_data_i,
+ 
+    // Flash write for log LUT SRAM (64 x 16-bit)
+    input  logic [0:0]            flash_log_lut_we_i,
+    input  logic [LUT_FRAC-1:0]   flash_log_lut_addr_i,
+    input  logic [LOG_OUT_W-1:0]  flash_log_lut_data_i
 
     // Spectrogram SRAM — Bank B
     output wire                sp_b_we,
@@ -67,39 +76,9 @@ module pipeline_top #(
     input  logic [LOG_OUT_W-1:0] flash_log_lut_data_i
 );
 
-
-// 1.  STFFT  (R2FFT-based, Hanning window, 256-point)
-/*
-     Timing contract of new stfft:
-       - o_fft_sync pulses HIGH for 1 cycle when DMA readout begins.
-         This is 1 cycle BEFORE the first valid o_fft_result word.
-       - o_fft_result is then valid for FFT_SIZE consecutive clock cycles
-         at full speed (no gaps, no win_ce gating on the output side).
-       - win_ce_o reflects the windowed INPUT sample strobe (3-cycle
-         pipeline delay from i_ce).  It is NOT an output valid.
-       - o_bfpexp is the block FP exponent for the completed frame; it is
-         stable while DMA readout is in progress.
-*/
-
-logic [2*OW_STFFT-1:0] o_fft_result;   // {re[15:0], im[15:0]}
-logic                   o_fft_sync;
-logic                   win_ce_raw;     // windowed input CE — kept for debug
-logic signed [7:0]      bfpexp_raw;
-
-stfft #(
-    .IW      (IW_STFFT),   // 16
-    .OW      (OW_STFFT),   // 16
-    .FFT_SIZE(FFT_SIZE)    // 256
-) u_stfft (
-    .i_clk       (clk_i),
-    .i_reset     (reset_i),
-    .i_ce        (valid_i),
-    .i_sample    (data_i),
-    .o_fft_result(o_fft_result),
-    .o_fft_sync  (o_fft_sync),
-    .win_ce_o    (win_ce_raw),    // ← windowed INPUT ce, not used for output gating
-    .o_bfpexp    (bfpexp_raw)
-);
+    
+    localparam int CNT_W = $clog2(N_BINS + 1);
+    logic [CNT_W-1:0] bin_cnt_q;
 
 // Register bfpexp so it is stable and aligned with the pipeline output
 always_ff @(posedge clk_i) begin
@@ -246,5 +225,77 @@ spect_buffer_ctrl #(
     .spect_done     (spect_done),
     .spect_write_sel(spect_write_sel)
 );
+
+    logic fft_valid;
+    assign fft_valid = (bin_cnt_q > 0) && win_ce_rr;
+
+    // Spectrogram output signals 
+    logic [OUT_W-1:0] mel_data;
+    logic             mel_valid;
+    logic             mel_ready;
+
+
+    logmel_top #(
+        .IW        (IW_LOGMEL),
+        .SHIFT     (SHIFT),
+        .N_MELS    (N_MELS),
+        .N_BINS    (N_BINS),
+        .MAX_COEFFS(MAX_COEFFS),
+        .POWER_W   (POWER_W),
+        .WEIGHT_W  (WEIGHT_W),
+        .ACCUM_W   (ACCUM_W),
+        .LOG_OUT_W (LOG_OUT_W),
+        .LUT_FRAC  (LUT_FRAC),
+        .OUT_W     (OUT_W)
+    ) logmel (
+        .clk_i          (clk_i),
+        .reset_i        (reset_i),
+
+        // from STFT 
+        .re_il          (fft_re),
+        .im_il          (fft_im),
+        .fft_valid_il   (fft_valid),
+        .fft_sync_il    (fft_sync_r),  // 1-cycle delayed: arrives before the data
+
+        // to CNN
+        .cnn_data_ol    (mel_data),
+        .cnn_valid_ol   (mel_valid),
+        .cnn_ready_il   (mel_ready), // Driven by spect_buffer always high
+
+        // Flash ports 
+        .flash_mel_coeff_we_i   (flash_mel_coeff_we_i),
+        .flash_mel_coeff_addr_i (flash_mel_coeff_addr_i),
+        .flash_mel_coeff_data_i (flash_mel_coeff_data_i),
+        .flash_mel_index_we_i   (flash_mel_index_we_i),
+        .flash_mel_index_addr_i (flash_mel_index_addr_i),
+        .flash_mel_index_data_i (flash_mel_index_data_i),
+        .flash_log_lut_we_i     (flash_log_lut_we_i),
+        .flash_log_lut_addr_i   (flash_log_lut_addr_i),
+        .flash_log_lut_data_i   (flash_log_lut_data_i)
+    );
+
+
+    spect_buffer_ctrl #(
+        .SPECT_SHIFT(SPECT_SHIFT),
+        .N_MELS     (N_MELS),
+        .N_FRAMES   (N_FRAMES),
+        .IN_W       (OUT_W),
+        .ADDR_W     (ADDR_W)
+    ) spectrogram_buffer (
+        .clk          (clk_i),
+        .reset        (reset_i),
+        .cnn_data_i   (mel_data),
+        .cnn_valid_i  (mel_valid),
+        .cnn_ready_o  (mel_ready),
+        .sp_a_we      (sp_a_we),
+        .sp_a_waddr   (sp_a_waddr),
+        .sp_a_wdata   (sp_a_wdata),
+        .sp_b_we      (sp_b_we),
+        .sp_b_waddr   (sp_b_waddr),
+        .sp_b_wdata   (sp_b_wdata),
+        .spect_done   (spect_done),
+        .spect_write_sel(spect_write_sel)
+    );
+
 
 endmodule
