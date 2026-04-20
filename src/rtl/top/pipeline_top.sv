@@ -15,6 +15,7 @@ module pipeline_top #(
     parameter int WEIGHT_W   = 16,         // mel coefficient width
     parameter int ACCUM_W    = 54,         // MAC accumulator width
     parameter int LOG_OUT_W  = 16,         // log_lut output width
+    parameter int LUT_FRAC   = 6,
     parameter int OUT_W      = 16,         // output width to CNN
 
     //spect_buffer params 
@@ -41,7 +42,22 @@ module pipeline_top #(
     output wire signed [7:0]      sp_b_wdata,
 
     output logic                    spect_done,
-    output logic                    spect_write_sel
+    output logic                    spect_write_sel,
+
+    // Flash write for mel coeff SRAM (sparse, 256 x 16-bit)
+    input  logic [0:0]            flash_mel_coeff_we_i,
+    input  logic [7:0]            flash_mel_coeff_addr_i,
+    input  logic [15:0]           flash_mel_coeff_data_i,
+ 
+    // Flash write for mel index SRAM (starts/ends/offsets, 256 x 8-bit)
+    input  logic [0:0]            flash_mel_index_we_i,
+    input  logic [7:0]            flash_mel_index_addr_i,
+    input  logic [7:0]            flash_mel_index_data_i,
+ 
+    // Flash write for log LUT SRAM (64 x 16-bit)
+    input  logic [0:0]            flash_log_lut_we_i,
+    input  logic [LUT_FRAC-1:0]   flash_log_lut_addr_i,
+    input  logic [LOG_OUT_W-1:0]  flash_log_lut_data_i
 
 );
 
@@ -92,7 +108,6 @@ module pipeline_top #(
 
     
     localparam int CNT_W = $clog2(N_BINS + 1);
-
     logic [CNT_W-1:0] bin_cnt_q;
 
     always_ff @(posedge clk_i) begin
@@ -112,52 +127,66 @@ module pipeline_top #(
     logic             mel_valid;
     logic             mel_ready;
 
+
     logmel_top #(
-        .IW(IW_LOGMEL),
-        .SHIFT(SHIFT),
-        .N_MELS(N_MELS),
-        .N_BINS(N_BINS),
+        .IW        (IW_LOGMEL),
+        .SHIFT     (SHIFT),
+        .N_MELS    (N_MELS),
+        .N_BINS    (N_BINS),
         .MAX_COEFFS(MAX_COEFFS),
-        .POWER_W(POWER_W),
-        .WEIGHT_W(WEIGHT_W),
-        .ACCUM_W (ACCUM_W),
-        .LOG_OUT_W(LOG_OUT_W),
-        .OUT_W(OUT_W)
+        .POWER_W   (POWER_W),
+        .WEIGHT_W  (WEIGHT_W),
+        .ACCUM_W   (ACCUM_W),
+        .LOG_OUT_W (LOG_OUT_W),
+        .LUT_FRAC  (LUT_FRAC),
+        .OUT_W     (OUT_W)
     ) logmel (
-        .clk_i(clk_i),
-        .reset_i(reset_i),
+        .clk_i          (clk_i),
+        .reset_i        (reset_i),
 
         // from STFT 
-        .re_il(fft_re),
-        .im_il(fft_im),
-        .fft_valid_il(fft_valid),
-        .fft_sync_il(fft_sync_r),   // 1-cycle delayed: arrives before the data
+        .re_il          (fft_re),
+        .im_il          (fft_im),
+        .fft_valid_il   (fft_valid),
+        .fft_sync_il    (fft_sync_r),  // 1-cycle delayed: arrives before the data
 
         // to CNN
-        .cnn_data_ol(mel_data),
-        .cnn_valid_ol(mel_valid), 
-        .cnn_ready_il(mel_ready) // Driven by spect_buffer always high
+        .cnn_data_ol    (mel_data),
+        .cnn_valid_ol   (mel_valid),
+        .cnn_ready_il   (mel_ready), // Driven by spect_buffer always high
+
+        // Flash ports 
+        .flash_mel_coeff_we_i   (flash_mel_coeff_we_i),
+        .flash_mel_coeff_addr_i (flash_mel_coeff_addr_i),
+        .flash_mel_coeff_data_i (flash_mel_coeff_data_i),
+        .flash_mel_index_we_i   (flash_mel_index_we_i),
+        .flash_mel_index_addr_i (flash_mel_index_addr_i),
+        .flash_mel_index_data_i (flash_mel_index_data_i),
+        .flash_log_lut_we_i     (flash_log_lut_we_i),
+        .flash_log_lut_addr_i   (flash_log_lut_addr_i),
+        .flash_log_lut_data_i   (flash_log_lut_data_i)
     );
+
 
     spect_buffer_ctrl #(
         .SPECT_SHIFT(SPECT_SHIFT),
-        .N_MELS(N_MELS),
-        .N_FRAMES(N_FRAMES),
-        .IN_W(OUT_W),
-        .ADDR_W(ADDR_W)
+        .N_MELS     (N_MELS),
+        .N_FRAMES   (N_FRAMES),
+        .IN_W       (OUT_W),
+        .ADDR_W     (ADDR_W)
     ) spectrogram_buffer (
-        .clk(clk_i),
-        .reset(reset_i),
-        .cnn_data_imel_data),
-        .cnn_valid_i(mel_valid),
-        .cnn_ready_o(mel_ready),
-        .sp_a_we(sp_a_we),
-        .sp_a_waddr(sp_a_waddr),
-        .sp_a_wdata(sp_a_wdata),
-        .sp_b_we(sp_b_we),
-        .sp_b_waddr(sp_b_waddr),
-        .sp_b_wdata(sp_b_wdata),
-        .spect_done(spect_done),
+        .clk          (clk_i),
+        .reset        (reset_i),
+        .cnn_data_i   (mel_data),
+        .cnn_valid_i  (mel_valid),
+        .cnn_ready_o  (mel_ready),
+        .sp_a_we      (sp_a_we),
+        .sp_a_waddr   (sp_a_waddr),
+        .sp_a_wdata   (sp_a_wdata),
+        .sp_b_we      (sp_b_we),
+        .sp_b_waddr   (sp_b_waddr),
+        .sp_b_wdata   (sp_b_wdata),
+        .spect_done   (spect_done),
         .spect_write_sel(spect_write_sel)
     );
 
