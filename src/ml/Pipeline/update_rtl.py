@@ -20,7 +20,7 @@ import sys
 from pathlib import Path
 
 HERE      = Path(__file__).resolve().parent
-MODEL_DIR = HERE.parent / "models" / "dscnn-pow2-v12"
+MODEL_DIR = HERE.parent / "models" / "dscnn-32mac-v1"
 REPO_ROOT = HERE.parents[2]   # Pipeline → ml → src → repo root
 
 TEST_FILE = REPO_ROOT / "src/rtl/dscnn/kws_top/test_kws_top.py"

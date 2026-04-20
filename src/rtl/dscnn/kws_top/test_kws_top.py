@@ -15,7 +15,6 @@ from rtl_golden import rtl_golden_predict, load_layer_cfgs, load_hex_file
 
 CLK_PERIOD_NS = 100
 
-# ── FSM debug maps ────────────────────────────────────────────────────────────
 FSM_STATES = {
     0:  "IDLE",
     1:  "LOAD_LAYER",
@@ -283,7 +282,6 @@ async def test_kws_inference(dut):
     class_names = manifest["class_names"]
     samples     = manifest["samples"]
 
-    # ── PHASE 1: Print golden arithmetic for all samples before RTL sim ───────
     dut._log.info("=" * 72)
     dut._log.info(f"GOLDEN ARITHMETIC PREVIEW — keyword='{keyword}'  ({len(samples)} samples)")
     dut._log.info("=" * 72)
@@ -323,10 +321,8 @@ async def test_kws_inference(dut):
     dut._log.info("STARTING RTL SIMULATION")
     dut._log.info("=" * 72)
 
-    # ── PHASE 2: RTL simulation for each sample ───────────────────────────────
     cocotb.start_soon(Clock(dut.clk, CLK_PERIOD_NS, unit="ns").start())
 
-    # Reset and load weights once — SRAMs retain content across resets
     await reset_dut(dut)
     await load_weight_sram(dut, weights)
 
@@ -366,7 +362,6 @@ async def test_kws_inference(dut):
 
         results.append({"passed": passed, "rtl_name": rtl_name, "consistent": consistent})
 
-    # ── Final summary ─────────────────────────────────────────────────────────
     n_pass = sum(1 for r in results if r["passed"])
     dut._log.info("=" * 72)
     dut._log.info(f"FINAL RESULT: {n_pass}/{len(results)} samples correctly classified as '{keyword}'")
