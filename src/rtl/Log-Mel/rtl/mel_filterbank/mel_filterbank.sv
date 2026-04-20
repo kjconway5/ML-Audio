@@ -1,7 +1,7 @@
 module mel_filterbank_new #(
     parameter int N_MELS     = 40,
     parameter int N_BINS     = 129,
-    parameter int MAX_COEFFS = 16,
+    parameter int MAX_COEFFS = 16,    // max per filter (still used for bounds checking)
     parameter int POWER_W    = 31,
     parameter int WEIGHT_W   = 16,
     parameter int ACCUM_W    = 54
@@ -17,68 +17,66 @@ module mel_filterbank_new #(
     output logic [N_MELS-1:0][ACCUM_W-1:0] mel_ol,
     output logic [0:0]                     valid_ol,
 
-    // Flash write for coeff SRAM
+    // Flash write — coeff SRAM
     input  logic        flash_coeff_we_i,
-    input  logic [9:0]  flash_coeff_addr_i,
+    input  logic [7:0]  flash_coeff_addr_i,
     input  logic [15:0] flash_coeff_data_i,
 
-    // Flash write for start bin SRAM
-    input  logic        flash_start_we_i,
-    input  logic [5:0]  flash_start_addr_i,
-    input  logic [7:0]  flash_start_data_i,
-
-    // Flash write for end bin SRAM
-    input  logic        flash_end_we_i,
-    input  logic [5:0]  flash_end_addr_i,
-    input  logic [7:0]  flash_end_data_i
+    // Flash write — index SRAM (starts, ends, offsets packed)
+    input  logic        flash_index_we_i,
+    input  logic [7:0]  flash_index_addr_i,
+    input  logic [7:0]  flash_index_data_i
 );
 
     // Power buffer
     logic [POWER_W-1:0] power_buf [N_BINS];
     logic [7:0]         store_ctr;
 
-    // FSM states:
+    // ----------------------------------------------------------------
+    // FSM states
+    // ----------------------------------------------------------------
     //
-    // STORE:  buffer incoming power bins one per valid_il pulse
-    // LOAD:   range_addr presented previous cycle; SRAM reading (1-cycle latency)
-    // WAIT1:  start_out/end_out valid; latch them, present first coeff_addr
-    // WAIT2:  coeff SRAM reading first weight (1-cycle latency)
-    // PROC:   weight valid for current proc_bin, accumulate and present next coeff_addr
-    // DRAIN:  last weight arriving, accumulate final product
-    // LATCH:  write accum to mel_ol, set up next filter or finish
-    typedef enum logic [2:0] { STORE, LOAD, WAIT1, WAIT2, PROC, DRAIN, LATCH } state_t;
+    // STORE:   buffer incoming power bins
+    // LOAD_S:  present index_addr = mel_idx (start bin address)
+    // LOAD_E:  latch start_out, present index_addr = mel_idx + 40 (end bin)
+    // LOAD_O:  latch end_out, present index_addr = mel_idx + 80 (coeff offset)
+    // WAIT_C:  latch coeff_base, present first coeff_addr
+    // WAIT_W:  coeff SRAM reading — weight arrives next cycle
+    // PROC:    weight valid — accumulate, advance
+    // DRAIN:   final weight arriving — accumulate
+    // LATCH:   write result, set up next filter
+    typedef enum logic [3:0] {
+        STORE, LOAD_S, LOAD_E, LOAD_O, WAIT_C, WAIT_W, PROC, DRAIN, LATCH
+    } state_t;
     state_t state;
 
     logic [$clog2(N_MELS)-1:0] mel_idx;
     logic [7:0]                proc_bin;
     logic [7:0]                start_bin_r, end_bin_r;
+    logic [7:0]                coeff_base;   // base offset into sparse coeff array
     logic [ACCUM_W-1:0]        accum;
     logic                      valid_ol_r;
 
     assign valid_ol = valid_ol_r;
 
     // SRAM signals
-    logic [9:0] coeff_addr;
-    logic [5:0] range_addr;
+    logic [7:0]  coeff_addr;
+    logic [7:0]  index_addr;
     logic [WEIGHT_W-1:0] weight;
-    logic [7:0]          start_out, end_out;
+    logic [7:0]          index_out;
 
     mel_coeff_sram u_sram (
         .clk_i              (clk_i),
         .flash_coeff_we_i   (flash_coeff_we_i),
         .flash_coeff_addr_i (flash_coeff_addr_i),
         .flash_coeff_data_i (flash_coeff_data_i),
-        .flash_start_we_i   (flash_start_we_i),
-        .flash_start_addr_i (flash_start_addr_i),
-        .flash_start_data_i (flash_start_data_i),
-        .flash_end_we_i     (flash_end_we_i),
-        .flash_end_addr_i   (flash_end_addr_i),
-        .flash_end_data_i   (flash_end_data_i),
+        .flash_index_we_i   (flash_index_we_i),
+        .flash_index_addr_i (flash_index_addr_i),
+        .flash_index_data_i (flash_index_data_i),
         .coeff_addr_i       (coeff_addr),
         .coeff_data_o       (weight),
-        .range_addr_i       (range_addr),
-        .start_data_o       (start_out),
-        .end_data_o         (end_out)
+        .index_addr_i       (index_addr),
+        .index_data_o       (index_out)
     );
 
     // Calculate MAC product
@@ -98,17 +96,29 @@ module mel_filterbank_new #(
     );
 `endif
 
-    // Each mel filter spans a different bin range (start → end), so filter length varies.
-    // Compute cycles scale with filter width: (#bins = end - start + 1).
-    // Coefficient offset within current filter (0 to n_coeffs-1)
-    logic [7:0] coeff_offset;
-    logic [7:0] n_coeffs;     // number of coefficients for current filter
-
-    // Combinational coeff_addr: always derived from mel_idx and coeff_offset
-    // This is the address we PRESENT to the SRAM this cycle.
-    // The weight we READ this cycle corresponds to the address presented LAST cycle,
-    // which is mel_idx * MAX_COEFFS + (coeff_offset - 1) during PROC,
-    // or mel_idx * MAX_COEFFS + 0 when entering PROC from WAIT2.
+    // ----------------------------------------------------------------
+    // Pipeline timing
+    // ----------------------------------------------------------------
+    //
+    // Index SRAM has 1-cycle read latency.  We need three reads per
+    // filter (start, end, offset), done sequentially:
+    //
+    //  State  | index_addr presented | index_out valid for
+    //  -------+---------------------+---------------------
+    //  LOAD_S | mel_idx + 0         | —
+    //  LOAD_E | mel_idx + 40        | start_bin  → latch
+    //  LOAD_O | mel_idx + 80        | end_bin    → latch
+    //  WAIT_C | —                   | coeff_base → latch, present first coeff_addr
+    //
+    // Coeff SRAM also has 1-cycle latency:
+    //
+    //  WAIT_C | coeff_addr = base   | —
+    //  WAIT_W | coeff_addr = base+1 | (in flight)
+    //  PROC   | coeff_addr = base+2 | weight[base+0] arrives → accumulate
+    //  PROC   | base+3              | weight[base+1] arrives → accumulate
+    //  ...
+    //  DRAIN  | —                   | weight[last] arrives   → accumulate
+    //  LATCH  | —                   | store accum
 
     always_ff @(posedge clk_i) begin
         if (reset_i) begin
@@ -118,11 +128,11 @@ module mel_filterbank_new #(
             proc_bin    <= '0;
             start_bin_r <= '0;
             end_bin_r   <= '0;
+            coeff_base  <= '0;
             accum       <= '0;
             valid_ol_r  <= 1'b0;
-            range_addr  <= '0;
+            index_addr  <= '0;
             coeff_addr  <= '0;
-            n_coeffs    <= '0;
             for (int i = 0; i < N_MELS; i++) mel_ol[i] <= '0;
         end else begin
             valid_ol_r <= 1'b0;
@@ -136,82 +146,79 @@ module mel_filterbank_new #(
                         if (store_ctr == N_BINS - 1) begin
                             store_ctr  <= '0;
                             mel_idx    <= '0;
-                            range_addr <= '0;
-                            state      <= LOAD;
+                            index_addr <= 8'd0;          // present start_bin addr for filter 0
+                            state      <= LOAD_S;
                         end else begin
                             store_ctr <= store_ctr + 1'b1;
                         end
                     end
                 end
 
-                // LOAD: range_addr was presented last cycle.
-                //       SRAM is clocking the read, outputs valid next cycle.
-                LOAD: begin
-                    state <= WAIT1;
+                // LOAD_S: index_addr = mel_idx presented last cycle.
+                //         SRAM reading start_bin — arrives next cycle.
+                //         Present end_bin address now.
+                LOAD_S: begin
+                    index_addr <= mel_idx + 8'd40;       // present end_bin addr
+                    state      <= LOAD_E;
                 end
 
-                // WAIT1: start_out/end_out now valid.
-                //        Latch filter range and Present first coeff_addr to SRAM.
-                WAIT1: begin
-                    start_bin_r <= start_out;
-                    end_bin_r   <= end_out;
-                    proc_bin    <= start_out;
-                    n_coeffs    <= end_out - start_out + 8'd1;
-                    accum       <= '0;
-                    coeff_addr  <= mel_idx * 10'(MAX_COEFFS);  // base + 0
-                    state       <= WAIT2;
+                // LOAD_E: start_bin has arrived from SRAM. Latch it.
+                //         Present offset address.
+                LOAD_E: begin
+                    start_bin_r <= index_out;             // latch start_bin
+                    index_addr  <= mel_idx + 8'd80;      // present offset addr
+                    state       <= LOAD_O;
                 end
 
-                // WAIT2: coeff SRAM is reading address base+0.
-                //        Speculatively present base+1 for the next coefficient.
-                //        Weight for base+0 arrives next cycle.
-                WAIT2: begin
-                    coeff_addr <= coeff_addr + 1'b1;  // present base+1
+                // LOAD_O: end_bin has arrived. Latch it.
+                //         Offset arrives next cycle.
+                LOAD_O: begin
+                    end_bin_r <= index_out;               // latch end_bin
+                    state     <= WAIT_C;
+                end
+
+                // WAIT_C: coeff offset has arrived. Latch it.
+                //         Set up proc_bin, present first coeff_addr.
+                WAIT_C: begin
+                    coeff_base <= index_out;              // latch coeff_base
+                    proc_bin   <= start_bin_r;
+                    accum      <= '0;
+                    coeff_addr <= index_out;              // present base+0 to coeff SRAM
+                    state      <= WAIT_W;
+                end
+
+                // WAIT_W: first coeff_addr presented last cycle, weight in flight.
+                //         Speculatively present base+1.
+                WAIT_W: begin
+                    coeff_addr <= coeff_addr + 1'b1;     // present base+1
                     state      <= PROC;
                 end
 
-                // PROC: weight for CURRENT proc_bin has arrived (it was
-                //       requested 1 cycle ago).  Accumulate product.
-                //
-                //       Then check if this was the last bin:
-                //         proc_bin == end_bin_r → done, go to LATCH
-                //         proc_bin + 1 == end_bin_r → one more weight in flight, go to DRAIN
-                //         otherwise → advance and stay in PROC
-                //
-                //       Key invariant: coeff_addr was already incremented
-                //       last cycle (in WAIT2 or previous PROC), so the NEXT
-                //       weight is already in flight.  We advance proc_bin
-                //       to match that in-flight weight.
+                // PROC: weight valid for current proc_bin. Accumulate.
                 PROC: begin
                     accum <= accum + {{(ACCUM_W-POWER_W-WEIGHT_W){1'b0}}, product};
 
                     if (proc_bin == end_bin_r) begin
-                        // Single-bin filter or we just processed the last bin.
-                        // No more weights in flight.
+                        // Single-bin or last bin — done
                         state <= LATCH;
                     end else if (proc_bin + 8'd1 == end_bin_r) begin
-                        // The weight for the LAST bin is already in flight
-                        // (coeff_addr was presented last cycle).
-                        // Advance proc_bin to match it.  Go to DRAIN.
+                        // Last weight already in flight → DRAIN
                         proc_bin <= proc_bin + 1'b1;
                         state    <= DRAIN;
                     end else begin
-                        // More bins to go.  Advance proc_bin.
-                        // Present next coeff_addr for the bin after that.
+                        // More bins — advance
                         proc_bin   <= proc_bin + 1'b1;
                         coeff_addr <= coeff_addr + 1'b1;
                     end
                 end
 
-                // DRAIN: weight for the last bin (end_bin_r) arrives.
-                //        proc_bin == end_bin_r (set in previous PROC cycle).
-                //        Accumulate final product.
+                // DRAIN: final weight arrives — accumulate
                 DRAIN: begin
                     accum <= accum + {{(ACCUM_W-POWER_W-WEIGHT_W){1'b0}}, product};
                     state <= LATCH;
                 end
 
-                // LATCH: write accumulated result, advance to next filter or finish
+                // LATCH: store result, set up next filter or finish
                 LATCH: begin
                     mel_ol[mel_idx] <= accum;
 
@@ -221,8 +228,8 @@ module mel_filterbank_new #(
                         state      <= STORE;
                     end else begin
                         mel_idx    <= mel_idx + 1'b1;
-                        range_addr <= mel_idx + 1'b1;
-                        state      <= LOAD;
+                        index_addr <= mel_idx + 1'b1;    // present start_bin addr for next filter
+                        state      <= LOAD_S;
                     end
                 end
 

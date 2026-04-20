@@ -39,7 +39,7 @@ def test_mel_filterbank_new_cocotb():
         timescale="1ns/1ps",
         tbpath=str(test_dir),
         jsonpath=str(test_dir),
-        pymodule="test_mel_filterbank_new",
+        pymodule="test_mel_filterbank",
         testname=None,
         root=root
     )

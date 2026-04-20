@@ -19,11 +19,12 @@ ACCUM_MASK = (1 << ACCUM_W) - 1
 CLK_PERIOD_NS = 10
 TOLERANCE = 2**26
 
-TIMEOUT_CYCLES = 129 + N_MELS * (MAX_COEFFS + 8) + 50
+# Per filter: LOAD_S + LOAD_E + LOAD_O + WAIT_C + WAIT_W + coeffs + DRAIN + LATCH
+TIMEOUT_CYCLES = 129 + N_MELS * (MAX_COEFFS + 10) + 50
 
 
-# Reference Model
 class My_MelFilterbank:
+    """Software reference model — pure numpy, no RTL timing."""
     def __init__(self):
         mel_t = T.MelSpectrogram(
             sample_rate=SAMPLE_RATE, n_fft=N_FFT, n_mels=N_MELS,
@@ -39,26 +40,6 @@ class My_MelFilterbank:
 
 
 class MelScoreboard:
-    """
-    Output-level scoreboard for mel_filterbank_new.
-
-    How it works:
-      - push(pb) is called when a frame is sent to the DUT.
-        The reference model computes expected mel_ol immediately and
-        stores it in a queue.
-      - check(dut) is called after valid_ol asserts. It pops the oldest
-        expected result and compares it against the current DUT output.
-
-    Why a queue:
-      The DUT processes one frame at a time (valid_ol pulses once per
-      frame), so push/check calls always stay in order. The queue just
-      decouples "when we sent the frame" from "when the DUT finishes".
-
-    Why output-level and not cycle-accurate:
-      Internal pipeline timing (SRAM latency, accumulation order) is an
-      RTL concern. The scoreboard only cares that the final answer is
-      correct — if it is, all internal timing must have been right too.
-    """
     def __init__(self, ref: My_MelFilterbank):
         self._ref   = ref
         self._queue = deque()
@@ -66,11 +47,9 @@ class MelScoreboard:
         self.n_failed  = 0
 
     def push(self, power_bins: np.ndarray):
-        """Call this when you send a frame to the DUT."""
         self._queue.append(self._ref.compute(power_bins))
 
     def check(self, dut, label: str = ""):
-        """Call this after valid_ol asserts. Compares DUT output to expected."""
         assert self._queue, "Scoreboard check called but no expected result queued"
 
         exp    = self._queue.popleft()
@@ -112,28 +91,27 @@ class MelScoreboard:
             f"{len(self._queue)} expected results were never checked"
 
 
-# Flash helpers for three separate SRAMs
+# ----------------------------------------------------------------
+# Flash helpers — two SRAMs (index + coeff)
+# ----------------------------------------------------------------
 
 def _idle_flash(dut):
-    """Drive all flash ports to idle — call before reset and between loads."""
+    """Drive all flash ports to idle."""
     dut.flash_coeff_we_i.value  = 0
     dut.flash_coeff_addr_i.value = 0
     dut.flash_coeff_data_i.value = 0
-    dut.flash_start_we_i.value  = 0
-    dut.flash_start_addr_i.value = 0
-    dut.flash_start_data_i.value = 0
-    dut.flash_end_we_i.value    = 0
-    dut.flash_end_addr_i.value  = 0
-    dut.flash_end_data_i.value  = 0
+    dut.flash_index_we_i.value  = 0
+    dut.flash_index_addr_i.value = 0
+    dut.flash_index_data_i.value = 0
 
 
 async def flash_load_all(dut):
     _idle_flash(dut)
 
-    # Load coeff SRAM
-    with open(DATA_DIR / "mel_coeffs.hex") as f:
+    # Load sparse coeff SRAM (16-bit entries)
+    with open(DATA_DIR / "mel_coeffs_sparse.hex") as f:
         coeffs = [int(l.strip(), 16) for l in f if l.strip()]
-    cocotb.log.info(f"Flashing {len(coeffs)} coeff entries...")
+    cocotb.log.info(f"Flashing {len(coeffs)} sparse coeff entries...")
     dut.flash_coeff_we_i.value = 1
     for addr, val in enumerate(coeffs):
         dut.flash_coeff_addr_i.value = addr
@@ -142,34 +120,24 @@ async def flash_load_all(dut):
     dut.flash_coeff_we_i.value = 0
     await ClockCycles(dut.clk_i, 2)
 
-    # Load start bin SRAM
-    with open(DATA_DIR / "mel_starts.hex") as f:
-        starts = [int(l.strip(), 16) for l in f if l.strip()]
-    cocotb.log.info(f"Flashing {len(starts)} start entries...")
-    dut.flash_start_we_i.value = 1
-    for addr, val in enumerate(starts):
-        dut.flash_start_addr_i.value = addr
-        dut.flash_start_data_i.value = val & 0xFF
+    # Load index SRAM (8-bit entries: starts[0:39], ends[40:79], offsets[80:119])
+    with open(DATA_DIR / "mel_indices.hex") as f:
+        indices = [int(l.strip(), 16) for l in f if l.strip()]
+    cocotb.log.info(f"Flashing {len(indices)} index entries...")
+    dut.flash_index_we_i.value = 1
+    for addr, val in enumerate(indices):
+        dut.flash_index_addr_i.value = addr
+        dut.flash_index_data_i.value = val & 0xFF
         await RisingEdge(dut.clk_i)
-    dut.flash_start_we_i.value = 0
-    await ClockCycles(dut.clk_i, 2)
-
-    # Load end bin SRAM
-    with open(DATA_DIR / "mel_ends.hex") as f:
-        ends = [int(l.strip(), 16) for l in f if l.strip()]
-    cocotb.log.info(f"Flashing {len(ends)} end entries...")
-    dut.flash_end_we_i.value = 1
-    for addr, val in enumerate(ends):
-        dut.flash_end_addr_i.value = addr
-        dut.flash_end_data_i.value = val & 0xFF
-        await RisingEdge(dut.clk_i)
-    dut.flash_end_we_i.value = 0
+    dut.flash_index_we_i.value = 0
     await ClockCycles(dut.clk_i, 2)
 
     cocotb.log.info("All SRAMs loaded.")
 
 
+# ----------------------------------------------------------------
 # Stimulus helpers
+# ----------------------------------------------------------------
 
 async def reset_dut(dut, cycles: int = 5):
     await RisingEdge(dut.clk_i)
@@ -191,7 +159,6 @@ async def drive_frame(dut, power_bins: np.ndarray):
 
 
 async def wait_for_valid_ol(dut, timeout: int = TIMEOUT_CYCLES) -> int:
-    # Wait for valid_ol to assert, returns cycle count
     for i in range(timeout):
         await RisingEdge(dut.clk_i)
         if dut.valid_ol.value == 1:
@@ -201,7 +168,9 @@ async def wait_for_valid_ol(dut, timeout: int = TIMEOUT_CYCLES) -> int:
     )
 
 
+# ----------------------------------------------------------------
 # Tests
+# ----------------------------------------------------------------
 
 @cocotb.test()
 async def test_mel_filterbank_new(dut):
@@ -213,8 +182,7 @@ async def test_mel_filterbank_new(dut):
     await reset_dut(dut)
     await flash_load_all(dut)
 
-    # Do a second reset after flash loading to ensure clean FSM state
-    # and no stale SRAM output register values from flash or verify
+    # Reset again after flash to ensure clean state
     await reset_dut(dut)
 
     # Test 1: Flat

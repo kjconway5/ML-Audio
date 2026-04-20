@@ -10,7 +10,6 @@
         "src/rtl/Log-Mel/ip/PrefixAndOr.sv",
         "src/rtl/Log-Mel/ip/FullAdder.sv",
 
-        "src/rtl/Log-Mel/rtl/mel_filterbank/mel_filterbank_new.sv",
         "src/rtl/Log-Mel/rtl/mel_filterbank/mel_filterbank.sv",
         "src/rtl/Log-Mel/rtl/mel_filterbank/mel_coeff_sram.sv",
         "src/rtl/Log-Mel/rtl/mac_unit/mac_unit.sv",
