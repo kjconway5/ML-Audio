@@ -11,8 +11,8 @@ N_MELS      = 40
 WIN_LENGTH  = 256
 HOP_LENGTH  = N_FFT // 2       # 128
 
-SAMPLE_W    = 14
-FFT_W       = 18
+SAMPLE_W    = 16
+FFT_W       = 16
 SHIFT       = 6
 POWER_W     = 2 * FFT_W - SHIFT + 1  # 31
 WEIGHT_W    = 16                # Q0.15 mel coefficients

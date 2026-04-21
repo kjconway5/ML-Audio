@@ -1,8 +1,38 @@
+// stfft.sv
+//
+// Short-Time FFT — 50% overlap via two ping-pong R2FFT instances.
+//
+// DESIGN APPROACH — continuous stream into each R2FFT:
+//   Both A and B receive every input sample. 50% stagger comes from
+//   different Hanning coefficient phase:
+//     A coeff index = sample_cnt           (frames at 0, 256, 512, ...)
+//     B coeff index = (sample_cnt - HOP)   (frames at 128, 384, 640, ...)
+//   B is armed after the first HOP samples so it fires done HOP samples
+//   after A.
+//
+// DMA DOUBLE-FIRE FIX:
+//   The R2FFT IP holds 'done' HIGH until 'fin' is asserted.  After a DMA
+//   completes, there is exactly one clock cycle where:
+//     readout_done=0  (just cleared)   AND
+//     dmaact=0        (already cleared) AND
+//     done_r=1        (still held high by R2FFT)
+//   Without the fix this re-triggers a spurious second DMA.  The fix uses
+//   a per-instance 'done_ack' register:
+//     - Set  : when DMA starts (we have acknowledged this done pulse)
+//     - Clear: when done_r falls (R2FFT has de-asserted done, safe to re-arm)
+//   The FSM condition becomes: done_r && !done_ack && !readout_done && !dmaact
+//
+// Timing contract (unchanged from single-instance version):
+//   o_fft_sync fires 1 cycle before the first valid o_fft_result word.
+//   o_fft_result streams FFT_SIZE bins at full clock speed after sync.
+//   o_bfpexp is stable for the duration of each DMA readout.
+
 module stfft #(
     parameter IW       = 16,
     parameter OW       = 16,
     parameter FFT_SIZE = 256,
-    parameter FFT_N    = $clog2(FFT_SIZE)
+    parameter FFT_N    = $clog2(FFT_SIZE),
+    parameter HOP      = FFT_SIZE / 2
 )(
     input  wire             i_clk,
     input  wire             i_reset,
@@ -15,218 +45,331 @@ module stfft #(
 );
 
     reg rst;
-    always @(posedge i_clk)
-        rst <= i_reset;
+    always @(posedge i_clk) rst <= i_reset;
 
-    // Hanning window — 3-cycle pipeline matching windowfn depth
+    // Hanning window ROM (shared read-only; A and B read different indices)
     reg [IW-1:0] hanning_rom [0:FFT_SIZE-1];
     initial $readmemh("hanning.hex", hanning_rom);
 
-    // Stage 1: register sample and fetch coefficient
-    reg signed [IW-1:0]   s1_sample;
-    reg        [IW-1:0]   s1_coeff;
-    reg                   s1_ce;
-    reg [FFT_N-1:0]       sample_cnt;
+    // =========================================================================
+    // Global sample counter — wraps mod FFT_SIZE (FFT_N bits)
+    //   A coeff index = sample_cnt
+    //   B coeff index = sample_cnt - HOP  (natural FFT_N-bit wrap)
+    // =========================================================================
+    reg [FFT_N-1:0] sample_cnt;
+    always @(posedge i_clk) begin
+        if (i_reset)   sample_cnt <= {FFT_N{1'b0}};
+        else if (i_ce) sample_cnt <= sample_cnt + 1'b1;
+    end
 
+    wire [FFT_N-1:0] a_coeff_idx = sample_cnt;
+    wire [FFT_N-1:0] b_coeff_idx = sample_cnt - HOP[FFT_N-1:0];
+
+    // B armed after first HOP samples (stays armed permanently)
+    reg b_armed;
     always @(posedge i_clk) begin
         if (i_reset)
-            sample_cnt <= 0;
-        else if (i_ce)
-            sample_cnt <= sample_cnt + 1;
+            b_armed <= 1'b0;
+        else if (!b_armed && i_ce && (sample_cnt == HOP[FFT_N-1:0]))
+            b_armed <= 1'b1;
     end
+
+    // =========================================================================
+    // Channel A — 3-stage Hanning windowing pipeline (always active)
+    // =========================================================================
+    reg signed [IW-1:0]   a_s1_samp;
+    reg        [IW-1:0]   a_s1_coeff;
+    reg                   a_s1_ce;
 
     always @(posedge i_clk) begin
-        s1_sample <= i_sample;
-        s1_coeff  <= hanning_rom[sample_cnt];
-        s1_ce     <= i_ce;
+        a_s1_samp  <= $signed(i_sample);
+        a_s1_coeff <= hanning_rom[a_coeff_idx];
+        a_s1_ce    <= i_ce;
     end
 
-    // Stage 2: multiply (signed sample * unsigned Hanning coefficient)
-    reg signed [2*IW-1:0] s2_product;
-    reg                   s2_ce;
+    reg signed [2*IW-1:0] a_s2_prod;
+    reg                   a_s2_ce;
+    always @(posedge i_clk) begin
+        a_s2_prod <= a_s1_samp * $signed({1'b0, a_s1_coeff});
+        a_s2_ce   <= a_s1_ce;
+    end
+
+    wire signed [IW-1:0] a_win_w = a_s2_prod[2*IW-2 : IW-1];
+    reg  signed [IW-1:0] a_win;
+    reg                  a_win_ce;
+    always @(posedge i_clk) begin
+        a_win    <= a_win_w;
+        a_win_ce <= a_s2_ce;
+    end
+
+    // =========================================================================
+    // Channel B — identical pipeline, gated until b_armed
+    // =========================================================================
+    reg signed [IW-1:0]   b_s1_samp;
+    reg        [IW-1:0]   b_s1_coeff;
+    reg                   b_s1_ce;
 
     always @(posedge i_clk) begin
-        s2_product <= s1_sample * $signed({1'b0, s1_coeff}); // Q1.15
-        s2_ce      <= s1_ce;
+        b_s1_samp  <= $signed(i_sample);
+        b_s1_coeff <= hanning_rom[b_coeff_idx];
+        b_s1_ce    <= b_armed && i_ce;
     end
 
-    // Stage 3: round and truncate to IW bits
-    wire signed [IW-1:0] win_sample_w = s2_product[2*IW-2 : IW-1];
-    reg  signed [IW-1:0] win_sample;
-    reg                  win_ce;
+    reg signed [2*IW-1:0] b_s2_prod;
+    reg                   b_s2_ce;
+    always @(posedge i_clk) begin
+        b_s2_prod <= b_s1_samp * $signed({1'b0, b_s1_coeff});
+        b_s2_ce   <= b_s1_ce;
+    end
+
+    wire signed [IW-1:0] b_win_w = b_s2_prod[2*IW-2 : IW-1];
+    reg  signed [IW-1:0] b_win;
+    reg                  b_win_ce;
+    always @(posedge i_clk) begin
+        b_win    <= b_win_w;
+        b_win_ce <= b_s2_ce;
+    end
+
+    assign win_ce_o = a_win_ce | b_win_ce;
+
+    // =========================================================================
+    // R2FFT Instance A — input
+    // =========================================================================
+    reg               a_sact;
+    reg signed [15:0] a_sdw_real, a_sdw_imag;
+    always @(posedge i_clk) begin
+        a_sact     <= a_win_ce;
+        a_sdw_real <= {{(16-IW){a_win[IW-1]}}, a_win};
+        a_sdw_imag <= 16'd0;
+    end
+
+    // =========================================================================
+    // R2FFT Instance A — done/DMA FSM with done_ack double-fire fix
+    //
+    // done_ack: set when we start DMA (we've handled this done pulse).
+    //           cleared when done_r falls (R2FFT de-asserted done).
+    // FSM condition: done_r && !done_ack && !readout_done && !dmaact
+    // =========================================================================
+    wire              a_done_w;
+    wire [2:0]        a_status_w;
+    wire signed [7:0] a_bfpexp_w;
+    reg               a_done_r;
+    reg  signed [7:0] a_bfpexp_r;
+    reg               a_done_ack;    // ← double-fire guard
+
+    reg [FFT_N-1:0] a_dma_addr;
+    reg             a_dmaact, a_dmaact_r;
+    reg [FFT_N-1:0] a_dmaa_r;
+    reg             a_readout_done, a_fin_r;
+
+    wire signed [15:0] a_dmadr_real_w, a_dmadr_imag_w;
+    reg  signed [15:0] a_dmadr_real_r, a_dmadr_imag_r;
 
     always @(posedge i_clk) begin
-        win_sample <= win_sample_w;
-        win_ce     <= s2_ce;
+        a_done_r       <= a_done_w;
+        a_bfpexp_r     <= a_bfpexp_w;
+        a_dmaact_r     <= a_dmaact;
+        a_dmaa_r       <= a_dma_addr;
+        a_dmadr_real_r <= a_dmadr_real_w;
+        a_dmadr_imag_r <= a_dmadr_imag_w;
+        a_fin_r        <= a_readout_done;
     end
 
-    assign win_ce_o = win_ce;
-
-    // Registered inputs to R2FFT
-    reg              sact_istream;
-    reg signed [15:0] sdw_istream_real;
-    reg signed [15:0] sdw_istream_imag;
-
+    // done_ack logic: set on DMA start, clear when done_r falls
     always @(posedge i_clk) begin
-        sact_istream     <= win_ce;
-        sdw_istream_real <= {{(16-IW){win_sample[IW-1]}}, win_sample};
-        sdw_istream_imag <= 16'd0;
+        if (i_reset)
+            a_done_ack <= 1'b0;
+        else if (!a_done_r)         // done de-asserted → re-arm for next frame
+            a_done_ack <= 1'b0;
+        else if (a_dmaact)          // DMA has started → mark this done as handled
+            a_done_ack <= 1'b1;
     end
 
-
-    // R2FFT status
-    wire        done_w;
-    wire [2:0]  status_w;
-    wire signed [7:0] bfpexp_w;
-    reg         done_r;
-    reg signed [7:0] bfpexp_r;
-
-    always @(posedge i_clk) begin
-        done_r   <= done_w;
-        bfpexp_r <= bfpexp_w;
-    end
-    assign o_bfpexp = bfpexp_r;
-
-
-    // DMA readout FSM
-    reg [FFT_N-1:0]    dma_addr;
-    reg                dmaact, dmaact_r;
-    reg [FFT_N-1:0]    dmaa_r;
-    reg                readout_done, fin_r;
-
-    wire signed [15:0] dmadr_real_w, dmadr_imag_w;
-    reg  signed [15:0] dmadr_real_r, dmadr_imag_r;
-
-    always @(posedge i_clk) begin
-        dmaact_r    <= dmaact;
-        dmaa_r      <= dma_addr;
-        dmadr_real_r <= dmadr_real_w;
-        dmadr_imag_r <= dmadr_imag_w;
-        fin_r        <= readout_done;
-    end
+    reg [2*OW-1:0] a_result;
+    reg            a_sync;
 
     always @(posedge i_clk) begin
         if (i_reset) begin
-            dmaact       <= 1'b0;
-            dma_addr     <= '0;
-            readout_done <= 1'b0;
-            o_fft_sync   <= 1'b0;
-            o_fft_result <= '0;
+            a_dmaact       <= 1'b0;
+            a_dma_addr     <= {FFT_N{1'b0}};
+            a_readout_done <= 1'b0;
+            a_sync         <= 1'b0;
+            a_result       <= {2*OW{1'b0}};
         end else begin
-            o_fft_sync <= 1'b0;
-
-            if (done_r && !readout_done && !dmaact) begin
-                dmaact     <= 1'b1;
-                dma_addr   <= '0;
-                o_fft_sync <= 1'b1;
-            end else if (dmaact) begin
-                o_fft_result <= {
-                    {{(OW-16){dmadr_real_r[15]}}, dmadr_real_r},
-                    {{(OW-16){dmadr_imag_r[15]}}, dmadr_imag_r}
+            a_sync <= 1'b0;
+            if (a_done_r && !a_done_ack && !a_readout_done && !a_dmaact) begin
+                // Fresh done pulse — start DMA readout
+                a_dmaact   <= 1'b1;
+                a_dma_addr <= {FFT_N{1'b0}};
+                a_sync     <= 1'b1;
+            end else if (a_dmaact) begin
+                a_result <= {
+                    {{(OW-16){a_dmadr_real_r[15]}}, a_dmadr_real_r},
+                    {{(OW-16){a_dmadr_imag_r[15]}}, a_dmadr_imag_r}
                 };
-                dma_addr <= dma_addr + 1;
-                if (dma_addr == FFT_SIZE-1) begin
-                    dmaact       <= 1'b0;
-                    readout_done <= 1'b1;
+                a_dma_addr <= a_dma_addr + 1'b1;
+                if (a_dma_addr == FFT_SIZE - 1) begin
+                    a_dmaact       <= 1'b0;
+                    a_readout_done <= 1'b1;
                 end
-            end else if (readout_done) begin
-                readout_done <= 1'b0;
+            end else if (a_readout_done) begin
+                a_readout_done <= 1'b0;
             end
         end
     end
 
+    // A support hardware
+    wire [FFT_N-3:0] a_twa;  wire a_twact;  wire [15:0] a_twdr_cos;
+    wire a_ract0, a_wact0;  wire [FFT_N-2:0] a_ra0, a_wa0;  wire [31:0] a_rdr0, a_wdw0;
+    wire a_ract1, a_wact1;  wire [FFT_N-2:0] a_ra1, a_wa1;  wire [31:0] a_rdr1, a_wdw1;
 
-    // Twiddle ROM 
-    wire [FFT_N-1-2:0] twa_w;
-    wire               twact_w;
-    wire [15:0]        twdr_cos_w;
+    wire a_ram_active  = a_ract0 | a_wact0 | a_ract1 | a_wact1;
+    wire a_fft_running = (a_status_w == 3'd3);
+    reg  a_ram_r, a_fft_r;
+    always @(posedge i_clk) begin a_ram_r <= a_ram_active;  a_fft_r <= a_fft_running; end
+    wire a_next_stage = a_ram_r & ~a_ram_active & a_fft_r;
 
-    fft_twiddle_rom u_twiddle (
-        .clk     (i_clk),
-        .twact   (twact_w),
-        .twa     (twa_w),
-        .twdr_cos(twdr_cos_w)
+    fft_twiddle_rom u_twiddle_a (.clk(i_clk),.twact(a_twact),.twa(a_twa),.twdr_cos(a_twdr_cos));
+    fft_data_ram u_a_ram0 (.clk(i_clk),.rst(i_reset),.next_stage(a_next_stage),
+        .ract(a_ract0),.ra(a_ra0),.rdata(a_rdr0),.wact(a_wact0),.wa(a_wa0),.wdata(a_wdw0));
+    fft_data_ram u_a_ram1 (.clk(i_clk),.rst(i_reset),.next_stage(a_next_stage),
+        .ract(a_ract1),.ra(a_ra1),.rdata(a_rdr1),.wact(a_wact1),.wa(a_wa1),.wdata(a_wdw1));
+    R2FFT #(.FFT_LENGTH(FFT_SIZE),.FFT_DW(16),.PL_DEPTH(3)) u_r2fft_a (
+        .clk(i_clk),.rst(rst),.autorun(1'b1),.run(1'b0),.fin(a_fin_r),.ifft(1'b0),
+        .done(a_done_w),.status(a_status_w),.bfpexp(a_bfpexp_w),
+        .sact_istream(a_sact),.sdw_istream_real(a_sdw_real),.sdw_istream_imag(a_sdw_imag),
+        .dmaact(a_dmaact_r),.dmaa(a_dmaa_r),.dmadr_real(a_dmadr_real_w),.dmadr_imag(a_dmadr_imag_w),
+        .twact(a_twact),.twa(a_twa),.twdr_cos(a_twdr_cos),
+        .ract_ram0(a_ract0),.ra_ram0(a_ra0),.rdr_ram0(a_rdr0),
+        .wact_ram0(a_wact0),.wa_ram0(a_wa0),.wdw_ram0(a_wdw0),
+        .ract_ram1(a_ract1),.ra_ram1(a_ra1),.rdr_ram1(a_rdr1),
+        .wact_ram1(a_wact1),.wa_ram1(a_wa1),.wdw_ram1(a_wdw1)
     );
 
-
-
-    wire               ract_ram0_w, wact_ram0_w;
-    wire [FFT_N-2:0]   ra_ram0_w,  wa_ram0_w;
-    wire [31:0]        wdw_ram0_w, rdr_ram0_w;
-
-    wire               ract_ram1_w, wact_ram1_w;
-    wire [FFT_N-2:0]   ra_ram1_w,  wa_ram1_w;
-    wire [31:0]        wdw_ram1_w, rdr_ram1_w;
-
-
-    wire fft_running = (status_w == 3'd3);  // ST_RUN_FFT
-    wire ram_active  = ract_ram0_w | wact_ram0_w |
-                       ract_ram1_w | wact_ram1_w;
-
-    reg ram_active_r;
-    reg fft_running_r;
-
+    // =========================================================================
+    // R2FFT Instance B — input
+    // =========================================================================
+    reg               b_sact;
+    reg signed [15:0] b_sdw_real, b_sdw_imag;
     always @(posedge i_clk) begin
-        ram_active_r  <= ram_active;
-        fft_running_r <= fft_running;
+        b_sact     <= b_win_ce;
+        b_sdw_real <= {{(16-IW){b_win[IW-1]}}, b_win};
+        b_sdw_imag <= 16'd0;
     end
 
-    wire next_stage_w = ram_active_r & ~ram_active & fft_running_r;
+    // =========================================================================
+    // R2FFT Instance B — done/DMA FSM (identical structure to A, with done_ack)
+    // =========================================================================
+    wire              b_done_w;
+    wire [2:0]        b_status_w;
+    wire signed [7:0] b_bfpexp_w;
+    reg               b_done_r;
+    reg  signed [7:0] b_bfpexp_r;
+    reg               b_done_ack;    // ← double-fire guard
 
+    reg [FFT_N-1:0] b_dma_addr;
+    reg             b_dmaact, b_dmaact_r;
+    reg [FFT_N-1:0] b_dmaa_r;
+    reg             b_readout_done, b_fin_r;
 
-    fft_data_ram u_ram0 (
-        .clk        (i_clk),
-        .rst        (i_reset),
-        .next_stage (next_stage_w),
-        .ract       (ract_ram0_w),
-        .ra         (ra_ram0_w),
-        .rdata      (rdr_ram0_w),
-        .wact       (wact_ram0_w),
-        .wa         (wa_ram0_w),
-        .wdata      (wdw_ram0_w)
+    wire signed [15:0] b_dmadr_real_w, b_dmadr_imag_w;
+    reg  signed [15:0] b_dmadr_real_r, b_dmadr_imag_r;
+
+    always @(posedge i_clk) begin
+        b_done_r       <= b_done_w;
+        b_bfpexp_r     <= b_bfpexp_w;
+        b_dmaact_r     <= b_dmaact;
+        b_dmaa_r       <= b_dma_addr;
+        b_dmadr_real_r <= b_dmadr_real_w;
+        b_dmadr_imag_r <= b_dmadr_imag_w;
+        b_fin_r        <= b_readout_done;
+    end
+
+    always @(posedge i_clk) begin
+        if (i_reset)
+            b_done_ack <= 1'b0;
+        else if (!b_done_r)
+            b_done_ack <= 1'b0;
+        else if (b_dmaact)
+            b_done_ack <= 1'b1;
+    end
+
+    reg [2*OW-1:0] b_result;
+    reg            b_sync;
+
+    always @(posedge i_clk) begin
+        if (i_reset) begin
+            b_dmaact       <= 1'b0;
+            b_dma_addr     <= {FFT_N{1'b0}};
+            b_readout_done <= 1'b0;
+            b_sync         <= 1'b0;
+            b_result       <= {2*OW{1'b0}};
+        end else begin
+            b_sync <= 1'b0;
+            if (b_done_r && !b_done_ack && !b_readout_done && !b_dmaact) begin
+                b_dmaact   <= 1'b1;
+                b_dma_addr <= {FFT_N{1'b0}};
+                b_sync     <= 1'b1;
+            end else if (b_dmaact) begin
+                b_result <= {
+                    {{(OW-16){b_dmadr_real_r[15]}}, b_dmadr_real_r},
+                    {{(OW-16){b_dmadr_imag_r[15]}}, b_dmadr_imag_r}
+                };
+                b_dma_addr <= b_dma_addr + 1'b1;
+                if (b_dma_addr == FFT_SIZE - 1) begin
+                    b_dmaact       <= 1'b0;
+                    b_readout_done <= 1'b1;
+                end
+            end else if (b_readout_done) begin
+                b_readout_done <= 1'b0;
+            end
+        end
+    end
+
+    // B support hardware
+    wire [FFT_N-3:0] b_twa;  wire b_twact;  wire [15:0] b_twdr_cos;
+    wire b_ract0, b_wact0;  wire [FFT_N-2:0] b_ra0, b_wa0;  wire [31:0] b_rdr0, b_wdw0;
+    wire b_ract1, b_wact1;  wire [FFT_N-2:0] b_ra1, b_wa1;  wire [31:0] b_rdr1, b_wdw1;
+
+    wire b_ram_active  = b_ract0 | b_wact0 | b_ract1 | b_wact1;
+    wire b_fft_running = (b_status_w == 3'd3);
+    reg  b_ram_r, b_fft_r;
+    always @(posedge i_clk) begin b_ram_r <= b_ram_active;  b_fft_r <= b_fft_running; end
+    wire b_next_stage = b_ram_r & ~b_ram_active & b_fft_r;
+
+    fft_twiddle_rom u_twiddle_b (.clk(i_clk),.twact(b_twact),.twa(b_twa),.twdr_cos(b_twdr_cos));
+    fft_data_ram u_b_ram0 (.clk(i_clk),.rst(i_reset),.next_stage(b_next_stage),
+        .ract(b_ract0),.ra(b_ra0),.rdata(b_rdr0),.wact(b_wact0),.wa(b_wa0),.wdata(b_wdw0));
+    fft_data_ram u_b_ram1 (.clk(i_clk),.rst(i_reset),.next_stage(b_next_stage),
+        .ract(b_ract1),.ra(b_ra1),.rdata(b_rdr1),.wact(b_wact1),.wa(b_wa1),.wdata(b_wdw1));
+    R2FFT #(.FFT_LENGTH(FFT_SIZE),.FFT_DW(16),.PL_DEPTH(3)) u_r2fft_b (
+        .clk(i_clk),.rst(rst),.autorun(1'b1),.run(1'b0),.fin(b_fin_r),.ifft(1'b0),
+        .done(b_done_w),.status(b_status_w),.bfpexp(b_bfpexp_w),
+        .sact_istream(b_sact),.sdw_istream_real(b_sdw_real),.sdw_istream_imag(b_sdw_imag),
+        .dmaact(b_dmaact_r),.dmaa(b_dmaa_r),.dmadr_real(b_dmadr_real_w),.dmadr_imag(b_dmadr_imag_w),
+        .twact(b_twact),.twa(b_twa),.twdr_cos(b_twdr_cos),
+        .ract_ram0(b_ract0),.ra_ram0(b_ra0),.rdr_ram0(b_rdr0),
+        .wact_ram0(b_wact0),.wa_ram0(b_wa0),.wdw_ram0(b_wdw0),
+        .ract_ram1(b_ract1),.ra_ram1(b_ra1),.rdr_ram1(b_rdr1),
+        .wact_ram1(b_wact1),.wa_ram1(b_wa1),.wdw_ram1(b_wdw1)
     );
 
-    fft_data_ram u_ram1 (
-        .clk        (i_clk),
-        .rst        (i_reset),
-        .next_stage (next_stage_w),
-        .ract       (ract_ram1_w),
-        .ra         (ra_ram1_w),
-        .rdata      (rdr_ram1_w),
-        .wact       (wact_ram1_w),
-        .wa         (wa_ram1_w),
-        .wdata      (wdw_ram1_w)
-    );
+    // =========================================================================
+    // Output MUX
+    // A and B DMA windows never overlap: HOP*CE_EVERY >> FFT_SIZE guaranteed
+    // by caller (HOP=128, CE_EVERY=64 → 8192 >> 256).
+    // =========================================================================
+    always @(posedge i_clk) begin
+        if (i_reset) begin
+            o_fft_sync   <= 1'b0;
+            o_fft_result <= {2*OW{1'b0}};
+        end else begin
+            o_fft_sync <= a_sync | b_sync;
+            if      (a_dmaact) o_fft_result <= a_result;
+            else if (b_dmaact) o_fft_result <= b_result;
+        end
+    end
 
-    // R2FFT
-    R2FFT #(
-        .FFT_LENGTH(FFT_SIZE),
-        .FFT_DW(16),
-        .PL_DEPTH(3)
-    ) u_r2fft (
-        .clk              (i_clk),
-        .rst              (rst),
-        .autorun          (1'b1),
-        .run              (1'b0),
-        .fin              (fin_r),
-        .ifft             (1'b0),
-        .done             (done_w),
-        .status           (status_w),
-        .bfpexp           (bfpexp_w),
-        .sact_istream     (sact_istream),
-        .sdw_istream_real (sdw_istream_real),
-        .sdw_istream_imag (sdw_istream_imag),
-        .dmaact           (dmaact_r),
-        .dmaa             (dmaa_r),
-        .dmadr_real       (dmadr_real_w),
-        .dmadr_imag       (dmadr_imag_w),
-        .twact            (twact_w),
-        .twa              (twa_w),
-        .twdr_cos         (twdr_cos_w),
-        .ract_ram0        (ract_ram0_w), .ra_ram0(ra_ram0_w), .rdr_ram0(rdr_ram0_w),
-        .wact_ram0        (wact_ram0_w), .wa_ram0(wa_ram0_w), .wdw_ram0(wdw_ram0_w),
-        .ract_ram1        (ract_ram1_w), .ra_ram1(ra_ram1_w), .rdr_ram1(rdr_ram1_w),
-        .wact_ram1        (wact_ram1_w), .wa_ram1(wa_ram1_w), .wdw_ram1(wdw_ram1_w)
-    );
+    assign o_bfpexp = a_dmaact ? a_bfpexp_r : b_bfpexp_r;
 
 endmodule

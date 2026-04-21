@@ -17,7 +17,7 @@ from golden_model import GoldenExtractor, SAMPLE_RATE, SAMPLE_W, N_MELS, N_FFT, 
 from features import LogMelExtractor
 
 SAMPLE_MAX   = (1 << (SAMPLE_W - 1)) - 1
-STARTUP_LOSS = 3      # RTL drops first 3 frames (FFT pipeline fill)
+STARTUP_LOSS = 2      # RTL drops first 2 frames (FFT pipeline fill)
 N_SAMPLES    = 7500   # must match test_pipeline_top.py
 
 

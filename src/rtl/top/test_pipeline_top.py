@@ -8,40 +8,37 @@ from pathlib import Path
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
-SAMPLE_W    = 16       # must match pipeline IW_STFFT
+SAMPLE_W    = 16       # IW_STFFT
 N_MELS      = 40
 OUT_W       = 16
-WIN_LEN     = 256      # FFT_SIZE (non-overlapping → HOP = WIN_LEN)
+WIN_LEN     = 256      # FFT_SIZE
+HOP         = WIN_LEN // 2   # 50% overlap = 128 samples
 SAMPLE_RATE = 16_000
 Q_FRAC      = 10
 
 # CE_EVERY: clocks between valid input samples.
 #
-# WHY CE_EVERY must be >= 16:
-#   At full rate (CE_EVERY=1) the R2FFT produces one frame every ~3750 clocks
-#   but logmel_top takes ~7500 clocks to process each frame.  logmel therefore
-#   drops every second FFT frame, halving the output count.
-#   Setting CE_EVERY=20 makes the FFT frame period (20*256 + ~3494 = 8614 clocks)
-#   comfortably longer than logmel's processing time (~7500 clocks), so every
-#   FFT frame is consumed by logmel.
-CE_EVERY    = 20
+# With 50% overlap (HOP=128), logmel receives a new frame every HOP*CE_EVERY
+# clocks.  Logmel takes ~7500 clocks to process each frame.  Requirement:
+#   HOP * CE_EVERY > 7500
+#   128 * CE_EVERY > 7500
+#   CE_EVERY > 58.6  -->  use CE_EVERY = 64
+#
+# NOTE: CE_EVERY >= 15 is also needed so each R2FFT instance finishes its
+# computation+DMA before its next window's samples arrive.
+CE_EVERY    = 64
 
 N_SAMPLES   = 7_500
 
 # Drain: extra clocks after the last sample to let the pipeline flush.
-# Last FFT sync fires ~ N_SAMPLES*CE_EVERY clocks in.
-# logmel then needs ~7500 more clocks.  Use 20_000 for safety.
-DRAIN       = 20_000
+# Last sync at ~N_SAMPLES*CE_EVERY clocks; logmel adds ~7500 more.
+DRAIN       = 30_000
 
-# Expected frame count.
-#
-# The exact count depends on R2FFT throughput and logmel latency.
-# Empirically the pipeline produces ~23 frames from 7500 samples at CE_EVERY~20.
-# If count is consistently ~half of FFT sync pulses, logmel is still the
-# throughput bottleneck -- increase CE_EVERY until count == FFT sync count.
-# EXPECTED_MAX is capped at N_FRAMES (spect_buffer size = 50).
-EXPECTED_MIN = 5
-EXPECTED_MAX = 50
+# Expected frame count with 50% overlap:
+#   ideal = (N_SAMPLES - WIN_LEN) // HOP + 1 = (7500-256)//128 + 1 = 57
+#   Subtract startup frames (~2) -> expect ~55
+EXPECTED_MIN = 40
+EXPECTED_MAX = 60
 
 DATA_DIR = Path(__file__).resolve().parent / ".." / "Log-Mel" / "data"
 
@@ -106,7 +103,7 @@ async def flash_load_all(dut):
 # ---------------------------------------------------------------------------
 
 def make_chirp(n):
-    """Linear chirp 200 Hz to 7 kHz, scaled to 16-bit signed range."""
+    """200 Hz to 7 kHz linear chirp, 16-bit signed range."""
     dur   = n / SAMPLE_RATE
     t     = np.arange(n) / SAMPLE_RATE
     phase = 2 * np.pi * (200 * t + (7000 - 200) / (2 * dur) * t**2)
@@ -125,12 +122,9 @@ async def do_reset(dut):
 
 async def drive_samples(dut, samples, ce_every=1):
     """
-    Drive samples into the DUT.
-      ce_every=1  -> one sample per clock (back-to-back, max rate)
-      ce_every=N  -> one sample every N clocks (valid high for 1, idle for N-1)
-
-    NOTE: keep ce_every >= 16 so that the FFT frame period is longer than
-    logmel's processing time (~7500 clocks).  Otherwise logmel drops frames.
+    Drive samples with CE_EVERY clock spacing.
+    CE_EVERY=64 gives HOP*CE_EVERY = 8192 clocks between frames, which
+    exceeds logmel's ~7500 clock processing time, so every frame is consumed.
     """
     mask = (1 << SAMPLE_W) - 1
     for s in samples:
@@ -146,7 +140,7 @@ async def drive_samples(dut, samples, ce_every=1):
 
 
 async def monitor_fft_sync(dut, duration_clks):
-    """Count o_fft_sync pulses inside u_stfft over duration_clks cycles."""
+    """Count o_fft_sync pulses (combines A and B syncs from new stfft)."""
     count = 0
     for _ in range(duration_clks):
         await RisingEdge(dut.clk_i)
@@ -159,10 +153,7 @@ async def monitor_fft_sync(dut, duration_clks):
 
 
 async def collect_frames(dut, timeout_clks):
-    """
-    Collect complete mel frames (N_MELS values each) from logmel output.
-    A new frame is started when N_MELS values have accumulated in the current frame.
-    """
+    """Collect complete N_MELS-value frames from logmel output."""
     frames = []
     for _ in range(timeout_clks):
         await RisingEdge(dut.clk_i)
@@ -176,30 +167,34 @@ async def collect_frames(dut, timeout_clks):
                 frames[-1].append(v)
         except (ValueError, AttributeError):
             pass
-    # Drop any incomplete trailing frame
     if frames and len(frames[-1]) < N_MELS:
         frames.pop()
     return frames
 
 
 # ---------------------------------------------------------------------------
-# Test 1 — smoke: verify FFT syncs fire and logmel produces frames
+# Test 1 — smoke: verify both FFT channels fire and logmel produces frames
 # ---------------------------------------------------------------------------
 
 @cocotb.test()
 async def test_frames(dut):
     """
-    Feed a chirp at CE_EVERY clocks/sample and verify:
-      - At least one FFT sync pulse (stfft is running)
-      - At least one complete logmel frame
+    Feed chirp at CE_EVERY=64 clocks/sample and verify:
+      - FFT sync pulses are seen (both A and B channels)
+      - At least one logmel frame is produced
     """
     cocotb.start_soon(Clock(dut.clk_i, 10, units="ns").start())
     await do_reset(dut)
     await flash_load_all(dut)
     await do_reset(dut)
 
-    samples = make_chirp(N_SAMPLES)
+    samples = np.concatenate([
+        make_chirp(N_SAMPLES),
+        np.zeros(256, dtype=np.int32)
+    ])
     timeout = N_SAMPLES * CE_EVERY + DRAIN
+
+    ideal = (N_SAMPLES - WIN_LEN) // HOP + 1
 
     drive_task = cocotb.start_soon(drive_samples(dut, samples, ce_every=CE_EVERY))
     sync_task  = cocotb.start_soon(monitor_fft_sync(dut, timeout))
@@ -208,28 +203,27 @@ async def test_frames(dut):
     await drive_task
 
     n = len(frames)
-    ideal_fft_frames = (N_SAMPLES - WIN_LEN) // WIN_LEN + 1
     cocotb.log.info(
-        "FFT sync pulses : %d  (ideal non-overlapping frames for %d samples = %d)"
-        % (sync_count, N_SAMPLES, ideal_fft_frames)
+        "FFT sync pulses : %d  (ideal 50pct-overlap frames for %d samples = %d)"
+        % (sync_count, N_SAMPLES, ideal)
     )
     cocotb.log.info(
-        "Logmel frames   : %d  (expect %d-%d after pipeline latency)"
+        "Logmel frames   : %d  (expect %d to %d)"
         % (n, EXPECTED_MIN, EXPECTED_MAX)
     )
 
-    assert sync_count > 0, "No FFT sync pulses seen — stfft not running"
-    assert n > 0,          "No logmel frames produced — check sync/bin-counter timing"
+    assert sync_count > 0, "No FFT sync pulses -- stfft A or B not running"
+    assert n > 0,          "No logmel frames -- check sync/timing in pipeline_top"
 
 
 # ---------------------------------------------------------------------------
-# Test 2 — full pipeline: frame count, range, non-zero, save
+# Test 2 — full pipeline validation
 # ---------------------------------------------------------------------------
 
 @cocotb.test()
 async def test_pipeline(dut):
     """
-    Full pipeline validation:
+    Full pipeline test with 50% overlap stfft:
       1. Frame count in [EXPECTED_MIN, EXPECTED_MAX]
       2. Every frame has exactly N_MELS values in [0, 2^OUT_W)
       3. At least some outputs are non-zero
@@ -240,7 +234,10 @@ async def test_pipeline(dut):
     await flash_load_all(dut)
     await do_reset(dut)
 
-    samples = make_chirp(N_SAMPLES)
+    samples = np.concatenate([
+        make_chirp(N_SAMPLES),
+        np.zeros(256, dtype=np.int32)
+    ])
     timeout = N_SAMPLES * CE_EVERY + DRAIN
 
     cocotb.start_soon(drive_samples(dut, samples, ce_every=CE_EVERY))
@@ -248,39 +245,38 @@ async def test_pipeline(dut):
 
     n = len(frames)
     cocotb.log.info(
-        "%d samples (%d clk/sample) : %d frames  (expect %d to %d)"
-        % (N_SAMPLES, CE_EVERY, n, EXPECTED_MIN, EXPECTED_MAX)
+        "%d samples (%d clk/sample, HOP=%d) : %d frames  (expect %d to %d)"
+        % (N_SAMPLES, CE_EVERY, HOP, n, EXPECTED_MIN, EXPECTED_MAX)
     )
 
     # 1. Frame count
     assert EXPECTED_MIN <= n <= EXPECTED_MAX, (
-        "Frame count %d outside expected range [%d, %d].\n"
-        "  If count ~ half expected : logmel is dropping frames because FFT\n"
-        "    is faster than logmel.  Increase CE_EVERY (currently %d).\n"
-        "    Rule of thumb: CE_EVERY >= 16 guarantees FFT period > logmel period.\n"
-        "  If count is 0 : check fft_sync_rr timing in pipeline_top.sv.\n"
-        "  If range itself is wrong : adjust EXPECTED_MIN/MAX in this file."
-        % (n, EXPECTED_MIN, EXPECTED_MAX, CE_EVERY)
+        "Frame count %d outside [%d, %d].\n"
+        "  If ~half expected: logmel is dropping frames. Increase CE_EVERY (now %d).\n"
+        "  Rule: HOP * CE_EVERY > logmel_time (~7500 clocks). Min CE_EVERY = %d.\n"
+        "  If ~double expected: fft_sync timing wrong in pipeline_top (fft_sync_rr).\n"
+        "  If 0: stfft A/B instances not running."
+        % (n, EXPECTED_MIN, EXPECTED_MAX, CE_EVERY, (7500 // HOP) + 1)
     )
 
-    # 2. Shape and value range
+    # 2. Shape and range
     max_val = (1 << OUT_W) - 1
     for i, frame in enumerate(frames):
         assert len(frame) == N_MELS, \
-            "frame %d: got %d mels, expected %d" % (i, len(frame), N_MELS)
+            "frame %d: %d mels != %d" % (i, len(frame), N_MELS)
         for j, v in enumerate(frame):
             assert 0 <= v <= max_val, \
                 "frame[%d][%d] = %d out of [0, %d]" % (i, j, v, max_val)
 
-    # 3. Non-zero check
+    # 3. Non-zero
     all_v = [v for frame in frames for v in frame]
     nz    = sum(1 for v in all_v if v > 0)
     cocotb.log.info(
-        "Non-zero outputs: %d/%d (%.1f%%)" % (nz, len(all_v), 100 * nz / len(all_v))
+        "Non-zero outputs: %d/%d (%.1f%%)" % (nz, len(all_v), 100*nz/len(all_v))
     )
-    assert nz > 0, "All outputs are zero — pipeline is not processing signal"
+    assert nz > 0, "All outputs zero -- pipeline not processing"
 
-    # 4. Save feature matrix
+    # 4. Save
     mat = np.stack(
         [np.array(frame, np.float32) / (1 << Q_FRAC) for frame in frames],
         axis=1
