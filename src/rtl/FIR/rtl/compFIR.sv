@@ -19,7 +19,7 @@ Integration:
 
 `default_nettype none
 
-module ciccomp_fir #(
+module compFIR #(
     parameter NTAPS = 33,   // Total taps (must be odd)
     parameter IW    = 16,      // Input word width
     parameter CW    = 14,    // Coefficient word width
