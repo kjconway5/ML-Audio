@@ -102,10 +102,10 @@ stfft #(
 
 // 2. FFT output pipeline registers
 /*
-//    o_fft_sync fires 1 cycle before the first data word.
-//    Two-cycle pipeline delay keeps the same alignment as the original.
-//      fft_sync_r   — used to load the bin counter
-//      fft_result_rr — data aligned with active bin_cnt_q
+    o_fft_sync fires 1 cycle before the first data word.
+    Two-cycle pipeline delay keeps the same alignment as the original.
+      fft_sync_r   — used to load the bin counter
+      fft_result_rr — data aligned with active bin_cnt_q
 */
 
 logic                    fft_sync_r;
@@ -131,20 +131,20 @@ assign fft_im = fft_result_rr[OW_STFFT-1   : 0];          // [15:0]
 
 // 3. Bin counter and fft_valid
 /*
-//    The R2FFT DMA readout streams all FFT_SIZE bins back-to-back at full
-//    clock speed — there is no win_ce gating on the output path.
-//    The counter therefore decrements every clock (not every win_ce).
-//
-//    We count only N_BINS (129) to discard the conjugate mirror bins
-//    (130-255) which carry no unique information for a real input signal.
-//
-//    Timeline relative to o_fft_sync rising:
-//      clk+0  o_fft_sync=1                 DMA starts inside stfft
-//      clk+1  fft_sync_r=1  → load 129    first data word at stfft output
-//      clk+2  bin_cnt=129   fft_result_rr=bin[0]   fft_valid=1
-//      ...
-//      clk+130 bin_cnt=1    fft_result_rr=bin[128]  fft_valid=1
-//      clk+131 bin_cnt=0                             fft_valid=0
+    The R2FFT DMA readout streams all FFT_SIZE bins back-to-back at full
+    clock speed — there is no win_ce gating on the output path.
+    The counter therefore decrements every clock (not every win_ce).
+
+    We count only N_BINS (129) to discard the conjugate mirror bins
+    (130-255) which carry no unique information for a real input signal.
+
+    Timeline relative to o_fft_sync rising:
+      clk+0  o_fft_sync=1                 DMA starts inside stfft
+      clk+1  fft_sync_r=1  → load 129    first data word at stfft output
+      clk+2  bin_cnt=129   fft_result_rr=bin[0]   fft_valid=1
+      ...
+      clk+130 bin_cnt=1    fft_result_rr=bin[128]  fft_valid=1
+      clk+131 bin_cnt=0                             fft_valid=0
 */
 
 localparam int CNT_W = $clog2(N_BINS + 1);
