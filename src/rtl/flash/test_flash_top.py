@@ -19,8 +19,6 @@ MOD_CONTROL  = 0xF
 FEAT_LOG_LUT   = 0x0  # 16-bit
 FEAT_MEL_COEFF = 0x1  # 16-bit
 FEAT_MEL_META  = 0x2  # 8-bit
-FEAT_HANN      = 0x3  # 16-bit
-FEAT_TWIDDLES  = 0x4  # 16-bit
 
 # DS-CNN subtargets
 DSCNN_WEIGHTS  = 0x0  # 8-bit
@@ -164,9 +162,9 @@ async def test_full_flash(dut):
 
     # Generate known test data (small subsets for speed)
     lut_data    = [(i * 0x0111) & 0xFFFF for i in range(64)]
-    mel_data    = [(i * 0x0303) & 0xFFFF for i in range(640)]
-    meta_data   = [(i * 3) & 0xFF for i in range(80)]
-    weight_data = [(i * 7) & 0xFF for i in range(256)]  # subset, not full 4296
+    mel_data    = [(i * 0x0303) & 0xFFFF for i in range(256)]  # sparse coeff SRAM depth
+    meta_data   = [(i * 3) & 0xFF for i in range(120)]          # 40 starts + 40 ends + 40 offsets
+    weight_data = [(i * 7) & 0xFF for i in range(256)]          # subset, not full 6752
     cfg_data    = [(i * 11) & 0xFF for i in range(32)]
 
     await full_flash(dut, lut_data, mel_data, meta_data, weight_data, cfg_data)

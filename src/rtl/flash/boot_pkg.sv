@@ -22,12 +22,12 @@ package boot_pkg;
 
 
     //  Features pipeline subtargets (low nibble when MOD_FEATURES)
+    // Hann window and FFT twiddles are hard ROMs ($readmemh in
+    // stfft.sv / fftstage.v) and are NOT flash-loadable.
     typedef enum logic [SUBTARGET_W-1:0] {
-        FEAT_LOG_LUT   = 4'h0,   // 64  × 16-bit  → 2× sram64x8
-        FEAT_MEL_COEFF = 4'h1,   // 640 × 16-bit  → 4× sram512x8
-        FEAT_MEL_META  = 4'h2,   // 80  × 8-bit   → DFF registers
-        FEAT_HANN      = 4'h3,   // 256 × 14-bit  → 2× sram256x8
-        FEAT_TWIDDLES  = 4'h4    // FFT twiddle factors (multiple stages)
+        FEAT_LOG_LUT   = 4'h0,   // 64  × 16-bit  → 2× sram256x8
+        FEAT_MEL_COEFF = 4'h1,   // 256 × 16-bit  → 2× sram256x8 (sparse packing)
+        FEAT_MEL_META  = 4'h2    // 256 × 8-bit   → 1× sram256x8 (starts/ends/offsets)
     } features_subtarget_e;
 
 
@@ -72,15 +72,13 @@ package boot_pkg;
             MOD_FEATURES:
                 case (sub)
                     FEAT_LOG_LUT:   return 1'b1;   // 64  × 16-bit
-                    FEAT_MEL_COEFF: return 1'b1;   // 640 × 16-bit
-                    FEAT_MEL_META:  return 1'b0;   // 80  × 8-bit
-                    FEAT_HANN:      return 1'b1;   // 256 × 16-bit
-                    FEAT_TWIDDLES:  return 1'b1;   // twiddles are 40-bit but packed 16-bit
+                    FEAT_MEL_COEFF: return 1'b1;   // 256 × 16-bit
+                    FEAT_MEL_META:  return 1'b0;   // 256 × 8-bit
                     default:        return 1'b0;
                 endcase
             MOD_DSCNN:
                 case (sub)
-                    DSCNN_WEIGHTS:  return 1'b0;   // 4296 × 8-bit
+                    DSCNN_WEIGHTS:  return 1'b0;   // 6752 × 8-bit
                     DSCNN_CFG:      return 1'b0;   // 8-bit config registers
                     default:        return 1'b0;
                 endcase
