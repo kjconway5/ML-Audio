@@ -1,48 +1,33 @@
 TOP      := pipeline_top
 
-STFFT_DIR    := $(abspath ../STFFT)/ZipCPU
+STFFT_DIR    := $(abspath ../STFFT)
 LOGMEL_DIR   := $(abspath ../Log-Mel)
 RTL_DIR      := $(LOGMEL_DIR)/rtl
 IP_DIR       := $(LOGMEL_DIR)/ip
 SPECTBUF_DIR := $(abspath ../SPECT_BUFFER)
 
-# ZipCPU FFT sources (active)
-FFT_DIR := $(STFFT_DIR)/ip/FFT
-STFFT_SOURCES := \
-	$(STFFT_DIR)/stfft_old.sv \
-	$(FFT_DIR)/fftmain.v \
-	$(FFT_DIR)/fftstage.v \
-	$(FFT_DIR)/butterfly.v \
-	$(FFT_DIR)/hwbfly.v \
-	$(FFT_DIR)/qtrstage.v \
-	$(FFT_DIR)/laststage.v \
-	$(FFT_DIR)/bitreverse.v \
-	$(FFT_DIR)/bimpy.v \
-	$(FFT_DIR)/longbimpy.v \
-	$(FFT_DIR)/convround.v \
-	$(FFT_DIR)/windowfn.v
 
 # R2FFT-based STFFT sources  (replaces old FFT_DIR block)
-# STFFT_SOURCES := \
-# 	$(STFFT_DIR)/R2FFT/hdl/bfp_Shifter.sv \
-# 	$(STFFT_DIR)/R2FFT/hdl/bfp_bitWidthAcc.sv \
-# 	$(STFFT_DIR)/R2FFT/hdl/bfp_bitWidthDetector.sv \
-# 	$(STFFT_DIR)/R2FFT/hdl/bfp_maxBitWidth.sv \
-# 	$(STFFT_DIR)/R2FFT/hdl/bitReverseCounter.sv \
-# 	$(STFFT_DIR)/R2FFT/hdl/ramPipelineBridge.sv \
-# 	$(STFFT_DIR)/R2FFT/hdl/radix2Butterfly.sv \
-# 	$(STFFT_DIR)/R2FFT/hdl/butterflyCore.sv \
-# 	$(STFFT_DIR)/R2FFT/hdl/twiddleFactorRomBridge.sv \
-# 	$(STFFT_DIR)/R2FFT/hdl/butterflyUnit.sv \
-# 	$(STFFT_DIR)/R2FFT/hdl/fftAddressGenerator.sv \
-# 	$(STFFT_DIR)/R2FFT/hdl/readBusMux.sv \
-# 	$(STFFT_DIR)/R2FFT/hdl/writeBusMux.sv \
-# 	$(STFFT_DIR)/R2FFT/hdl/R2FFT.sv \
-# 	$(STFFT_DIR)/tests/models/gf180mcu_fd_ip_sram__sram128x8m8wm1.v \
-# 	$(STFFT_DIR)/ZipCPU/ip/Window/windowfn.v \
-# 	$(STFFT_DIR)/rtl/fft_data_ram.sv \
-# 	$(STFFT_DIR)/rtl/fft_twiddle_rom.sv \
-# 	$(STFFT_DIR)/rtl/stfft.sv
+STFFT_SOURCES := \
+ 	$(STFFT_DIR)/R2FFT/hdl/bfp_Shifter.sv \
+ 	$(STFFT_DIR)/R2FFT/hdl/bfp_bitWidthAcc.sv \
+ 	$(STFFT_DIR)/R2FFT/hdl/bfp_bitWidthDetector.sv \
+ 	$(STFFT_DIR)/R2FFT/hdl/bfp_maxBitWidth.sv \
+ 	$(STFFT_DIR)/R2FFT/hdl/bitReverseCounter.sv \
+ 	$(STFFT_DIR)/R2FFT/hdl/ramPipelineBridge.sv \
+ 	$(STFFT_DIR)/R2FFT/hdl/radix2Butterfly.sv \
+ 	$(STFFT_DIR)/R2FFT/hdl/butterflyCore.sv \
+ 	$(STFFT_DIR)/R2FFT/hdl/twiddleFactorRomBridge.sv \
+ 	$(STFFT_DIR)/R2FFT/hdl/butterflyUnit.sv \
+ 	$(STFFT_DIR)/R2FFT/hdl/fftAddressGenerator.sv \
+ 	$(STFFT_DIR)/R2FFT/hdl/readBusMux.sv \
+ 	$(STFFT_DIR)/R2FFT/hdl/writeBusMux.sv \
+ 	$(STFFT_DIR)/R2FFT/hdl/R2FFT.sv \
+ 	$(STFFT_DIR)/tests/models/gf180mcu_fd_ip_sram__sram128x8m8wm1.v \
+ 	$(STFFT_DIR)/ZipCPU/ip/Window/windowfn.v \
+ 	$(STFFT_DIR)/rtl/fft_data_ram.sv \
+ 	$(STFFT_DIR)/rtl/fft_twiddle_rom.sv \
+ 	$(STFFT_DIR)/rtl/stfft.sv
 
 LOGMEL_SOURCES := \
 	$(RTL_DIR)/log_top/logmel_top.sv \
@@ -72,7 +57,7 @@ COCOTB_MAKEFILES := $(shell cocotb-config --makefiles 2>/dev/null)
 
 # Hex data files required by $readmemh in RTL
 DATA_DIR    := $(abspath $(LOGMEL_DIR)/data)
-HANNING_HEX := $(STFFT_DIR)/hanning.hex
+HANNING_HEX := $(STFFT_DIR)/ZipCPU/hanning.hex
 
 HEX_FILES := \
 	$(DATA_DIR)/mel_coeffs.hex \
@@ -82,11 +67,10 @@ HEX_FILES := \
 	$(DATA_DIR)/mel_indices.hex \
 	$(DATA_DIR)/log2_lut.hex
 
-# ZipCPU twiddle factor hex files
-CMEM_HEX_FILES := $(wildcard $(FFT_DIR)/cmem_*.hex)
+
 
 # R2FFT twiddle ROM hex files (fft_twiddle_rom.sv reads these)
-# TWIDDLE_HEX_FILES := $(wildcard $(STFFT_DIR)/rtl/*.hex)
+TWIDDLE_HEX_FILES := $(wildcard $(STFFT_DIR)/rtl/*.hex)
 
 link-hex:
 	@ln -sf $(HANNING_HEX)             . 2>/dev/null || true
@@ -94,7 +78,7 @@ link-hex:
 	@for f in $(CMEM_HEX_FILES);       do ln -sf $$f . 2>/dev/null || true; done
 	@ln -sfn $(DATA_DIR) data 2>/dev/null || true
 # R2FFT twiddle hex (uncomment when switching to R2FFT):
-#	@for f in $(TWIDDLE_HEX_FILES);    do ln -sf $$f . 2>/dev/null || true; done
+	@for f in $(TWIDDLE_HEX_FILES);    do ln -sf $$f . 2>/dev/null || true; done
 .PHONY: link-hex
 
 
