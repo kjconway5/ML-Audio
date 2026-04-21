@@ -21,7 +21,7 @@ ACCUM_W     = 54
 MAX_COEFFS  = 16
 LOG_OUT_W   = 16
 LUT_FRAC    = 6
-Q_FRAC      = 12
+Q_FRAC      = 10
 
 POWER_MASK = (1 << POWER_W) - 1
 ACCUM_MASK = (1 << ACCUM_W) - 1
@@ -39,7 +39,7 @@ _AW = _IW + _TW  # 28
 # Hex data paths
 _HERE       = Path(__file__).resolve().parent
 _DATA_DIR   = _HERE.parent / "rtl" / "Log-Mel" / "data"
-_WIN_HEX    = _HERE.parent / "rtl" / "STFFT" / "hanning.hex"
+_WIN_HEX    = _HERE.parent / "rtl" / "STFFT" / "ZipCPU" / "hanning.hex"
 
 
 def _load_hex(path: Path) -> list[int]:

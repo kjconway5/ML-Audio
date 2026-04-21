@@ -33,8 +33,10 @@ module mel_coeff_sram #(
     reg [INDEX_W-1:0]  index_mem [0:INDEX_DEPTH-1];
 
     initial begin
-        $readmemh("../../../data/mel_coeffs_sparse.hex", coeff_mem);
-        $readmemh("../../../data/mel_indices.hex", index_mem);
+        //$readmemh("../../../data/mel_coeffs_sparse.hex", coeff_mem);
+        //$readmemh("../../../data/mel_indices.hex", index_mem);
+        $readmemh("mel_coeffs_sparse.hex", coeff_mem);
+        $readmemh("mel_indices.hex", index_mem);
     end
 
     reg [COEFF_W-1:0] coeff_data_r;
