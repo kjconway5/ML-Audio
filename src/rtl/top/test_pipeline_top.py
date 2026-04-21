@@ -152,11 +152,58 @@ async def monitor_fft_sync(dut, duration_clks):
     return count
 
 
+async def monitor_dma_bins(dut, duration_clks, bins=(10, 11, 12, 13, 14), max_frames=5):
+    """
+    Diagnostic: log raw R2FFT DMA output for selected bins.
+    Run alongside collect_frames -- does NOT replace it.
+    Stops logging after max_frames to avoid flooding the log.
+    """
+    frames_seen = 0
+    for _ in range(duration_clks):
+        await RisingEdge(dut.clk_i)
+        if frames_seen >= max_frames:
+            continue
+        try:
+            if int(dut.u_stfft.a_dmaact.value) == 1:
+                addr = int(dut.u_stfft.a_dma_addr.value)
+                if addr in bins:
+                    re = int(dut.u_stfft.a_dmadr_real_w.value)
+                    im = int(dut.u_stfft.a_dmadr_imag_w.value)
+                    if re > 32767: re -= 65536
+                    if im > 32767: im -= 65536
+                    cocotb.log.info("DMA bin[%d] re=%d im=%d" % (addr, re, im))
+                    if addr == max(bins):
+                        frames_seen += 1
+        except (AttributeError, ValueError):
+            pass
+
+
+# Probe: count how many times fft_valid=1 with large fft_re values
+_fft_probe_max_re   = [0]  # max |re| seen while fft_valid=1
+_fft_probe_count    = [0]  # total fft_valid=1 cycles seen
+_fft_probe_nonzero  = [0]  # fft_valid=1 cycles where |re|>100
+
+
 async def collect_frames(dut, timeout_clks):
     """Collect complete N_MELS-value frames from logmel output."""
     frames = []
+    _fft_probe_max_re[0]  = 0
+    _fft_probe_count[0]   = 0
+    _fft_probe_nonzero[0] = 0
     for _ in range(timeout_clks):
         await RisingEdge(dut.clk_i)
+        # Probe fft_re while fft_valid=1 (first 2 FFT frames only to avoid log flood)
+        try:
+            if int(dut.fft_valid.value) == 1:
+                re = int(dut.fft_re.value)
+                if re > 32767: re -= 65536
+                _fft_probe_count[0] += 1
+                if abs(re) > _fft_probe_max_re[0]:
+                    _fft_probe_max_re[0] = abs(re)
+                if abs(re) > 100:
+                    _fft_probe_nonzero[0] += 1
+        except (ValueError, AttributeError):
+            pass
         try:
             valid = int(dut.u_logmel.cnn_valid_ol.value)
             ready = int(dut.u_logmel.cnn_ready_il.value)
@@ -169,6 +216,10 @@ async def collect_frames(dut, timeout_clks):
             pass
     if frames and len(frames[-1]) < N_MELS:
         frames.pop()
+    cocotb.log.info(
+        "fft_re probe: total_valid=%d  max|re|=%d  cycles_with_|re|>100=%d"
+        % (_fft_probe_count[0], _fft_probe_max_re[0], _fft_probe_nonzero[0])
+    )
     return frames
 
 
@@ -188,19 +239,18 @@ async def test_frames(dut):
     await flash_load_all(dut)
     await do_reset(dut)
 
-    samples = np.concatenate([
-        make_chirp(N_SAMPLES),
-        np.zeros(256, dtype=np.int32)
-    ])
+    samples = make_chirp(N_SAMPLES)
     timeout = N_SAMPLES * CE_EVERY + DRAIN
 
     ideal = (N_SAMPLES - WIN_LEN) // HOP + 1
 
     drive_task = cocotb.start_soon(drive_samples(dut, samples, ce_every=CE_EVERY))
     sync_task  = cocotb.start_soon(monitor_fft_sync(dut, timeout))
+    dma_task   = cocotb.start_soon(monitor_dma_bins(dut, timeout))  # diagnostic only
     frames     = await collect_frames(dut, timeout)
     sync_count = await sync_task
     await drive_task
+    await dma_task
 
     n = len(frames)
     cocotb.log.info(
@@ -234,10 +284,7 @@ async def test_pipeline(dut):
     await flash_load_all(dut)
     await do_reset(dut)
 
-    samples = np.concatenate([
-        make_chirp(N_SAMPLES),
-        np.zeros(256, dtype=np.int32)
-    ])
+    samples = make_chirp(N_SAMPLES)
     timeout = N_SAMPLES * CE_EVERY + DRAIN
 
     cocotb.start_soon(drive_samples(dut, samples, ce_every=CE_EVERY))

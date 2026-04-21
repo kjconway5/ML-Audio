@@ -51,11 +51,9 @@ module stfft #(
     reg [IW-1:0] hanning_rom [0:FFT_SIZE-1];
     initial $readmemh("hanning.hex", hanning_rom);
 
-    // =========================================================================
     // Global sample counter — wraps mod FFT_SIZE (FFT_N bits)
     //   A coeff index = sample_cnt
     //   B coeff index = sample_cnt - HOP  (natural FFT_N-bit wrap)
-    // =========================================================================
     reg [FFT_N-1:0] sample_cnt;
     always @(posedge i_clk) begin
         if (i_reset)   sample_cnt <= {FFT_N{1'b0}};
@@ -74,9 +72,7 @@ module stfft #(
             b_armed <= 1'b1;
     end
 
-    // =========================================================================
     // Channel A — 3-stage Hanning windowing pipeline (always active)
-    // =========================================================================
     reg signed [IW-1:0]   a_s1_samp;
     reg        [IW-1:0]   a_s1_coeff;
     reg                   a_s1_ce;
@@ -102,9 +98,7 @@ module stfft #(
         a_win_ce <= a_s2_ce;
     end
 
-    // =========================================================================
     // Channel B — identical pipeline, gated until b_armed
-    // =========================================================================
     reg signed [IW-1:0]   b_s1_samp;
     reg        [IW-1:0]   b_s1_coeff;
     reg                   b_s1_ce;
@@ -132,9 +126,7 @@ module stfft #(
 
     assign win_ce_o = a_win_ce | b_win_ce;
 
-    // =========================================================================
     // R2FFT Instance A — input
-    // =========================================================================
     reg               a_sact;
     reg signed [15:0] a_sdw_real, a_sdw_imag;
     always @(posedge i_clk) begin
@@ -143,13 +135,11 @@ module stfft #(
         a_sdw_imag <= 16'd0;
     end
 
-    // =========================================================================
     // R2FFT Instance A — done/DMA FSM with done_ack double-fire fix
     //
     // done_ack: set when we start DMA (we've handled this done pulse).
     //           cleared when done_r falls (R2FFT de-asserted done).
     // FSM condition: done_r && !done_ack && !readout_done && !dmaact
-    // =========================================================================
     wire              a_done_w;
     wire [2:0]        a_status_w;
     wire signed [7:0] a_bfpexp_w;
@@ -246,9 +236,7 @@ module stfft #(
         .wact_ram1(a_wact1),.wa_ram1(a_wa1),.wdw_ram1(a_wdw1)
     );
 
-    // =========================================================================
     // R2FFT Instance B — input
-    // =========================================================================
     reg               b_sact;
     reg signed [15:0] b_sdw_real, b_sdw_imag;
     always @(posedge i_clk) begin
@@ -257,9 +245,7 @@ module stfft #(
         b_sdw_imag <= 16'd0;
     end
 
-    // =========================================================================
     // R2FFT Instance B — done/DMA FSM (identical structure to A, with done_ack)
-    // =========================================================================
     wire              b_done_w;
     wire [2:0]        b_status_w;
     wire signed [7:0] b_bfpexp_w;
@@ -354,11 +340,10 @@ module stfft #(
         .wact_ram1(b_wact1),.wa_ram1(b_wa1),.wdw_ram1(b_wdw1)
     );
 
-    // =========================================================================
+
     // Output MUX
     // A and B DMA windows never overlap: HOP*CE_EVERY >> FFT_SIZE guaranteed
     // by caller (HOP=128, CE_EVERY=64 → 8192 >> 256).
-    // =========================================================================
     always @(posedge i_clk) begin
         if (i_reset) begin
             o_fft_sync   <= 1'b0;
