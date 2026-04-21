@@ -28,6 +28,12 @@ DESIGN_NAME: chip_top
 VERILOG_FILES:
 - dir::../src/chip_top.sv
 - dir::../src/chip_core.sv
+- dir::../src/rtl/flash/boot_pkg.sv
+- dir::../src/rtl/flash/boot_controller.sv
+- dir::../src/rtl/flash/features_boot_router.sv
+- dir::../src/rtl/flash/dscnn_boot_router.sv
+- dir::../src/rtl/flash/uart_rx.v
+- dir::../src/rtl/flash/uart_tx.v
 
 # Enable plugin for better SystemVerilog support
 # USE_SLANG: True

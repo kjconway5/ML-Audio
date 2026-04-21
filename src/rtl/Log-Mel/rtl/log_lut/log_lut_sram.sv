@@ -27,6 +27,19 @@ module log_lut_sram #(
     reg [7:0] mem_hi [0:255];
     reg [7:0] q_lo_r, q_hi_r;
 
+    // Sim-only default load so pipeline tests see usable LUT before any
+    // boot-flash. Silicon ignores this block; real runs must flash the LUT
+    // over UART (see chip_core.sv boot subsystem).
+    reg [15:0] lut_init [0:63];
+    integer i;
+    initial begin
+        $readmemh("log2_lut.hex", lut_init);
+        for (i = 0; i < 64; i = i + 1) begin
+            mem_lo[i] = lut_init[i][7:0];
+            mem_hi[i] = lut_init[i][15:8];
+        end
+    end
+
     always @(posedge clk_i) begin
         if (!gwen) begin
             mem_lo[sram_addr] <= flash_write_data_i[7:0];

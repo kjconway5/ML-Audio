@@ -1,8 +1,8 @@
 // SPDX-FileCopyrightText: © 2025 XXX Authors
 // SPDX-License-Identifier: Apache-2.0
- 
+
 `default_nettype none
- 
+
 module chip_core #(
     parameter NUM_INPUT_PADS,
     parameter NUM_BIDIR_PADS,
@@ -12,14 +12,14 @@ module chip_core #(
     inout  wire VDD,
     inout  wire VSS,
     `endif
-    
+
     input  wire clk,       // clock
     input  wire rst_n,     // reset (active low)
-    
+
     input  wire [NUM_INPUT_PADS-1:0] input_in,   // Input value
     output wire [NUM_INPUT_PADS-1:0] input_pu,   // Pull-up
     output wire [NUM_INPUT_PADS-1:0] input_pd,   // Pull-down
- 
+
     input  wire [NUM_BIDIR_PADS-1:0] bidir_in,   // Input value
     output wire [NUM_BIDIR_PADS-1:0] bidir_out,  // Output value
     output wire [NUM_BIDIR_PADS-1:0] bidir_oe,   // Output enable
@@ -28,64 +28,183 @@ module chip_core #(
     output wire [NUM_BIDIR_PADS-1:0] bidir_ie,   // Input enable
     output wire [NUM_BIDIR_PADS-1:0] bidir_pu,   // Pull-up
     output wire [NUM_BIDIR_PADS-1:0] bidir_pd,   // Pull-down
- 
+
     inout  wire [NUM_ANALOG_PADS-1:0] analog  // Analog
 );
- 
-    // See here for usage: https://gf180mcu-pdk.readthedocs.io/en/latest/IPs/IO/gf180mcu_fd_io/digital.html
-    
-    // Disable pull-up and pull-down for input
+
+    import boot_pkg::*;
+
+    // Pad index assignments — bidir[0]=UART RX, bidir[1]=UART TX
+    localparam int UART_RX_PAD = 0;
+    localparam int UART_TX_PAD = 1;
+
+    // 25 MHz / (115200 * 8) ≈ 27 — uart_rx/uart_tx prescale
+    localparam logic [15:0] UART_PRESCALE = 16'd27;
+
     assign input_pu = '0;
     assign input_pd = '0;
- 
-    // Set the bidir as output
-    assign bidir_oe = '1;
+
+    // Default bidir pad config: outputs only (overridden below for UART RX)
+    logic [NUM_BIDIR_PADS-1:0] bidir_oe_r;
+    logic [NUM_BIDIR_PADS-1:0] bidir_ie_r;
+    logic [NUM_BIDIR_PADS-1:0] bidir_out_r;
+
+    assign bidir_oe = bidir_oe_r;
+    assign bidir_ie = bidir_ie_r;
+    assign bidir_out = bidir_out_r;
     assign bidir_cs = '0;
     assign bidir_sl = '0;
-    assign bidir_ie = ~bidir_oe;
     assign bidir_pu = '0;
     assign bidir_pd = '0;
-  
-    logic _unused;                  // TODO: Set ununsed wires here 
-    assign _unused = &bidir_in;
- 
- 
-    wire reset; 
-    assign reset = ~rst_n; 
 
-    // SRAM loading signals 
-    // active during bootup, will be driven by UART/SPI controller
- 
-    // Mel coeff SRAM flash (sparse coefficients, 256 x 16-bit)
-    logic        flash_mel_coeff_we;
-    logic [7:0]  flash_mel_coeff_addr;
-    logic [15:0] flash_mel_coeff_data;
- 
-    // Mel index SRAM flash (starts/ends/offsets, 256 x 8-bit)
-    logic        flash_mel_index_we;
-    logic [7:0]  flash_mel_index_addr;
-    logic [7:0]  flash_mel_index_data;
- 
-    // Log LUT SRAM flash (64 x 16-bit)
-    logic        flash_log_lut_we;
-    logic [5:0]  flash_log_lut_addr;
-    logic [15:0] flash_log_lut_data;
- 
-    // TODO: Connect these to simple_flash instances 
-    // ALSO: Must figure out how the 16-bit values will be driven from the 8-bit UART/SPI loading interface
-    // For now, directly tie to zero (SRAMs will use $readmemh in simulation).
-    assign flash_mel_coeff_we   = 1'b0;
-    assign flash_mel_coeff_addr = 8'd0;
-    assign flash_mel_coeff_data = 16'd0;
-    assign flash_mel_index_we   = 1'b0;
-    assign flash_mel_index_addr = 8'd0;
-    assign flash_mel_index_data = 8'd0;
-    assign flash_log_lut_we     = 1'b0;
-    assign flash_log_lut_addr   = 6'd0;
-    assign flash_log_lut_data   = 16'd0;
+    wire reset;
+    assign reset = ~rst_n;
 
-    // Spectrogram signals 
-    // Bank A 
+    // UART pad wiring
+    wire uart_rxd = bidir_in[UART_RX_PAD];
+    wire uart_txd;
+
+    always_comb begin
+        bidir_oe_r  = '1;                        // default: output
+        bidir_ie_r  = '0;
+        bidir_out_r = '0;
+        bidir_oe_r[UART_RX_PAD]  = 1'b0;         // RX pad: input
+        bidir_ie_r[UART_RX_PAD]  = 1'b1;
+        bidir_oe_r[UART_TX_PAD]  = 1'b1;         // TX pad: output
+        bidir_ie_r[UART_TX_PAD]  = 1'b0;
+        bidir_out_r[UART_TX_PAD] = uart_txd;
+    end
+
+    // Tie off unused bidir inputs (non-UART) so lint stays clean
+    logic _unused;
+    assign _unused = &{bidir_in, 1'b0};
+
+
+    // Boot subsystem
+    //   uart_rx → boot_controller → { features_router, dscnn_router } → SRAMs
+    //   boot_done gates the inference pipeline reset
+
+    // UART RX for boot_controller
+    wire [7:0] rx_byte;
+    wire       rx_valid;
+    wire       rx_ready;
+    wire       rx_busy;
+    wire       rx_overrun;
+    wire       rx_frame_err;
+
+    uart_rx u_uart_rx (
+        .clk           (clk),
+        .rst           (reset),
+        .m_axis_tdata  (rx_byte),
+        .m_axis_tvalid (rx_valid),
+        .m_axis_tready (rx_ready),
+        .rxd           (uart_rxd),
+        .busy          (rx_busy),
+        .overrun_error (rx_overrun),
+        .frame_error   (rx_frame_err),
+        .prescale      (UART_PRESCALE)
+    );
+
+    // UART TX for boot_controller
+    wire [7:0] tx_byte;
+    wire       tx_valid;
+    wire       tx_ready;
+    wire       tx_busy;
+
+    uart_tx u_uart_tx (
+        .clk           (clk),
+        .rst           (reset),
+        .s_axis_tdata  (tx_byte),
+        .s_axis_tvalid (tx_valid),
+        .s_axis_tready (tx_ready),
+        .txd           (uart_txd),
+        .busy          (tx_busy),
+        .prescale      (UART_PRESCALE)
+    );
+
+    // Boot buses
+    boot_bus_t features_boot;
+    boot_bus_t dscnn_boot;
+    wire       boot_done;
+
+    boot_controller u_boot_ctrl (
+        .clk_i           (clk),
+        .reset_i         (reset),
+
+        .rx_byte_i       (rx_byte),
+        .rx_valid_i      (rx_valid),
+        .rx_ready_o      (rx_ready),
+
+        .tx_byte_o       (tx_byte),
+        .tx_valid_o      (tx_valid),
+        .tx_ready_i      (tx_ready),
+
+        .features_boot_o (features_boot),
+        .dscnn_boot_o    (dscnn_boot),
+
+        .boot_done_o     (boot_done),
+        .pkt_valid_o     (),
+        .last_target_o   (),
+        .last_addr_o     (),
+        .last_len_o      ()
+    );
+
+    // Features pipeline flash write ports (from router)
+    wire        flash_log_lut_we;
+    wire [5:0]  flash_log_lut_addr;
+    wire [15:0] flash_log_lut_data;
+
+    wire        flash_mel_coeff_we;
+    wire [7:0]  flash_mel_coeff_addr;
+    wire [15:0] flash_mel_coeff_data;
+
+    wire        flash_mel_index_we;
+    wire [7:0]  flash_mel_index_addr;
+    wire [7:0]  flash_mel_index_data;
+
+    features_boot_router u_feat_router (
+        .boot_i            (features_boot),
+
+        .lut_boot_we_o     (flash_log_lut_we),
+        .lut_boot_addr_o   (flash_log_lut_addr),
+        .lut_boot_wdata_o  (flash_log_lut_data),
+
+        .mel_boot_we_o     (flash_mel_coeff_we),
+        .mel_boot_addr_o   (flash_mel_coeff_addr),
+        .mel_boot_wdata_o  (flash_mel_coeff_data),
+
+        .meta_boot_we_o    (flash_mel_index_we),
+        .meta_boot_addr_o  (flash_mel_index_addr),
+        .meta_boot_wdata_o (flash_mel_index_data)
+    );
+
+    // DS-CNN flash write ports (from router)
+    wire        flash_weight_we;
+    wire [12:0] flash_weight_addr;
+    wire [7:0]  flash_weight_data;
+
+    wire        flash_cfg_we;
+    wire [7:0]  flash_cfg_addr;
+    wire [7:0]  flash_cfg_data;
+
+    dscnn_boot_router u_dscnn_router (
+        .boot_i           (dscnn_boot),
+
+        .w_boot_we_o      (flash_weight_we),
+        .w_boot_addr_o    (flash_weight_addr),
+        .w_boot_wdata_o   (flash_weight_data),
+
+        .cfg_boot_we_o    (flash_cfg_we),
+        .cfg_boot_addr_o  (flash_cfg_addr),
+        .cfg_boot_wdata_o (flash_cfg_data)
+    );
+
+    //hold pipeline and kws in reset until boot completes
+    wire inference_reset = reset | ~boot_done;
+
+
+    // Spectrogram signals
+    // Bank A
     wire            sp_a_we;
     wire [10:0]     sp_a_waddr;
     wire signed     [7:0] sp_a_wdata;
@@ -95,13 +214,13 @@ module chip_core #(
     wire [10:0]     sp_b_waddr;
     wire signed     [7:0] sp_b_wdata;
 
-    // Pipeline -> CNN handshake  
+    // Pipeline -> CNN handshake
     wire            spect_done;
     wire            spect_write_sel;
 
-    // KWS outputs 
-    wire            kws_done; 
-    wire [2:0]      kws_class_out; 
+    // KWS outputs
+    wire            kws_done;
+    wire [2:0]      kws_class_out;
 
     pipeline_top #(
         .IW_STFFT   (14),
@@ -115,7 +234,7 @@ module chip_core #(
         .LUT_FRAC   (6)
     ) pipeline_inst (
         .clk_i              (clk),
-        .reset_i            (reset),
+        .reset_i            (inference_reset),
         .data_i             ('0),           // TODO: connect to audio input pads
         .valid_i            (1'b0),         // TODO: connect to audio valid pad
         .sp_a_we            (sp_a_we),
@@ -127,7 +246,7 @@ module chip_core #(
         .spect_done         (spect_done),
         .spect_write_sel    (spect_write_sel),
 
-        // Flash ports
+        // Flash ports (driven by features_boot_router via boot_controller)
         .flash_mel_coeff_we_i   (flash_mel_coeff_we),
         .flash_mel_coeff_addr_i (flash_mel_coeff_addr),
         .flash_mel_coeff_data_i (flash_mel_coeff_data),
@@ -141,13 +260,21 @@ module chip_core #(
 
     kws_top kws_inst (
         .clk(clk),
-        .reset(reset),
+        .reset(inference_reset),
         .start(1'b0),               // TODO: connect to SERV or pad
         .done(kws_done),
         .class_out(kws_class_out),
-        .cfg_we(1'b0),              // TODO: connect to SERV
-        .cfg_addr('0),              // TODO: connect to SERV
-        .cfg_wdata('0),             // TODO: connect to SERV
+
+        // Layer config write port (driven by dscnn_boot_router)
+        .cfg_we(flash_cfg_we),
+        .cfg_addr(flash_cfg_addr),
+        .cfg_wdata(flash_cfg_data),
+
+        // Weight SRAM write port (driven by dscnn_boot_router)
+        .w_we(flash_weight_we),
+        .w_waddr(flash_weight_addr),
+        .w_wdata(flash_weight_data),
+
         .spect_done(spect_done),
         .spect_write_sel(spect_write_sel),
         .sp_a_we(sp_a_we),
@@ -158,9 +285,5 @@ module chip_core #(
         .sp_b_wdata(sp_b_wdata)
     );
 
-
-    // TODO: Figure out output pad connection from kws_top -> bidir_out
-    assign bidir_out = '0; 
-
-    endmodule 
-    `default_nettype wire 
+    endmodule
+    `default_nettype wire

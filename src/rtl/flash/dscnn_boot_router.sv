@@ -32,7 +32,7 @@ module dscnn_boot_router
         cfg_boot_wdata_o = 8'h00;
 
         if (boot_i.valid) begin
-            case (dscnn_subtarget_e'(boot_i.subtarget))
+            case (boot_i.subtarget)
                 DSCNN_WEIGHTS: begin
                     w_boot_we_o    = 1'b1;
                     w_boot_addr_o  = boot_i.addr[12:0];
