@@ -60,7 +60,7 @@ module pipeline_top #(
 );
 
 
-// 1. STFFT  (R2FFT-based, Hanning window, 256-point)
+// 1. STFFT  (R2FFT Core, Hanning window, 256-point)
 /*
     Timing contract:
       - o_fft_sync  : 1-cycle pulse when DMA readout begins,
@@ -69,9 +69,9 @@ module pipeline_top #(
                       after o_fft_sync (no gaps, no win_ce gating).
       - win_ce_o    : windowed INPUT sample strobe — NOT an output valid.
       - o_bfpexp    : block-FP exponent for the current frame (stable
-                      during readout).  Ignored here — see note below.
+                      during readout).  Ignored
 
-    bfpexp note: the R2FFT shifts internally to prevent overflow and
+    bfpexp: the R2FFT shifts internally to prevent overflow and
     reports the shift amount in bfpexp.  For log-mel the correction is
     purely additive in the log domain (+2*bfpexp*log2).  We tie it to an
     unused wire for now; compensate in post-processing or CNN pre-proc.
