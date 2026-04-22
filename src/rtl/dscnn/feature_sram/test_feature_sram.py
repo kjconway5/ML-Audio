@@ -7,9 +7,9 @@ from cocotb.triggers import RisingEdge, FallingEdge
 import os
 
 CLK_PERIOD_NS = 100
-DEPTH         = 12000
+DEPTH         = 16000
 ADDR_W        = 14
-NUM_BANKS     = 12
+NUM_BANKS     = 16
 
 def test_pattern(addr):
     return (addr) % 256
@@ -17,10 +17,10 @@ def test_pattern(addr):
 
 async def init_dut(dut):
     """
-    Interact with all 12 macro instances in each bank A and B so CEN sees
+    Interact with all 16 macro instances in each bank A and B so CEN sees
     a 1->0
     """
-    cocotb.start_soon(Clock(dut.clk, CLK_PERIOD_NS, unit="ns").start())
+    cocotb.start_soon(Clock(dut.clk, CLK_PERIOD_NS, units="ns").start())
 
     dut.a_we.value    = 0
     dut.a_waddr.value = 0
@@ -102,7 +102,7 @@ async def test_bank_a_write_read(dut):
     await init_dut(dut)
     await write_bank_a(dut)
 
-    dut._log.info("Reading back all 12,000 entries from bank A...")
+    dut._log.info("Reading back all 16,000 entries from bank A...")
     errors = 0
     for addr in range(DEPTH):
         result   = await read_bank_a(dut, addr)
@@ -127,7 +127,7 @@ async def test_bank_b_write_read(dut):
     await init_dut(dut)
     await write_bank_b(dut)
 
-    dut._log.info("Reading back all 12,000 entries from bank B...")
+    dut._log.info("Reading back all 16,000 entries from bank B...")
     errors = 0
     for addr in range(DEPTH):
         result   = await read_bank_b(dut, addr)
