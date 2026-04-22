@@ -34,6 +34,7 @@ lint/
 *.rpt
 *.asc
 *.bin
+*.xml
 
 # Formal verification outputs
 *_bmc/
