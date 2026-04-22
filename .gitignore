@@ -35,6 +35,17 @@ lint/
 *.asc
 *.bin
 *.xml
+*.wav
+
+# dataset
+src/ml/Pipeline/speech_commands_v0.02/
+
+# outputs
+src/ml/output/
+src/ml/models
+
+# caches
+src/ml/__pycache__/
 
 # Formal verification outputs
 *_bmc/
