@@ -1,8 +1,0 @@
-<testsuites name="results">
-  <testsuite name="all" package="all">
-    <property name="random_seed" value="1775093826" />
-    <testcase name="test_stays_idle_correctly" classname="test_FSM" file="/workspace/src/rtl/dscnn/fsm/test_FSM.py" lineno="38" time="0.0015201568603515625" sim_time_ns="110.001" ratio_time="72361.61140276036" />
-    <testcase name="test_leaves_idle_correct" classname="test_FSM" file="/workspace/src/rtl/dscnn/fsm/test_FSM.py" lineno="49" time="0.0040857791900634766" sim_time_ns="450.001" ratio_time="110138.35527245142" />
-    <testcase name="test_fsm_single_layer_reaches_done" classname="test_FSM" file="/workspace/src/rtl/dscnn/fsm/test_FSM.py" lineno="93" time="0.024274826049804688" sim_time_ns="3940.0009999999997" ratio_time="162308.10436772215" />
-  </testsuite>
-</testsuites>
