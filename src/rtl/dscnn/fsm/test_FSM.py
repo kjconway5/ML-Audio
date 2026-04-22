@@ -20,14 +20,15 @@ async def reset_dut(dut):
     dut.spect_done.value = 0
     dut.spect_write_sel.value = 0
     dut.start.value = 0
+    dut.weights_ready.value = 1
 
     dut.sp_a_rdata.value = 0
     dut.sp_b_rdata.value = 0
     dut.w_data.value = 1
     dut.fs_a_rdata.value = 0
     dut.fs_b_rdata.value = 0
+    dut.bias_data.value = 0
     dut.mac_acc.value = 5
-    dut.mac_valid.value = 1
     dut.rq_out.value = 7
 
     await ClockCycles(dut.clk, 5)
@@ -138,7 +139,6 @@ async def test_fsm_single_layer_reaches_done(dut):
     dut.fs_b_rdata.value = 2
     dut.w_data.value = 1
     dut.mac_acc.value = 9
-    dut.mac_valid.value = 1
     dut.rq_out.value = 6
 
     # start
