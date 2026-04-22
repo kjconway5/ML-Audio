@@ -63,18 +63,18 @@ module R2FFT
     );
 
    localparam FFT_BFPDW = $clog2( FFT_DW ) + 1;
-   
-   // fft status
-   typedef enum logic [2:0] {
-                             ST_IDLE = 3'd0,
-                             ST_INPUT_STREAM = 3'd1,
-                             ST_FULL_BUFFER = 3'd2,
-                             ST_RUN_FFT = 3'd3,
-                             ST_DONE = 3'd4
-                             } status_t;
-   
-   status_t status_f;
-   status_t status_n;
+
+   // fft status — plain localparam encoding instead of typedef enum for
+   // Icarus 11 compatibility (it rejects enum-literal assignments in
+   // always_comb and doesn't support explicit enum casts either).
+   localparam [2:0] ST_IDLE         = 3'd0;
+   localparam [2:0] ST_INPUT_STREAM = 3'd1;
+   localparam [2:0] ST_FULL_BUFFER  = 3'd2;
+   localparam [2:0] ST_RUN_FFT      = 3'd3;
+   localparam [2:0] ST_DONE         = 3'd4;
+
+   reg [2:0] status_f;
+   reg [2:0] status_n;
    
    assign done = status_f[2];
    assign status = status_f;
@@ -222,17 +222,16 @@ module R2FFT
 
    localparam MAX_FFT_STAGE = (FFT_N-1);
 
-   typedef enum {
-                 SB_IDLE,
-                 SB_SETUP,
-                 SB_RUN,
-                 SB_WAIT_PIPELINE,
-                 SB_NEXT_STAGE,
-                 SB_DONE
-                } sub_state_t;
-   
-   sub_state_t  sb_state_f;
-   sub_state_t  sb_state_n;
+   // sub-state — plain localparam encoding (same reason as status_t above).
+   localparam [2:0] SB_IDLE          = 3'd0;
+   localparam [2:0] SB_SETUP         = 3'd1;
+   localparam [2:0] SB_RUN           = 3'd2;
+   localparam [2:0] SB_WAIT_PIPELINE = 3'd3;
+   localparam [2:0] SB_NEXT_STAGE    = 3'd4;
+   localparam [2:0] SB_DONE          = 3'd5;
+
+   reg [2:0] sb_state_f;
+   reg [2:0] sb_state_n;
        
    assign fin_fft = ( sb_state_f == SB_DONE );
 
