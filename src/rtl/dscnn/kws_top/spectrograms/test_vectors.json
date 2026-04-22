@@ -1,0 +1,42 @@
+{
+  "keyword": "yes",
+  "ground_truth_class": 6,
+  "class_names": [
+    "no",
+    "off",
+    "on",
+    "silence",
+    "unknown",
+    "wow",
+    "yes"
+  ],
+  "input_scale": 0.2774714231491089,
+  "spect_shift": 8,
+  "seed": null,
+  "samples": [
+    {
+      "index": 0,
+      "hex_file": "spectrograms/spectrogram_0.hex",
+      "wav": "/workspace/src/ml/Pipeline/speech_commands_v0.02/yes/4def68db_nohash_1.wav",
+      "ground_truth_class": 6,
+      "ground_truth_name": "yes",
+      "pytorch_class": 6,
+      "pytorch_name": "yes",
+      "arith_class": 6,
+      "arith_name": "yes",
+      "non_zero": 732
+    },
+    {
+      "index": 1,
+      "hex_file": "spectrograms/spectrogram_1.hex",
+      "wav": "/workspace/src/ml/Pipeline/speech_commands_v0.02/yes/8dc18a75_nohash_0.wav",
+      "ground_truth_class": 6,
+      "ground_truth_name": "yes",
+      "pytorch_class": 5,
+      "pytorch_name": "wow",
+      "arith_class": 6,
+      "arith_name": "yes",
+      "non_zero": 354
+    }
+  ]
+}

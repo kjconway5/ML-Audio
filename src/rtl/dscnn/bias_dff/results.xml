@@ -1,8 +1,0 @@
-<testsuites name="results">
-  <testsuite name="all" package="all">
-    <property name="random_seed" value="1775687224" />
-    <testcase name="test_bias_dffs_basic_addresses" classname="test_bias_DFFs" file="/workspace/src/rtl/dscnn/bias_dff/test_bias_DFFs.py" lineno="34" time="0.0009055137634277344" sim_time_ns="16.001" ratio_time="17670.631464981572" />
-    <testcase name="test_bias_dffs_full_sweep" classname="test_bias_DFFs" file="/workspace/src/rtl/dscnn/bias_dff/test_bias_DFFs.py" lineno="57" time="0.008760690689086914" sim_time_ns="256.00100000000003" ratio_time="29221.55445105457" />
-    <testcase name="test_bias_dffs_block_boundaries" classname="test_bias_DFFs" file="/workspace/src/rtl/dscnn/bias_dff/test_bias_DFFs.py" lineno="74" time="0.0007293224334716797" sim_time_ns="20.000999999999976" ratio_time="27424.08444066685" />
-  </testsuite>
-</testsuites>
