@@ -47,6 +47,9 @@ src/ml/models
 # caches
 src/ml/__pycache__/
 
+src/rtl/Log-Mel/rtl/log_top/*.hex
+/workspace/src/rtl/Log-Mel/rtl/mel_filterbank/*.hex
+
 # Formal verification outputs
 *_bmc/
 *_prove/
