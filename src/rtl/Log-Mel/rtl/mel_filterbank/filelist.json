@@ -1,6 +1,7 @@
 {
-    "top": "mel_filterbank_new",
-    "files": [
+    "top": "mel_filterbank",
+
+  "files": [
 
         "src/rtl/Log-Mel/ip/MulPPGenUns.sv",
         "src/rtl/Log-Mel/ip/MulUns.sv",
