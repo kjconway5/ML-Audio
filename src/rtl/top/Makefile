@@ -51,6 +51,16 @@ SOURCES := pipeline_top.sv \
 	$(IP_SOURCES) \
 	$(SPECTBUF_SOURCES)
 
+# Sources for the FIXED pipeline top (uses stfft_fixed in place of stfft).
+# Both stfft.sv and stfft_fixed.sv are compiled — only the top-level
+# instantiation differs.  The fixed-variant cocotb target uses this.
+SOURCES_FIXED := pipeline_top_fixed.sv \
+	$(STFFT_DIR)/rtl/stfft_fixed.sv \
+	$(STFFT_SOURCES) \
+	$(LOGMEL_SOURCES) \
+	$(IP_SOURCES) \
+	$(SPECTBUF_SOURCES)
+
 COCOTB_MODULE    ?= test_$(TOP)
 COCOTB_MAKEFILES := $(shell cocotb-config --makefiles 2>/dev/null)
 
@@ -96,6 +106,16 @@ test-cocotb-verilator: link-hex
 		$(MAKE) -f $(COCOTB_MAKEFILES)/Makefile.sim
 .PHONY: test-cocotb-verilator
 
+# Run the existing test_pipeline_top.py testbench against pipeline_top_fixed
+# (the FIFO + local-Hann variant).  Uses a different build dir so it doesn't
+# clobber the baseline test-cocotb output.
+test-cocotb-fixed: link-hex
+	SIM=icarus TOPLEVEL_LANG=verilog TOPLEVEL=pipeline_top_fixed MODULE=test_pipeline_top \
+		SIM_BUILD=sim_build_fixed \
+		VERILOG_SOURCES="$(abspath $(SOURCES_FIXED))" \
+		$(MAKE) -f $(COCOTB_MAKEFILES)/Makefile.sim
+.PHONY: test-cocotb-fixed
+
 # ---------------------------------------------------------------------------
 
 clean:
@@ -111,9 +131,11 @@ help:
 	@echo "pipeline_top cocotb testbench (STFFT + Log-Mel end-to-end pipeline)"
 	@echo ""
 	@echo "Targets:"
-	@echo "  test-cocotb            cocotb + icarus (default)"
+	@echo "  test-cocotb            cocotb + icarus (default, tests pipeline_top)"
 	@echo "  test-cocotb-icarus     cocotb + icarus (explicit)"
 	@echo "  test-cocotb-verilator  cocotb + verilator"
+	@echo "  test-cocotb-fixed      cocotb + icarus against pipeline_top_fixed"
+	@echo "                         (uses stfft_fixed; FIFO + per-channel Hann)"
 	@echo "  clean                  Remove build artefacts and hex symlinks"
 	@echo ""
 	@echo "Optional variables:"

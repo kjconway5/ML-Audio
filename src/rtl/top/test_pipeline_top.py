@@ -153,23 +153,104 @@ async def monitor_fft_sync(dut, duration_clks):
 
 
 async def collect_frames(dut, timeout_clks):
-    """Collect complete N_MELS-value frames from logmel output."""
+    """Collect complete N_MELS-value frames from the pipeline output.
+
+    Reads POST-bfpexp-compensation values via `dut.mel_compensated_o`, which is
+    what the spect_buffer (and ultimately the CNN) actually consumes.  This is
+    different from the earlier behavior which read pre-compensation values from
+    `u_logmel.cnn_data_ol` and therefore could not agree with a BFP-aware
+    golden model.
+
+    Also records the `bfpexp_for_mel` latched in pipeline_top at each fft_sync,
+    plus the pre-compensation logmel output — letting the comparison script
+    isolate stage-by-stage residual error (FFT vs mel-filterbank-and-log) and
+    verify the BFP model used by the golden.
+    """
     frames = []
+    pre_frames = []        # raw u_logmel.cnn_data_ol (pre-compensation)
+    bfpexps = []           # one int8 per fft_sync_rr
+    # Raw FFT bin dumps per frame: list of (re[129], im[129]) tuples.
+    # Captured from fft_result_rr while fft_valid is asserted after each
+    # fft_sync_rr.  This is the signal driving logmel's power_calc.
+    fft_dumps = []
+    cur_fft_re = []
+    cur_fft_im = []
+    # Absolute input-sample count (increments on every valid_i=1 cycle) at each
+    # fft_sync_rr.  Exposes whether the R2FFT is actually seeing hop=128 or
+    # whether its FSM is dropping samples during FFT+DMA processing.
+    sample_counter = 0
+    sync_sample_counts = []
+    last_bfpexp = None
     for _ in range(timeout_clks):
         await RisingEdge(dut.clk_i)
+        # Count every clock where the driver asserts valid_i.
         try:
-            valid = int(dut.u_logmel.cnn_valid_ol.value)
-            ready = int(dut.u_logmel.cnn_ready_il.value)
-            if valid and ready:
-                v = int(dut.u_logmel.cnn_data_ol.value)
-                if not frames or len(frames[-1]) == N_MELS:
-                    frames.append([])
-                frames[-1].append(v)
+            if int(dut.valid_i.value):
+                sample_counter += 1
         except (ValueError, AttributeError):
             pass
+        try:
+            if int(dut.fft_sync_rr.value):
+                # bfpexp_for_mel was declared `logic signed [7:0]` — reads as uint,
+                # sign-extend manually.
+                raw = int(dut.bfpexp_for_mel.value)
+                if raw >= 0x80:
+                    raw -= 0x100
+                last_bfpexp = raw
+                # Record the absolute sample count at this sync — this is the
+                # number of input samples consumed by the pipeline so far.
+                sync_sample_counts.append(sample_counter)
+                # New frame — flush any in-progress bin collection.
+                if cur_fft_re:
+                    fft_dumps.append((cur_fft_re, cur_fft_im))
+                cur_fft_re = []
+                cur_fft_im = []
+        except (ValueError, AttributeError):
+            pass
+        # Capture FFT bin while fft_valid is high (exactly N_BINS=129 cycles).
+        #
+        # IMPORTANT: there is a 3-cycle DMA-readout pipeline delay between
+        # fft_valid going high and the ACTUAL bin 0 appearing on
+        # fft_result_rr.  The path is:
+        #   ram read → a_dmadr_real_r reg → a_result reg → o_fft_result reg
+        #     → fft_result_r reg → fft_result_rr reg
+        # That's ~7 cycles from a_sync to bin 0 in fft_result_rr, but
+        # fft_valid goes high only ~4 cycles after a_sync (1 reg + 2 more
+        # before bin_cnt_q loads), so the first 3 fft_valid=1 cycles show
+        # STALE fft_result_rr data from the previous frame.  Skip them.
+        try:
+            if int(dut.fft_valid.value):
+                re_u = int(dut.fft_re.value) & 0xFFFF
+                im_u = int(dut.fft_im.value) & 0xFFFF
+                # Two's-complement sign extension to int16.
+                re_s = re_u - 0x10000 if re_u & 0x8000 else re_u
+                im_s = im_u - 0x10000 if im_u & 0x8000 else im_u
+                cur_fft_re.append(re_s)
+                cur_fft_im.append(im_s)
+        except (ValueError, AttributeError):
+            pass
+        try:
+            valid = int(dut.mel_compensated_valid_o.value)
+            ready = int(dut.u_logmel.cnn_ready_il.value)
+            if valid and ready:
+                v_post = int(dut.mel_compensated_o.value)
+                v_pre  = int(dut.u_logmel.cnn_data_ol.value)
+                if not frames or len(frames[-1]) == N_MELS:
+                    frames.append([])
+                    pre_frames.append([])
+                    bfpexps.append(last_bfpexp)
+                frames[-1].append(v_post)
+                pre_frames[-1].append(v_pre)
+        except (ValueError, AttributeError):
+            pass
+    # Flush any trailing FFT dump.
+    if cur_fft_re:
+        fft_dumps.append((cur_fft_re, cur_fft_im))
     if frames and len(frames[-1]) < N_MELS:
         frames.pop()
-    return frames
+        pre_frames.pop()
+        bfpexps.pop()
+    return frames, pre_frames, bfpexps, fft_dumps, sync_sample_counts
 
 
 # ---------------------------------------------------------------------------
@@ -198,7 +279,7 @@ async def test_frames(dut):
 
     drive_task = cocotb.start_soon(drive_samples(dut, samples, ce_every=CE_EVERY))
     sync_task  = cocotb.start_soon(monitor_fft_sync(dut, timeout))
-    frames     = await collect_frames(dut, timeout)
+    frames, _pre, _bfp, _fft, _ssc = await collect_frames(dut, timeout)
     sync_count = await sync_task
     await drive_task
 
@@ -241,7 +322,7 @@ async def test_pipeline(dut):
     timeout = N_SAMPLES * CE_EVERY + DRAIN
 
     cocotb.start_soon(drive_samples(dut, samples, ce_every=CE_EVERY))
-    frames = await collect_frames(dut, timeout)
+    frames, pre_frames, bfpexps, fft_dumps, sync_sample_counts = await collect_frames(dut, timeout)
 
     n = len(frames)
     cocotb.log.info(
@@ -281,8 +362,69 @@ async def test_pipeline(dut):
         [np.array(frame, np.float32) / (1 << Q_FRAC) for frame in frames],
         axis=1
     )
-    npy = os.path.join(os.path.dirname(__file__) or ".", "rtl_features.npy")
+    here = os.path.dirname(__file__) or "."
+    npy = os.path.join(here, "rtl_features.npy")
     np.save(npy, mat)
+
+    # Also save the pre-compensation logmel output (for isolating FFT-stage
+    # error from mel-filterbank/log-stage error) and the bfpexp value the RTL
+    # latched for each frame (for validating the golden's BFP model).
+    pre_mat = np.stack(
+        [np.array(frame, np.float32) / (1 << Q_FRAC) for frame in pre_frames],
+        axis=1,
+    )
+    np.save(os.path.join(here, "rtl_features_precomp.npy"), pre_mat)
+    np.save(
+        os.path.join(here, "rtl_bfpexps.npy"),
+        np.array([b if b is not None else -1 for b in bfpexps], dtype=np.int8),
+    )
+
+    # Raw FFT bin dumps — only keep frames with exactly N_BINS=129 entries,
+    # and crop to the same count as the emitted logmel frames.  This lets the
+    # golden's bit-accurate FFT be compared directly against the RTL's.
+    n_bins_expected = 129
+    clean_fft = [
+        (re, im) for (re, im) in fft_dumps
+        if len(re) == n_bins_expected and len(im) == n_bins_expected
+    ]
+    # The first STARTUP_LOSS FFT dumps may precede the first emitted logmel
+    # frame — include them anyway and let the comparison script align.
+    if clean_fft:
+        re_mat = np.array([re for (re, _) in clean_fft], dtype=np.int32)  # (Nfft, 129)
+        im_mat = np.array([im for (_, im) in clean_fft], dtype=np.int32)
+        np.save(os.path.join(here, "rtl_fft_re.npy"), re_mat)
+        np.save(os.path.join(here, "rtl_fft_im.npy"), im_mat)
+        cocotb.log.info(
+            "Dumped raw FFT bins: %d frames x %d bins",
+            re_mat.shape[0], re_mat.shape[1],
+        )
+
+    # Absolute input-sample count at each fft_sync_rr pulse.  A correctly
+    # hopping pipeline produces sync_sample_counts with a constant 128-sample
+    # delta between consecutive entries (once past startup).  Drift here
+    # directly exposes the R2FFT dropping samples during its busy state.
+    np.save(
+        os.path.join(here, "rtl_sync_sample_counts.npy"),
+        np.array(sync_sample_counts, dtype=np.int32),
+    )
+    cocotb.log.info(
+        "Sync sample counts (first 20): %s",
+        sync_sample_counts[:20],
+    )
+    if len(sync_sample_counts) >= 2:
+        deltas = np.diff(np.array(sync_sample_counts))
+        cocotb.log.info(
+            "Per-frame sample hops: min=%d max=%d mean=%.1f median=%.1f  (expect 128)",
+            int(deltas.min()), int(deltas.max()),
+            float(deltas.mean()), float(np.median(deltas)),
+        )
     cocotb.log.info(
         "PASS -- %dx%d feature matrix saved to %s" % (n, N_MELS, npy)
+    )
+    cocotb.log.info(
+        "bfpexps per frame (min=%d max=%d mean=%.1f): %s",
+        min(b for b in bfpexps if b is not None),
+        max(b for b in bfpexps if b is not None),
+        np.mean([b for b in bfpexps if b is not None]),
+        bfpexps,
     )
