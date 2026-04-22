@@ -39,7 +39,7 @@ gen-spect:
 .PHONY: gen-spect
 
 test-cocotb test-cocotb-icarus:
-	SIM=icarus TOPLEVEL_LANG=verilog TOPLEVEL=$(TOP) COCOTB_TEST_MODULES=$(COCOTB_MODULE) \
+	SIM=icarus TOPLEVEL_LANG=verilog TOPLEVEL=$(TOP) MODULE=$(COCOTB_MODULE) \
 		VERILOG_SOURCES="$(abspath $(SIM_SOURCES))" \
 		COMPILE_ARGS="-DSIM" \
 		$(MAKE) -f $(COCOTB_MAKEFILES)/Makefile.sim
