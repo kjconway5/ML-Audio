@@ -321,7 +321,7 @@ async def test_kws_inference(dut):
     dut._log.info("STARTING RTL SIMULATION")
     dut._log.info("=" * 72)
 
-    cocotb.start_soon(Clock(dut.clk, CLK_PERIOD_NS, unit="ns").start())
+    cocotb.start_soon(Clock(dut.clk, CLK_PERIOD_NS, units="ns").start())
 
     await reset_dut(dut)
     await load_weight_sram(dut, weights)
