@@ -370,6 +370,18 @@ async def test_kws_inference(dut):
         dut._log.info(f"  [{i}] {mark}  RTL={r['rtl_name']}")
     dut._log.info("=" * 72)
 
+    results_path = os.path.join(test_dir, "kws_results.txt")
+    with open(results_path, "w") as f:
+        f.write(f"keyword: {keyword}   {n_pass}/{len(results)} passed\n")
+        f.write("-" * 40 + "\n")
+        for i, (r, s) in enumerate(zip(results, samples)):
+            mark = "PASS" if r["passed"] else "FAIL"
+            wav  = s["wav"].split("/")[-1]
+            note = ""
+            if not r["passed"]:
+                note = "  [RTL bug]" if not r["consistent"] else "  [model miss]"
+            f.write(f"[{i}] {mark}  {wav:<30}  RTL={r['rtl_name']}{note}\n")
+
     if n_pass < len(results):
         raise AssertionError(
             f"{len(results) - n_pass}/{len(results)} sample(s) misclassified. "
