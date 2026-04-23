@@ -1,0 +1,14 @@
+<testsuites name="results">
+  <testsuite name="all" package="all">
+    <property name="random_seed" value="1776916840" />
+    <testcase name="test_reset" classname="test_compFIR" file="/workspace/src/rtl/FIR/tests/test_compFIR.py" lineno="141" time="0.0017914772033691406" sim_time_ns="100.001" ratio_time="55820.41446686186" />
+    <testcase name="test_ready_signal" classname="test_compFIR" file="/workspace/src/rtl/FIR/tests/test_compFIR.py" lineno="165" time="0.0012552738189697266" sim_time_ns="80.001" ratio_time="63731.91154871795" />
+    <testcase name="test_impulse_response_axi" classname="test_compFIR" file="/workspace/src/rtl/FIR/tests/test_compFIR.py" lineno="196" time="0.007268667221069336" sim_time_ns="390.00100000000003" ratio_time="53655.090835569266" />
+    <testcase name="test_step_response_axi" classname="test_compFIR" file="/workspace/src/rtl/FIR/tests/test_compFIR.py" lineno="260" time="0.014073848724365234" sim_time_ns="720.0009999999999" ratio_time="51158.78492807046" />
+    <testcase name="test_random_full_rate_axi" classname="test_compFIR" file="/workspace/src/rtl/FIR/tests/test_compFIR.py" lineno="313" time="0.19730758666992188" sim_time_ns="10060.001" ratio_time="50986.38714196779" />
+    <testcase name="test_backpressure" classname="test_compFIR" file="/workspace/src/rtl/FIR/tests/test_compFIR.py" lineno="368" time="0.046887874603271484" sim_time_ns="2150.001" ratio_time="45854.093796991794">
+      <failure message="Test failed with RANDOM_SEED=1776916840" />
+    </testcase>
+    <testcase name="test_valid_deasserts" classname="test_compFIR" file="/workspace/src/rtl/FIR/tests/test_compFIR.py" lineno="438" time="0.0011491775512695312" sim_time_ns="80.0010000000002" ratio_time="69615.87433692964" />
+  </testsuite>
+</testsuites>

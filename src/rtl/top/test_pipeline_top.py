@@ -213,25 +213,8 @@ async def collect_frames(dut, timeout_clks):
     sample_counter = 0
     sync_sample_counts = []
     last_bfpexp = None
-    # Diagnostic fft_re probe (module-level counters reset each call).
-    _fft_probe_max_re[0]  = 0
-    _fft_probe_count[0]   = 0
-    _fft_probe_nonzero[0] = 0
     for _ in range(timeout_clks):
         await RisingEdge(dut.clk_i)
-        # Probe fft_re while fft_valid=1 — diagnostic for verifying that the
-        # FFT output actually has non-zero content reaching logmel.
-        try:
-            if int(dut.fft_valid.value) == 1:
-                re = int(dut.fft_re.value)
-                if re > 32767: re -= 65536
-                _fft_probe_count[0] += 1
-                if abs(re) > _fft_probe_max_re[0]:
-                    _fft_probe_max_re[0] = abs(re)
-                if abs(re) > 100:
-                    _fft_probe_nonzero[0] += 1
-        except (ValueError, AttributeError):
-            pass
         # Count every clock where the driver asserts valid_i.
         try:
             if int(dut.valid_i.value):
@@ -299,10 +282,6 @@ async def collect_frames(dut, timeout_clks):
         frames.pop()
         pre_frames.pop()
         bfpexps.pop()
-    cocotb.log.info(
-        "fft_re probe: total_valid=%d  max|re|=%d  cycles_with_|re|>100=%d"
-        % (_fft_probe_count[0], _fft_probe_max_re[0], _fft_probe_nonzero[0])
-    )
     return frames, pre_frames, bfpexps, fft_dumps, sync_sample_counts
 
 
@@ -329,11 +308,9 @@ async def test_frames(dut):
 
     drive_task = cocotb.start_soon(drive_samples(dut, samples, ce_every=CE_EVERY))
     sync_task  = cocotb.start_soon(monitor_fft_sync(dut, timeout))
-    dma_task   = cocotb.start_soon(monitor_dma_bins(dut, timeout))  # diagnostic only
     frames, _pre, _bfp, _fft, _ssc = await collect_frames(dut, timeout)
     sync_count = await sync_task
     await drive_task
-    await dma_task
 
     n = len(frames)
     cocotb.log.info(

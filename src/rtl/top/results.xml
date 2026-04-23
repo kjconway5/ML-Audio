@@ -1,0 +1,8 @@
+<testsuites name="results">
+  <testsuite name="all" package="all">
+    <property name="random_seed" value="1776916710" />
+    <testcase name="test_full_pipeline_pdm" classname="test_full_pipeline_top" file="/workspace/src/rtl/top/test_full_pipeline_top.py" lineno="137" time="61.60748267173767" sim_time_ns="5725290.001" ratio_time="92931.7308987609">
+      <failure message="Test failed with RANDOM_SEED=1776916710" />
+    </testcase>
+  </testsuite>
+</testsuites>

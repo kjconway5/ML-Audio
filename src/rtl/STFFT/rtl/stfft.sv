@@ -1,69 +1,69 @@
 // stfft.sv
 //
-// Short-Time FFT — 50% overlap via two ping-pong R2FFT instances.
+// Replacement for legacy stfft.sv that fixes two bugs in the original:
 //
-// DESIGN APPROACH — continuous stream into each R2FFT:
-//   Both A and B receive every input sample. 50% stagger comes from
-//   different Hanning coefficient phase:
-//     A coeff index = sample_cnt           (frames at 0, 256, 512, ...)
-//     B coeff index = (sample_cnt - HOP)   (frames at 128, 384, 640, ...)
-//   B is armed after the first HOP samples so it fires done HOP samples
-//   after A.
+//   Bug A (sample drop during FFT+DMA):
+//     The R2FFT FSM only writes sact_istream samples into its RAM during
+//     ST_INPUT_STREAM.  Any samples arriving while R2FFT is in ST_RUN_FFT
+//     or ST_DONE (~20 samples at CE_EVERY=64) are silently dropped.
+//     Effect: effective hop drifts from 128 → alternating 129/148 (mean
+//     138.5) and the FFT emits features from the wrong audio samples.
 //
-// DMA DOUBLE-FIRE FIX:
-//   The R2FFT IP holds 'done' HIGH until 'fin' is asserted.  After a DMA
-//   completes, there is exactly one clock cycle where:
-//     readout_done=0  (just cleared)   AND
-//     dmaact=0        (already cleared) AND
-//     done_r=1        (still held high by R2FFT)
-//   Without the fix this re-triggers a spurious second DMA.  The fix uses
-//   a per-instance 'done_ack' register:
-//     - Set  : when DMA starts (we have acknowledged this done pulse)
-//     - Clear: when done_r falls (R2FFT has de-asserted done, safe to re-arm)
-//   The FSM condition becomes: done_r && !done_ack && !readout_done && !dmaact
+//   Bug B (Hann indexed by global sample_cnt):
+//     The original uses `a_coeff_idx = sample_cnt`, where sample_cnt is
+//     a free-running mod-FFT_SIZE counter.  After each FFT+DMA cycle, the
+//     global counter has advanced past zero, so the channel's NEXT buffer
+//     gets Hann[20], Hann[21], ..., Hann[19] — a cyclically rotated window
+//     that emphasises the wrong part of the signal and shifts the apparent
+//     peak frequency.
 //
-// Timing contract (unchanged from single-instance version):
-//   o_fft_sync fires 1 cycle before the first valid o_fft_result word.
-//   o_fft_result streams FFT_SIZE bins at full clock speed after sync.
-//   o_bfpexp is stable for the duration of each DMA readout.
+// Fix in this module:
+//   1. A per-channel sample FIFO between the input stream and the R2FFT
+//      absorbs all samples that arrive while R2FFT is busy.  The FIFO
+//      drains into R2FFT at 1 sample/clock whenever R2FFT is in
+//      ST_INPUT_STREAM, capped at FFT_SIZE samples per buffer.
+//
+//   2. A per-channel LOCAL Hann index counter drives windowing.  It
+//      increments only on successful FIFO→R2FFT drains and resets
+//      whenever R2FFT leaves ST_INPUT_STREAM.  Every buffer starts from
+//      Hann[0], so the window is correctly aligned, always.
+//
 
 module stfft #(
     parameter IW       = 16,
     parameter OW       = 16,
     parameter FFT_SIZE = 256,
     parameter FFT_N    = $clog2(FFT_SIZE),
-    parameter HOP      = FFT_SIZE / 2
+    parameter HOP      = FFT_SIZE / 2,
+    parameter FIFO_DEPTH = 64,
+    parameter FIFO_AW   = $clog2(FIFO_DEPTH)
 )(
-    input  wire             i_clk,
-    input  wire             i_reset,
-    input  wire             i_ce,
-    input  wire [IW-1:0]    i_sample,
-    output reg  [2*OW-1:0]  o_fft_result,
-    output reg              o_fft_sync,
-    output wire             win_ce_o,
+    input  wire              i_clk,
+    input  wire              i_reset,
+    input  wire              i_ce,
+    input  wire [IW-1:0]     i_sample,
+    output reg  [2*OW-1:0]   o_fft_result,
+    output reg               o_fft_sync,
+    output wire              win_ce_o,
     output wire signed [7:0] o_bfpexp
 );
 
     reg rst;
     always @(posedge i_clk) rst <= i_reset;
 
-    // Hanning window ROM (shared read-only; A and B read different indices)
     reg [IW-1:0] hanning_rom [0:FFT_SIZE-1];
     initial $readmemh("hanning.hex", hanning_rom);
 
-    // Global sample counter — wraps mod FFT_SIZE (FFT_N bits)
-    //   A coeff index = sample_cnt
-    //   B coeff index = sample_cnt - HOP  (natural FFT_N-bit wrap)
+    // -----------------------------------------------------------------------
+    // Global sample counter — used ONLY for the b_armed trigger.
+    // (Hann indexing is per-channel local; see the drain side below.)
+    // -----------------------------------------------------------------------
     reg [FFT_N-1:0] sample_cnt;
     always @(posedge i_clk) begin
         if (i_reset)   sample_cnt <= {FFT_N{1'b0}};
         else if (i_ce) sample_cnt <= sample_cnt + 1'b1;
     end
 
-    wire [FFT_N-1:0] a_coeff_idx = sample_cnt;
-    wire [FFT_N-1:0] b_coeff_idx = sample_cnt - HOP[FFT_N-1:0];
-
-    // B armed after first HOP samples (stays armed permanently)
     reg b_armed;
     always @(posedge i_clk) begin
         if (i_reset)
@@ -72,80 +72,102 @@ module stfft #(
             b_armed <= 1'b1;
     end
 
-    // Channel A — 3-stage Hanning windowing pipeline (always active)
-    reg signed [IW-1:0]   a_s1_samp;
-    reg        [IW-1:0]   a_s1_coeff;
-    reg                   a_s1_ce;
+    // =======================================================================
+    // Channel A — FIFO, local Hann, windowing, R2FFT, DMA FSM
+    // =======================================================================
+
+    // --- Channel-A FIFO ----------------------------------------------------
+    reg [IW-1:0]      a_fifo_mem [0:FIFO_DEPTH-1];
+    reg [FIFO_AW:0]   a_fifo_wp, a_fifo_rp;
+    reg [FIFO_AW:0]   a_fifo_cnt;
+    wire              a_fifo_empty = (a_fifo_cnt == 0);
+    wire              a_fifo_full  = (a_fifo_cnt == FIFO_DEPTH[FIFO_AW:0]);
+
+    wire [2:0]        a_status_w;
+    wire              a_in_stream = (a_status_w == 3'd1);   // ST_INPUT_STREAM
+
+    // Exactly FFT_SIZE samples per buffer; stop draining after that even if
+    // FIFO has more (those are for the next buffer).
+    reg [FFT_N:0] a_drain_cnt;
+    wire          a_can_drain = (a_drain_cnt < FFT_SIZE[FFT_N:0]);
+    wire          a_do_drain  = a_in_stream && !a_fifo_empty && a_can_drain;
 
     always @(posedge i_clk) begin
-        a_s1_samp  <= $signed(i_sample);
-        a_s1_coeff <= hanning_rom[a_coeff_idx];
-        a_s1_ce    <= i_ce;
+        if (i_reset || !a_in_stream)
+            a_drain_cnt <= 0;
+        else if (a_do_drain)
+            a_drain_cnt <= a_drain_cnt + 1'b1;
     end
 
-    reg signed [2*IW-1:0] a_s2_prod;
-    reg                   a_s2_ce;
+    // FIFO write/read pointers & count
     always @(posedge i_clk) begin
-        a_s2_prod <= a_s1_samp * $signed({1'b0, a_s1_coeff});
-        a_s2_ce   <= a_s1_ce;
+        if (i_reset) begin
+            a_fifo_wp  <= 0;
+            a_fifo_rp  <= 0;
+            a_fifo_cnt <= 0;
+        end else begin
+            if (i_ce && !a_fifo_full) begin
+                a_fifo_mem[a_fifo_wp[FIFO_AW-1:0]] <= i_sample;
+                a_fifo_wp <= a_fifo_wp + 1'b1;
+            end
+            if (a_do_drain) begin
+                a_fifo_rp <= a_fifo_rp + 1'b1;
+            end
+            case ({i_ce && !a_fifo_full, a_do_drain})
+                2'b10: a_fifo_cnt <= a_fifo_cnt + 1'b1;
+                2'b01: a_fifo_cnt <= a_fifo_cnt - 1'b1;
+                default: ;
+            endcase
+        end
     end
 
-    wire signed [IW-1:0] a_win_w = a_s2_prod[2*IW-2 : IW-1];
-    reg  signed [IW-1:0] a_win;
-    reg                  a_win_ce;
+    wire [IW-1:0] a_fifo_out = a_fifo_mem[a_fifo_rp[FIFO_AW-1:0]];
+
+    // --- Per-channel local Hann index -------------------------------------
+    // Resets whenever R2FFT leaves ST_INPUT_STREAM (= one buffer complete).
+    // Increments on each successful drain, wrapping naturally at FFT_SIZE.
+    reg [FFT_N-1:0] a_hann_idx;
     always @(posedge i_clk) begin
-        a_win    <= a_win_w;
-        a_win_ce <= a_s2_ce;
+        if (i_reset || !a_in_stream)
+            a_hann_idx <= 0;
+        else if (a_do_drain)
+            a_hann_idx <= a_hann_idx + 1'b1;
     end
 
-    // Channel B — identical pipeline, gated until b_armed
-    reg signed [IW-1:0]   b_s1_samp;
-    reg        [IW-1:0]   b_s1_coeff;
-    reg                   b_s1_ce;
+    // --- Windowing (combinational multiply, 1-stage register) -------------
+    // Match the original stfft.sv bit selection: a_s2_prod[2*IW-2 : IW-1],
+    // i.e. take the top IW bits of the product with the sign bit dropped.
+    wire signed [2*IW-1:0] a_prod_w =
+        $signed(a_fifo_out) * $signed({1'b0, hanning_rom[a_hann_idx]});
+    wire signed [IW-1:0]   a_win_w = a_prod_w[2*IW-2:IW-1];
 
+    reg signed [IW-1:0] a_win;
+    reg                 a_win_ce;
     always @(posedge i_clk) begin
-        b_s1_samp  <= $signed(i_sample);
-        b_s1_coeff <= hanning_rom[b_coeff_idx];
-        b_s1_ce    <= b_armed && i_ce;
+        if (i_reset) begin
+            a_win    <= 0;
+            a_win_ce <= 1'b0;
+        end else begin
+            a_win    <= a_win_w;
+            a_win_ce <= a_do_drain;
+        end
     end
 
-    reg signed [2*IW-1:0] b_s2_prod;
-    reg                   b_s2_ce;
-    always @(posedge i_clk) begin
-        b_s2_prod <= b_s1_samp * $signed({1'b0, b_s1_coeff});
-        b_s2_ce   <= b_s1_ce;
-    end
-
-    wire signed [IW-1:0] b_win_w = b_s2_prod[2*IW-2 : IW-1];
-    reg  signed [IW-1:0] b_win;
-    reg                  b_win_ce;
-    always @(posedge i_clk) begin
-        b_win    <= b_win_w;
-        b_win_ce <= b_s2_ce;
-    end
-
-    assign win_ce_o = a_win_ce | b_win_ce;
-
-    // R2FFT Instance A — input
-    reg               a_sact;
-    reg signed [15:0] a_sdw_real, a_sdw_imag;
+    // --- R2FFT A input register -------------------------------------------
+    reg                a_sact;
+    reg signed [15:0]  a_sdw_real, a_sdw_imag;
     always @(posedge i_clk) begin
         a_sact     <= a_win_ce;
         a_sdw_real <= {{(16-IW){a_win[IW-1]}}, a_win};
         a_sdw_imag <= 16'd0;
     end
 
-    // R2FFT Instance A — done/DMA FSM with done_ack double-fire fix
-    //
-    // done_ack: set when we start DMA (we've handled this done pulse).
-    //           cleared when done_r falls (R2FFT de-asserted done).
-    // FSM condition: done_r && !done_ack && !readout_done && !dmaact
+    // --- R2FFT A DMA FSM (identical to original stfft.sv) -----------------
     wire              a_done_w;
-    wire [2:0]        a_status_w;
     wire signed [7:0] a_bfpexp_w;
     reg               a_done_r;
     reg  signed [7:0] a_bfpexp_r;
-    reg               a_done_ack;    // ← double-fire guard
+    reg               a_done_ack;
 
     reg [FFT_N-1:0] a_dma_addr;
     reg             a_dmaact, a_dmaact_r;
@@ -165,13 +187,12 @@ module stfft #(
         a_fin_r        <= a_readout_done;
     end
 
-    // done_ack logic: set on DMA start, clear when done_r falls
     always @(posedge i_clk) begin
         if (i_reset)
             a_done_ack <= 1'b0;
-        else if (!a_done_r)         // done de-asserted → re-arm for next frame
+        else if (!a_done_r)
             a_done_ack <= 1'b0;
-        else if (a_dmaact)          // DMA has started → mark this done as handled
+        else if (a_dmaact)
             a_done_ack <= 1'b1;
     end
 
@@ -188,7 +209,6 @@ module stfft #(
         end else begin
             a_sync <= 1'b0;
             if (a_done_r && !a_done_ack && !a_readout_done && !a_dmaact) begin
-                // Fresh done pulse — start DMA readout
                 a_dmaact   <= 1'b1;
                 a_dma_addr <= {FFT_N{1'b0}};
                 a_sync     <= 1'b1;
@@ -208,7 +228,7 @@ module stfft #(
         end
     end
 
-    // A support hardware
+    // A support hardware (unchanged)
     wire [FFT_N-3:0] a_twa;  wire a_twact;  wire [15:0] a_twdr_cos;
     wire a_ract0, a_wact0;  wire [FFT_N-2:0] a_ra0, a_wa0;  wire [31:0] a_rdr0, a_wdw0;
     wire a_ract1, a_wact1;  wire [FFT_N-2:0] a_ra1, a_wa1;  wire [31:0] a_rdr1, a_wdw1;
@@ -236,22 +256,92 @@ module stfft #(
         .wact_ram1(a_wact1),.wa_ram1(a_wa1),.wdw_ram1(a_wdw1)
     );
 
-    // R2FFT Instance B — input
-    reg               b_sact;
-    reg signed [15:0] b_sdw_real, b_sdw_imag;
+    // =======================================================================
+    // Channel B — mirror of Channel A, gated by b_armed on the FIFO write
+    // side so B only starts capturing after the first HOP samples.
+    // =======================================================================
+
+    reg [IW-1:0]      b_fifo_mem [0:FIFO_DEPTH-1];
+    reg [FIFO_AW:0]   b_fifo_wp, b_fifo_rp;
+    reg [FIFO_AW:0]   b_fifo_cnt;
+    wire              b_fifo_empty = (b_fifo_cnt == 0);
+    wire              b_fifo_full  = (b_fifo_cnt == FIFO_DEPTH[FIFO_AW:0]);
+
+    wire [2:0]        b_status_w;
+    wire              b_in_stream = (b_status_w == 3'd1);
+
+    reg [FFT_N:0] b_drain_cnt;
+    wire          b_can_drain = (b_drain_cnt < FFT_SIZE[FFT_N:0]);
+    wire          b_do_drain  = b_in_stream && !b_fifo_empty && b_can_drain;
+
+    always @(posedge i_clk) begin
+        if (i_reset || !b_in_stream)
+            b_drain_cnt <= 0;
+        else if (b_do_drain)
+            b_drain_cnt <= b_drain_cnt + 1'b1;
+    end
+
+    always @(posedge i_clk) begin
+        if (i_reset) begin
+            b_fifo_wp  <= 0;
+            b_fifo_rp  <= 0;
+            b_fifo_cnt <= 0;
+        end else begin
+            if (i_ce && b_armed && !b_fifo_full) begin
+                b_fifo_mem[b_fifo_wp[FIFO_AW-1:0]] <= i_sample;
+                b_fifo_wp <= b_fifo_wp + 1'b1;
+            end
+            if (b_do_drain) begin
+                b_fifo_rp <= b_fifo_rp + 1'b1;
+            end
+            case ({i_ce && b_armed && !b_fifo_full, b_do_drain})
+                2'b10: b_fifo_cnt <= b_fifo_cnt + 1'b1;
+                2'b01: b_fifo_cnt <= b_fifo_cnt - 1'b1;
+                default: ;
+            endcase
+        end
+    end
+
+    wire [IW-1:0] b_fifo_out = b_fifo_mem[b_fifo_rp[FIFO_AW-1:0]];
+
+    reg [FFT_N-1:0] b_hann_idx;
+    always @(posedge i_clk) begin
+        if (i_reset || !b_in_stream)
+            b_hann_idx <= 0;
+        else if (b_do_drain)
+            b_hann_idx <= b_hann_idx + 1'b1;
+    end
+
+    wire signed [2*IW-1:0] b_prod_w =
+        $signed(b_fifo_out) * $signed({1'b0, hanning_rom[b_hann_idx]});
+    wire signed [IW-1:0]   b_win_w = b_prod_w[2*IW-2:IW-1];
+
+    reg signed [IW-1:0] b_win;
+    reg                 b_win_ce;
+    always @(posedge i_clk) begin
+        if (i_reset) begin
+            b_win    <= 0;
+            b_win_ce <= 1'b0;
+        end else begin
+            b_win    <= b_win_w;
+            b_win_ce <= b_do_drain;
+        end
+    end
+
+    reg                b_sact;
+    reg signed [15:0]  b_sdw_real, b_sdw_imag;
     always @(posedge i_clk) begin
         b_sact     <= b_win_ce;
         b_sdw_real <= {{(16-IW){b_win[IW-1]}}, b_win};
         b_sdw_imag <= 16'd0;
     end
 
-    // R2FFT Instance B — done/DMA FSM (identical structure to A, with done_ack)
+    // --- R2FFT B DMA FSM (identical to original stfft.sv) -----------------
     wire              b_done_w;
-    wire [2:0]        b_status_w;
     wire signed [7:0] b_bfpexp_w;
     reg               b_done_r;
     reg  signed [7:0] b_bfpexp_r;
-    reg               b_done_ack;    // ← double-fire guard
+    reg               b_done_ack;
 
     reg [FFT_N-1:0] b_dma_addr;
     reg             b_dmaact, b_dmaact_r;
@@ -312,7 +402,6 @@ module stfft #(
         end
     end
 
-    // B support hardware
     wire [FFT_N-3:0] b_twa;  wire b_twact;  wire [15:0] b_twdr_cos;
     wire b_ract0, b_wact0;  wire [FFT_N-2:0] b_ra0, b_wa0;  wire [31:0] b_rdr0, b_wdw0;
     wire b_ract1, b_wact1;  wire [FFT_N-2:0] b_ra1, b_wa1;  wire [31:0] b_rdr1, b_wdw1;
@@ -340,10 +429,12 @@ module stfft #(
         .wact_ram1(b_wact1),.wa_ram1(b_wa1),.wdw_ram1(b_wdw1)
     );
 
+    // =======================================================================
+    // Output MUX (unchanged from stfft.sv)
+    // =======================================================================
 
-    // Output MUX
-    // A and B DMA windows never overlap: HOP*CE_EVERY >> FFT_SIZE guaranteed
-    // by caller (HOP=128, CE_EVERY=64 → 8192 >> 256).
+    assign win_ce_o = a_win_ce | b_win_ce;
+
     always @(posedge i_clk) begin
         if (i_reset) begin
             o_fft_sync   <= 1'b0;
