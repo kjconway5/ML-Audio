@@ -19,7 +19,7 @@ async def init_dut(dut):
     """
     Interact with all macro instances in each bank A and B so CEN sees a 1->0.
     """
-    cocotb.start_soon(Clock(dut.clk, CLK_PERIOD_NS, unit="ns").start())
+    cocotb.start_soon(Clock(dut.clk, CLK_PERIOD_NS, units="ns").start())
 
     dut.a_we.value    = 0
     dut.a_waddr.value = 0

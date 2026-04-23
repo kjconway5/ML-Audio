@@ -1,7 +1,0 @@
-<testsuites name="results">
-  <testsuite name="all" package="all">
-    <property name="random_seed" value="1775080587" />
-    <testcase name="test_frame_control_fsm" classname="test_frame_control" file="/workspace/src/rtl/Log-Mel/rtl/frame_control/test_frame_control.py" lineno="27" time="0.00374603271484375" sim_time_ns="590.001" ratio_time="157500.22621588595" />
-    <testcase name="test_melindex" classname="test_frame_control" file="/workspace/src/rtl/Log-Mel/rtl/frame_control/test_frame_control.py" lineno="90" time="0.0037200450897216797" sim_time_ns="540.001" ratio_time="145159.79967339613" />
-  </testsuite>
-</testsuites>

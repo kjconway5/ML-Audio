@@ -16,15 +16,32 @@ Usage (run from src/ml/Pipeline/ or anywhere):
 
 import argparse
 import re
+import shutil
 import sys
 from pathlib import Path
 
 HERE      = Path(__file__).resolve().parent
-MODEL_DIR = HERE.parent / "models" / "dscnn-32mac-v1"
 REPO_ROOT = HERE.parents[2]   # Pipeline → ml → src → repo root
 
-TEST_FILE = REPO_ROOT / "src/rtl/dscnn/kws_top/test_kws_top.py"
-BIAS_SV   = REPO_ROOT / "src/rtl/dscnn/bias_dff/bias_DFFs.sv"
+
+def _find_latest_model() -> Path:
+    """Return the highest-versioned dscnn-32requant-vN directory in models/."""
+    models_dir = HERE.parent / "models"
+    candidates = []
+    for d in models_dir.iterdir():
+        if d.is_dir() and re.fullmatch(r"dscnn-32requant-v(\d+)", d.name):
+            n = int(re.search(r"(\d+)$", d.name).group(1))
+            candidates.append((n, d))
+    if not candidates:
+        raise FileNotFoundError(f"No dscnn-32requant-vN directories found in {models_dir}")
+    return max(candidates, key=lambda x: x[0])[1]
+
+
+MODEL_DIR = _find_latest_model()
+
+TEST_FILE        = REPO_ROOT / "src/rtl/dscnn/kws_top/test_kws_top.py"
+BIAS_SV          = REPO_ROOT / "src/rtl/dscnn/bias_dff/bias_DFFs.sv"
+WEIGHT_SRAM_DIR  = REPO_ROOT / "src/rtl/dscnn/weight_sram"
 
 # Architecture-fixed layer order, bias offsets, and channel counts.
 # These match the DSCNN(32 filters, 7 classes) architecture and never change
@@ -182,16 +199,20 @@ def main():
     scales_path = args.ckpt_dir / "scales.txt"
     bias_path   = args.ckpt_dir / "bias.hex"
 
-    missing = [p for p in [scales_path, bias_path, TEST_FILE, BIAS_SV] if not p.exists()]
+    weights_src  = args.ckpt_dir / "weights.hex"
+    weights_dest = WEIGHT_SRAM_DIR / "weights.hex"
+
+    missing = [p for p in [scales_path, bias_path, weights_src, TEST_FILE, BIAS_SV] if not p.exists()]
     if missing:
         for p in missing:
             print(f"ERROR: not found: {p}")
         sys.exit(1)
 
-    print(f"scales.txt : {scales_path}")
-    print(f"bias.hex   : {bias_path}")
-    print(f"test file  : {TEST_FILE}")
-    print(f"bias sv    : {BIAS_SV}")
+    print(f"scales.txt  : {scales_path}")
+    print(f"bias.hex    : {bias_path}")
+    print(f"weights.hex : {weights_src} → {weights_dest}")
+    print(f"test file   : {TEST_FILE}")
+    print(f"bias sv     : {BIAS_SV}")
     if args.dry_run:
         print("(dry run — no files written)\n")
     else:
@@ -205,6 +226,11 @@ def main():
     ok = True
 
     print("LAYER_CFGS shifts: loaded dynamically from scales.txt by rtl_golden.load_layer_cfgs() — no patching needed.")
+
+    print("\nCopying weights.hex to weight_sram testbench...")
+    if not args.dry_run:
+        shutil.copy2(weights_src, weights_dest)
+    print(f"  {'(skipped)' if args.dry_run else 'copied'} → {weights_dest}")
 
     print("\nUpdating bias_DFFs.sv case statement...")
     ok &= update_bias_sv(BIAS_SV, biases, args.dry_run)

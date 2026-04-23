@@ -9,7 +9,7 @@ import os
 CLK_PERIOD_NS = 100  
 
 WEIGHTS_HEX = os.path.join(os.path.dirname(__file__), "weights.hex")
-NUM_WEIGHTS  = 4296
+NUM_WEIGHTS  = 6752
 
 
 def load_weights_hex(path):
@@ -30,22 +30,22 @@ def load_weights_hex(path):
 
 async def init_dut(dut):
     """"Initialize values. Initialize cen_fell to allow for valid writes"""
-    cocotb.start_soon(Clock(dut.clk, CLK_PERIOD_NS, unit="ns").start())
+    cocotb.start_soon(Clock(dut.clk, CLK_PERIOD_NS, units="ns").start())
 
     dut.we.value    = 0
     dut.waddr.value = 0
     dut.wdata.value = 0
-    dut.addr.value  = 0
+    dut.raddr.value  = 0
 
     await RisingEdge(dut.clk)
 
-    # Touch an addr in all banks to assert cen_fell -> 1 
-    for bank in range(5):
-        dut.addr.value = bank * 1024   
+    # Touch an addr in all banks to assert cen_fell -> 1
+    for bank in range(7):
+        dut.raddr.value = bank * 1024   
         await RisingEdge(dut.clk)      
         await RisingEdge(dut.clk)      
 
-    dut.addr.value = 0
+    dut.raddr.value = 0
     await RisingEdge(dut.clk)
 
 
@@ -79,10 +79,10 @@ async def read_addr(dut, addr):
     Returns unsigned integer 0-255.
     """
     await FallingEdge(dut.clk)
-    dut.addr.value = addr
+    dut.raddr.value = addr
     await RisingEdge(dut.clk)   
     await FallingEdge(dut.clk)  
-    return int(dut.data.value)
+    return int(dut.rdata.value)
 
 
 @cocotb.test()
@@ -163,11 +163,11 @@ async def test_read_during_write(dut):
     dut.we.value    = 1
     dut.waddr.value = corrupt_addr
     dut.wdata.value = weights[corrupt_addr]
-    dut.addr.value  = 0
+    dut.raddr.value  = 0
  
     await RisingEdge(dut.clk)       
     await FallingEdge(dut.clk)
-    corrupted = int(dut.data.value)
+    corrupted = int(dut.rdata.value)
  
     dut._log.info(
         f"During we=1: data=0x{corrupted:02X} "
@@ -181,7 +181,7 @@ async def test_read_during_write(dut):
     dut.wdata.value = 0
     await RisingEdge(dut.clk)       
     await FallingEdge(dut.clk)
-    recovered = int(dut.data.value)
+    recovered = int(dut.rdata.value)
  
     assert recovered == weights[0], \
         f"FAIL recovery: expected 0x{weights[0]:02X} got 0x{recovered:02X}"

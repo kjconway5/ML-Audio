@@ -1,9 +1,0 @@
-<testsuites name="results">
-  <testsuite name="all" package="all">
-    <property name="random_seed" value="1775500020" />
-    <testcase name="reset_test" classname="test_mac_array" file="/workspace/src/rtl/dscnn/mac_array/test_mac_array.py" lineno="25" time="0.0014781951904296875" sim_time_ns="105.001" ratio_time="71033.24424258065" />
-    <testcase name="clear_test" classname="test_mac_array" file="/workspace/src/rtl/dscnn/mac_array/test_mac_array.py" lineno="40" time="0.0008635520935058594" sim_time_ns="200.001" ratio_time="231602.70411485367" />
-    <testcase name="en_test" classname="test_mac_array" file="/workspace/src/rtl/dscnn/mac_array/test_mac_array.py" lineno="62" time="0.0010275840759277344" sim_time_ns="230.00100000000003" ratio_time="223826.94067378194" />
-    <testcase name="else_test" classname="test_mac_array" file="/workspace/src/rtl/dscnn/mac_array/test_mac_array.py" lineno="85" time="0.0008475780487060547" sim_time_ns="200.00099999999998" ratio_time="235967.6495932489" />
-  </testsuite>
-</testsuites>

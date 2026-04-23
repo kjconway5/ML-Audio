@@ -34,6 +34,21 @@ lint/
 *.rpt
 *.asc
 *.bin
+*.xml
+*.wav
+
+# dataset
+src/ml/Pipeline/speech_commands_v0.02/
+
+# outputs
+src/ml/output/
+src/ml/models
+
+# caches
+src/ml/__pycache__/
+
+src/rtl/Log-Mel/rtl/log_top/*.hex
+/workspace/src/rtl/Log-Mel/rtl/mel_filterbank/*.hex
 
 # Formal verification outputs
 *_bmc/
@@ -85,3 +100,5 @@ src/rtl/Log-Mel/rtl/logmel_top/*.hex
   src/ml/Pipeline/speech_commands_v0.02.tar.gz                                                                                     
   src/ml/output/                                                                                                                   
   *.npy  
+
+  /workspace/src/rtl/dscnn/kws_top/kws_results.txt

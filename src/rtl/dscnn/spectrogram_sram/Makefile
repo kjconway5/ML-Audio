@@ -13,13 +13,13 @@ COCOTB_MODULE    ?= test_$(TOP)
 COCOTB_MAKEFILES := $(shell cocotb-config --makefiles 2>/dev/null)
 
 test-cocotb test-cocotb-icarus:
-	SIM=icarus TOPLEVEL_LANG=verilog TOPLEVEL=$(TOP) COCOTB_TEST_MODULES=$(COCOTB_MODULE) \
+	SIM=icarus TOPLEVEL_LANG=verilog TOPLEVEL=$(TOP) MODULE=$(COCOTB_MODULE) \
 		VERILOG_SOURCES="$(abspath $(SOURCES))" \
 		$(MAKE) -f $(COCOTB_MAKEFILES)/Makefile.sim
 .PHONY: test-cocotb test-cocotb-icarus
 
 test-cocotb-verilator:
-	SIM=verilator TOPLEVEL_LANG=verilog TOPLEVEL=$(TOP) COCOTB_TEST_MODULES=$(COCOTB_MODULE) \
+	SIM=verilator TOPLEVEL_LANG=verilog TOPLEVEL=$(TOP) MODULE=$(COCOTB_MODULE) \
 		VERILOG_SOURCES="$(abspath $(SOURCES))" \
 		$(MAKE) -f $(COCOTB_MAKEFILES)/Makefile.sim
 .PHONY: test-cocotb-verilator

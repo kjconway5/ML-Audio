@@ -253,7 +253,7 @@ async def run_single_inference(dut, spect_int8, sample_idx, timeout_ns, layer_cf
 async def test_kws_inference(dut):
     test_dir = get_test_dir()
 
-    MODEL_DIR     = os.path.join(test_dir, "..", "..", "..", "ml", "models", "dscnn-pow2-v9")
+    MODEL_DIR     = os.path.join(test_dir, "..", "..", "..", "ml", "models", "dscnn-32requant-v11")
     weights_path  = os.path.join(MODEL_DIR, "weights.hex")
     bias_path     = os.path.join(MODEL_DIR, "bias.hex")
     scales_path   = os.path.join(MODEL_DIR, "scales.txt")
@@ -321,7 +321,7 @@ async def test_kws_inference(dut):
     dut._log.info("STARTING RTL SIMULATION")
     dut._log.info("=" * 72)
 
-    cocotb.start_soon(Clock(dut.clk, CLK_PERIOD_NS, unit="ns").start())
+    cocotb.start_soon(Clock(dut.clk, CLK_PERIOD_NS, units="ns").start())
 
     await reset_dut(dut)
     await load_weight_sram(dut, weights)
@@ -369,6 +369,18 @@ async def test_kws_inference(dut):
         mark = "PASS" if r["passed"] else "FAIL"
         dut._log.info(f"  [{i}] {mark}  RTL={r['rtl_name']}")
     dut._log.info("=" * 72)
+
+    results_path = os.path.join(test_dir, "kws_results.txt")
+    with open(results_path, "w") as f:
+        f.write(f"keyword: {keyword}   {n_pass}/{len(results)} passed\n")
+        f.write("-" * 40 + "\n")
+        for i, (r, s) in enumerate(zip(results, samples)):
+            mark = "PASS" if r["passed"] else "FAIL"
+            wav  = s["wav"].split("/")[-1]
+            note = ""
+            if not r["passed"]:
+                note = "  [RTL bug]" if not r["consistent"] else "  [model miss]"
+            f.write(f"[{i}] {mark}  {wav:<30}  RTL={r['rtl_name']}{note}\n")
 
     if n_pass < len(results):
         raise AssertionError(
