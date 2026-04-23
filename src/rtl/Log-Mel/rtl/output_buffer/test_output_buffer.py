@@ -13,17 +13,18 @@ async def reset_dut(dut):
     dut.reset.value       = 1
     dut.load_i.value      = 0
     dut.cnn_ready_i.value = 0
-    for i in range(N_MELS):
-        dut.log_out_i[i].value = 0
+    dut.log_out_i.value   = 0   
     await RisingEdge(dut.clk)
     await RisingEdge(dut.clk)
     dut.reset.value = 0
     await RisingEdge(dut.clk)
 
 async def load_frame(dut, values):
-    """Simulate log_lut firing log_done — pulse load_i for one cycle with all 40 values"""
+    """Simulate log_lut firing log_done - pack all 40 values into one big integer"""
+    packed = 0
     for i in range(N_MELS):
-        dut.log_out_i[i].value = int(values[i])
+        packed |= (int(values[i]) & ((1 << OUT_W) - 1)) << (i * OUT_W)
+    dut.log_out_i.value = packed
     dut.load_i.value = 1
     await RisingEdge(dut.clk)
     dut.load_i.value = 0
