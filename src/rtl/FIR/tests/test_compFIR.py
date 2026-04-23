@@ -1,7 +1,5 @@
 # test_compFIR.py
 #
-# Cocotb testbench for compFIR.sv (AXI-Stream ready/valid interface).
-#
 # Port mapping:
 #   i_tdata / i_tvalid / i_tready  -- upstream (from CIC decimator)
 #   o_tdata / o_tvalid / o_tready  -- downstream (to STFFT)
@@ -12,9 +10,7 @@ from cocotb.triggers import RisingEdge, ClockCycles
 import numpy as np
 import random
 
-# ---------------------------------------------------------------------------
-# Parameters matching compFIR.sv
-# ---------------------------------------------------------------------------
+
 NTAPS = 33
 IW    = 16
 CW    = 14
@@ -35,9 +31,6 @@ full_h[M] = COEFFS[M]
 MASK_IW = (1 << IW) - 1
 
 
-# ---------------------------------------------------------------------------
-# Fixed-point reference model
-# ---------------------------------------------------------------------------
 class FIRFixed:
     def __init__(self):
         self.delay = np.zeros(NTAPS, dtype=np.int64)
@@ -80,9 +73,6 @@ class FIRFixed:
         return int(max(-(1 << (OW-1)), min((1 << (OW-1)) - 1, result)))
 
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
 
 async def reset_dut(dut):
     dut.i_reset.value  = 1
@@ -134,10 +124,6 @@ async def send_and_collect(dut, samples, o_tready: int = 1) -> list:
     dut.i_tvalid.value = 0
     return results
 
-
-# ---------------------------------------------------------------------------
-# Test 1 — Reset
-# ---------------------------------------------------------------------------
 @cocotb.test()
 async def test_reset(dut):
     """After reset: o_tdata = 0, o_tvalid = 0."""
@@ -159,9 +145,7 @@ async def test_reset(dut):
     dut._log.info("Reset test passed")
 
 
-# ---------------------------------------------------------------------------
-# Test 2 — i_tready follows ready/valid rule
-# ---------------------------------------------------------------------------
+# i_tready follows ready/valid rule
 @cocotb.test()
 async def test_ready_signal(dut):
     """
@@ -190,9 +174,6 @@ async def test_ready_signal(dut):
     dut._log.info("Ready signal test passed")
 
 
-# ---------------------------------------------------------------------------
-# Test 3 — Impulse response
-# ---------------------------------------------------------------------------
 @cocotb.test()
 async def test_impulse_response_axi(dut):
     """
@@ -218,9 +199,8 @@ async def test_impulse_response_axi(dut):
     # Run until we've pushed all inputs AND collected all outputs
     while len(outputs) < len(inputs):
 
-        # ---------------------------
-        # Drive input (AXI compliant)
-        # ---------------------------
+
+        # Drive input
         if sample_idx < len(inputs):
             dut.i_tdata.value  = int(inputs[sample_idx]) & MASK_IW
             dut.i_tvalid.value = 1
@@ -229,22 +209,16 @@ async def test_impulse_response_axi(dut):
 
         await RisingEdge(dut.i_clk)
 
-        # ---------------------------
         # Input handshake
-        # ---------------------------
         if int(dut.i_tvalid.value) and int(dut.i_tready.value):
             expected_outputs.append(ref.push(inputs[sample_idx]))
             sample_idx += 1
 
-        # ---------------------------
         # Output handshake
-        # ---------------------------
         if int(dut.o_tvalid.value) and int(dut.o_tready.value):
             outputs.append(dut.o_tdata.value.signed_integer)
 
-    # ---------------------------
     # Compare results
-    # ---------------------------
     for i, (got, exp) in enumerate(zip(outputs, expected_outputs)):
         assert abs(got - exp) <= 1, \
             f"h[{i}] = {got}, expected {exp}"
@@ -362,9 +336,7 @@ async def test_random_full_rate_axi(dut):
     dut._log.info(f"AXI random full-rate test passed ({n} samples)")
 
 
-# ---------------------------------------------------------------------------
-# Test 6 — Back-pressure: o_tready toggling
-# ---------------------------------------------------------------------------
+# Back-pressure: o_tready toggling
 @cocotb.test()
 async def test_backpressure(dut):
     """
@@ -432,9 +404,7 @@ async def test_backpressure(dut):
     dut._log.info("Back-pressure test passed")
 
 
-# ---------------------------------------------------------------------------
-# Test 7 — o_tvalid deasserts when downstream stalls and no new input
-# ---------------------------------------------------------------------------
+# o_tvalid deasserts when downstream stalls and no new input
 @cocotb.test()
 async def test_valid_deasserts(dut):
     """o_tvalid goes low after downstream consumes the output with no new input."""

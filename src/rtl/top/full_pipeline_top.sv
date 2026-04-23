@@ -10,7 +10,7 @@ module full_pipeline_top #(
 
     // FIR compensation filter params  (runs at 16 kHz)
     parameter int FIR_NTAPS  = 33,
-    parameter int FIR_IW     = 16,
+    parameter int FIR_IW     = 18,
     parameter int FIR_CW     = 14,
     parameter int FIR_OW     = 2 * FIR_IW + 5,  // = 37 (full headroom)
 
@@ -106,43 +106,33 @@ cic_decimator #(
 );
 
 
-// 2.  CIC output → 16-bit truncation
-/*     CIC passband gain = (R·M)^N = 63^3 = 250 047 ≈ 2^17.93
-       The 34-bit accumulator therefore has ~18 bits of gain headroom at the
-       bottom.  Keeping the top 16 bits [33:18] recovers full-scale 16-bit
-       signed range while discarding the gain.  No divider needed.
-*/
+// 2.  CIC output 
 
 logic signed [15:0] cic_trunc;
 logic               cic_trunc_valid;
 
-assign cic_trunc       = cic_data[CIC_REG_W-1 : CIC_REG_W-16]; // [33:18]
+assign cic_trunc = (cic_data + (1 << 17)) >>> 18; // NOT PARAMITIZED TODO
 assign cic_trunc_valid = cic_valid;
 
 
-// 3.  FIR Compensation Filter — 16 kHz, 16-bit in, FIXED_TAPS
-/*     Compensates the CIC droop across 0–8 kHz passband.
-
-       i_ce is the sparse 16 kHz strobe from the CIC.  fastfir only advances
-       its delay line on i_ce, so sparse operation is correct as-is.
-*/
+// 3.  FIR Compensation Filter
 
 logic [FIR_OW-1:0] fir_result;   // 37-bit full-precision output
 logic              fir_valid_o;
 logic              fir_ready_i;
 
-assign fir_ready_i = 1'b1;
+assign fir_ready_i = 1'b1;  // setting to HIGH will produce NO frames
 
 compFIR #(
     .NTAPS     (FIR_NTAPS), // 14
-    .IW        (FIR_IW),    // 16
+    .IW        (FIR_IW),    // 18
     .CW        (FIR_CW),    // 16
     .OW        (FIR_OW)    // 37
 ) u_fir (
     .i_clk    (clk_i),
     .i_reset  (reset_i),
-    .i_tdata  (cic_trunc),           // ignored — FIXED_TAPS=1
-    .i_tvalid (cic_valid),          // ignored — FIXED_TAPS=1
+    .i_tdata  (cic_trunc),
+    .i_tvalid (cic_valid),
     .i_tready (fir_ready_o),         // output fix naming(in tb too) TODO from i_tready -> o_tready
     .o_tdata  (fir_result),
     .o_tvalid (fir_valid_o),
@@ -150,23 +140,14 @@ compFIR #(
 );
 
 
-// 4.  FIR output → 16-bit truncation for STFFT
-/*    fastfir OW = 39.  taps.hex coefficients should be normalised so their
-      sum ≈ 2^(FIR_OW - 16 - 1) = 2^22, giving unity passband gain after
-      this truncation.  Bits [38:23] are the signed 16-bit result.
-      Adjust the slice offset to match the taps.hex Q-format if needed.
-*/
+// 4.  FIR output 
 
 logic signed [15:0] fir_trunc;
 logic               fir_trunc_valid;
 
-assign fir_trunc       = fir_result[FIR_OW-1 : 16]; // [38:23]
+assign fir_trunc = (fir_result + (1 << 14)) >>> 15; // NOT PARAMITIZED TODO
 assign fir_trunc_valid = fir_valid_o;
-/* fastfir is pipelined (one clock per tap stage accumulation but
-   produces one output per i_ce cycle).  If timing analysis shows the
-   valid needs to be delayed by one clock, change the line above to a
-   single-flop shift register on cic_trunc_valid.
-*/
+
 
 // 5.  STFFT — 16 kHz, 16-bit signed input, 32-bit output {re[15:0],im[15:0]}
 
@@ -194,9 +175,8 @@ stfft #(
     .o_bfpexp    (bfpexp_raw)
 );
 
-// ==========================================================================
+
 // 2. FFT output pipeline registers + 2-cycle delayed sync
-// ==========================================================================
 
 logic                    fft_sync_r, fft_sync_rr;
 logic [2*OW_STFFT-1:0]   fft_result_r, fft_result_rr;
@@ -219,24 +199,6 @@ logic signed [OW_STFFT-1:0] fft_re, fft_im;
 assign fft_re = fft_result_rr[2*OW_STFFT-1 : OW_STFFT];
 assign fft_im = fft_result_rr[OW_STFFT-1   : 0];
 
-// ==========================================================================
-// 2b. FIX for Bug D — DMA-pipeline-aligned sync
-//
-// `fft_sync_rr` fires when the R2FFT's DMA begins, but the ACTUAL bin-0
-// value propagates through:
-//   a_dmadr_real_r → a_result → o_fft_result → fft_result_r → fft_result_rr
-// which is 4 more cycles.  Meanwhile bin_cnt_q needs only 1 cycle to assert
-// fft_valid after fft_sync_rr.  Net: the first 3 fft_valid=1 cycles show
-// STALE fft_result_rr (from the previous frame), causing mel_filterbank to
-// store garbage into power_buf[0..2] — a cyclic roll of +3 on the FFT
-// output visible as a slight mel-bin shift and a "double ridge" pattern
-// in comparison.png.
-//
-// Fix: delay fft_sync_rr by SYNC_ALIGN_DELAY cycles before driving the
-// bin counter, the bfpexp latch, and the logmel sync.  This pushes
-// fft_valid=1 to start exactly when bin 0 arrives at fft_result_rr.
-// ==========================================================================
-
 localparam int SYNC_ALIGN_DELAY = 3;  // empirically measured DMA-to-fft_result_rr gap
 
 logic [SYNC_ALIGN_DELAY-1:0] fft_sync_align_sr;
@@ -249,9 +211,8 @@ end
 logic fft_sync_aligned;
 assign fft_sync_aligned = fft_sync_align_sr[SYNC_ALIGN_DELAY-1];
 
-// ==========================================================================
+
 // 3. Bin counter  (driven by the aligned sync)
-// ==========================================================================
 
 localparam int CNT_W = $clog2(N_BINS + 1);
 logic [CNT_W-1:0] bin_cnt_q;
@@ -268,10 +229,9 @@ end
 logic fft_valid;
 assign fft_valid = (bin_cnt_q > 0);
 
-// ==========================================================================
+
 // 4. bfpexp latch  (also driven by aligned sync so it updates on the same
 //    cycle logmel starts consuming the new frame)
-// ==========================================================================
 
 logic signed [7:0] bfpexp_for_mel;
 
@@ -282,9 +242,7 @@ always_ff @(posedge clk_i) begin
         bfpexp_for_mel <= bfpexp_raw;
 end
 
-// ==========================================================================
 // 5. LogMel
-// ==========================================================================
 
 logic [OUT_W-1:0] mel_data;
 logic             mel_valid;
@@ -323,9 +281,8 @@ logmel_top #(
     .flash_log_lut_data_i   (flash_log_lut_data_i)
 );
 
-// ==========================================================================
+
 // 6. bfpexp compensation
-// ==========================================================================
 
 localparam int CORR_W = OUT_W + 10;
 
@@ -349,9 +306,8 @@ end
 assign mel_compensated_o       = mel_compensated;
 assign mel_compensated_valid_o = mel_valid;
 
-// ==========================================================================
+
 // 7. Spectrogram buffer
-// ==========================================================================
 
 spect_buffer_ctrl #(
     .SPECT_SHIFT(SPECT_SHIFT),

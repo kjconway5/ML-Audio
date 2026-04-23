@@ -59,8 +59,8 @@ module compFIR #(
     //
     // We can accept a new sample when the output slot is empty OR the
     // downstream is consuming it this cycle (1-deep pipeline).
-    assign i_tready = 1'b1;
-
+    assign i_tready = !o_tvalid || o_tready;
+    
     wire advance = i_tvalid && i_tready;  // a new sample is accepted this cycle
 
     // Delay line — advances only when we accept a new sample
