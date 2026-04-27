@@ -113,6 +113,13 @@ def extract_spectrogram(audio_i16: np.ndarray, extractor: GoldenExtractor) -> tu
 
 # ── PyTorch golden inference ──────────────────────────────────────────────────
 
+def _int8_sym_qconfig():
+    obs = torch.quantization.observer.MinMaxObserver.with_args(
+        dtype=torch.qint8, qscheme=torch.per_tensor_symmetric, reduce_range=False,
+    )
+    return torch.quantization.QConfig(activation=obs, weight=obs)
+
+
 def load_model(ckpt_path: Path) -> torch.nn.Module:
     """Load and reconstruct the QAT-converted INT8 DSCNN from checkpoint."""
     checkpoint = torch.load(str(ckpt_path), map_location="cpu", weights_only=False)
@@ -133,12 +140,13 @@ def load_model(ckpt_path: Path) -> torch.nn.Module:
 
     # Reconstruct the quantized model: fuse → prepare → convert → load weights
     backend = checkpoint.get("qat_backend", "fbgemm")
-    if backend == "pow2":
+    int8_sym = (backend == "qnnpack_int8sym")
+    if backend in ("pow2", "qnnpack_int8sym"):
         backend = "qnnpack"
     torch.backends.quantized.engine = backend
     model.eval()
     model.fuse_model()
-    model.qconfig = torch.quantization.get_default_qconfig(backend)
+    model.qconfig = _int8_sym_qconfig() if int8_sym else torch.quantization.get_default_qconfig(backend)
     torch.quantization.prepare(model, inplace=True)
     torch.quantization.convert(model, inplace=True)
     model.load_state_dict(checkpoint["model_state_dict"])
@@ -218,9 +226,11 @@ def main():
         sys.exit(1)
 
     # Derive INPUT_SCALE from the QuantStub (model.quant.scale)
+    # RTL: int8 = Q6.10_uint16 >> SPECT_SHIFT → match requires SPECT_SHIFT = Q_FRAC - round(-log2(scale))
     global INPUT_SCALE
     INPUT_SCALE = float(model.quant.scale)
-    spect_shift = round(-math.log2(INPUT_SCALE))
+    Q_FRAC_LOG = 10  # must match golden_model.py Q_FRAC
+    spect_shift = Q_FRAC_LOG - round(-math.log2(INPUT_SCALE))
     spect_shift = max(0, min(15, spect_shift))
     print(f"QuantStub scale: {INPUT_SCALE:.8f}  (SPECT_SHIFT={spect_shift})")
 

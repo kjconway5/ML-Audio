@@ -9,7 +9,7 @@
 module feature_sram #(
     parameter DEPTH  = 16000,
     parameter DATA_W = 8,
-    parameter ADDR_W = 14   // covers 0–16383; valid range 0–11,999
+    parameter ADDR_W = 14   // covers 0–16383; valid range 0–15,999
 )(
     input  wire              clk,
 

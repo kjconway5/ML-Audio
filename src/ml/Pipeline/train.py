@@ -67,6 +67,41 @@ def get_pow2_qat_qconfig():
         quant_max=127,
     )
     return torch.quantization.QConfig(activation=act_fq, weight=wt_fq)
+
+
+def get_int8_sym_qat_qconfig():
+    """
+    QAT qconfig with symmetric signed INT8 (zero_point=0) for both activations and weights.
+
+    The RTL uses signed INT8 throughout. qnnpack's default quint8 activations have
+    zero_point != 0, giving effective range [0, 255-zp]*scale — but the arith model
+    clips at [0, 127]*scale. This 2x mismatch causes nearly all speech features to clip
+    identically, destroying discrimination. Forcing qint8 symmetric makes the fake
+    quantizer clip at exactly 127*scale, matching the hardware's signed INT8 exactly.
+    """
+    act_fq = torch.quantization.FakeQuantize.with_args(
+        observer=torch.quantization.MovingAverageMinMaxObserver.with_args(
+            dtype=torch.qint8,
+            qscheme=torch.per_tensor_symmetric,
+            reduce_range=False,
+        ),
+        dtype=torch.qint8,
+        qscheme=torch.per_tensor_symmetric,
+        quant_min=-128,
+        quant_max=127,
+    )
+    wt_fq = torch.quantization.FakeQuantize.with_args(
+        observer=torch.quantization.MovingAverageMinMaxObserver.with_args(
+            dtype=torch.qint8,
+            qscheme=torch.per_tensor_symmetric,
+            reduce_range=False,
+        ),
+        dtype=torch.qint8,
+        qscheme=torch.per_tensor_symmetric,
+        quant_min=-128,
+        quant_max=127,
+    )
+    return torch.quantization.QConfig(activation=act_fq, weight=wt_fq)
 # ──────────────────────────────────────────────────────────────────────────────
 
 
@@ -261,8 +296,8 @@ def main():
 
     # Uniform weights — let the model learn naturally with balanced unknown data.
     # Order: [no=0, off=1, on=2, silence=3, unknown=4, wow=5, yes=6]
-    class_weights = torch.tensor([1.0, 1.0, 1.5, 1.0, 1.0, 1.5, 1.0]).to(device)
-    criterion = nn.CrossEntropyLoss(label_smoothing=0.1, weight=class_weights)
+    class_weights = torch.tensor([1.0, 1.0, 1.5, 1.0, 1.5, 1.5, 1.0]).to(device)
+    criterion = nn.CrossEntropyLoss(weight=class_weights)
 
     train_cfg = config["training"]
 
@@ -270,7 +305,7 @@ def main():
     val_every       = train_cfg.get("val_every", 5)
     qat_start_epoch = train_cfg.get("qat_start_epoch", max(1, int(n_epochs * 0.7)))
     freeze_bn_epoch = train_cfg.get("freeze_bn_epoch", n_epochs - 2)
-    qat_backend     = "qnnpack"  # per-tensor symmetric weights; non-pow2 scales; matches RTL per-layer multiply-shift
+    qat_backend     = "qnnpack_int8sym"  # INT8 symmetric (zero_point=0 everywhere) — exact RTL match
 
     optimizer = optim.SGD(
         model.parameters(),
@@ -376,13 +411,15 @@ def main():
             #            exact RTL match but lower accuracy — use for fallback):
             # model.qconfig = get_pow2_qat_qconfig()
 
-            # Option B — qnnpack QAT (per-tensor symmetric weights; continuous
-            #            non-pow2 scales; requant.sv multiply-shift encodes each
-            #            layer's single scale with 31-bit precision — best RTL match):
+            # Option B — qnnpack default (quint8 activations, zero_point != 0).
+            #            DO NOT USE: PyTorch clips at (255-zp)*scale but arith model
+            #            clips at 127*scale, a 2x range mismatch that collapses all
+            #            high-energy speech features to INT8=127 in the arith/RTL model.
             # Option C — fbgemm QAT (per-channel weights; DO NOT USE — export.py
             #            uses mean_wscale which causes shift errors per-channel,
             #            collapsing intermediate activations to zero in the arith model):
-            model.qconfig = torch.quantization.get_default_qat_qconfig(qat_backend)
+            torch.backends.quantized.engine = 'qnnpack'  # qint8 activations require qnnpack; fbgemm (x86 default) rejects qint8
+            model.qconfig = get_int8_sym_qat_qconfig()  # INT8 symmetric, zero_point=0
             # ───────────────────────────────────────────────────────────────────
 
             torch.quantization.prepare_qat(model, inplace=True)
@@ -435,6 +472,10 @@ def main():
                 if val_acc > best_qat_val_acc:
                     best_qat_val_acc = val_acc
                     best_model_state = copy.deepcopy(model.state_dict())
+                    torch.save({'model_state_dict': best_model_state, 'epoch': epoch,
+                                'val_accuracy': val_acc, 'config': config,
+                                'labels': None, 'qat_backend': qat_backend},
+                               save_path.parent / "best_qat_checkpoint.pt")
                     print(f"{'':11s}  *** New best QAT val accuracy ({val_acc:.2f}%)! Checkpoint saved. ***")
             else:
                 if val_acc > best_val_acc:
@@ -462,6 +503,7 @@ def main():
 
     print(">>> Converting QAT model to INT8 <<<\n")
     model.eval()
+    torch.backends.quantized.engine = 'qnnpack'  # must match engine used in prepare_qat
     torch.quantization.convert(model, inplace=True)
     print("  → Conversion complete: model is now INT8.\n")
     

@@ -20,8 +20,23 @@ import sys
 from pathlib import Path
 
 HERE      = Path(__file__).resolve().parent
-MODEL_DIR = HERE.parent / "models" / "dscnn-32mac-v1"
 REPO_ROOT = HERE.parents[2]   # Pipeline → ml → src → repo root
+
+
+def _find_latest_model() -> Path:
+    """Return the highest-versioned dscnn-32requant-vN directory in models/."""
+    models_dir = HERE.parent / "models"
+    candidates = []
+    for d in models_dir.iterdir():
+        if d.is_dir() and re.fullmatch(r"dscnn-32requant-v(\d+)", d.name):
+            n = int(re.search(r"(\d+)$", d.name).group(1))
+            candidates.append((n, d))
+    if not candidates:
+        raise FileNotFoundError(f"No dscnn-32requant-vN directories found in {models_dir}")
+    return max(candidates, key=lambda x: x[0])[1]
+
+
+MODEL_DIR = _find_latest_model()
 
 TEST_FILE = REPO_ROOT / "src/rtl/dscnn/kws_top/test_kws_top.py"
 BIAS_SV   = REPO_ROOT / "src/rtl/dscnn/bias_dff/bias_DFFs.sv"
