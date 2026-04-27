@@ -24,9 +24,7 @@ import torch
 import os
 from pathlib import Path
 
-# ---------------------------------------------------------------------------
 # RTL parameters  (must match logmel_top defaults)
-# ---------------------------------------------------------------------------
 SAMPLE_RATE = 16000
 N_FFT       = 256
 N_BINS      = N_FFT // 2 + 1   # 129
