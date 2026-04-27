@@ -1,6 +1,6 @@
 {
-  "keyword": "yes",
-  "ground_truth_class": 6,
+  "keyword": "wow",
+  "ground_truth_class": 5,
   "class_names": [
     "no",
     "off",
@@ -17,26 +17,62 @@
     {
       "index": 0,
       "hex_file": "spectrograms/spectrogram_0.hex",
-      "wav": "/workspace/src/ml/Pipeline/speech_commands_v0.02/yes/4def68db_nohash_1.wav",
-      "ground_truth_class": 6,
-      "ground_truth_name": "yes",
-      "pytorch_class": 6,
-      "pytorch_name": "yes",
-      "arith_class": 6,
-      "arith_name": "yes",
-      "non_zero": 732
+      "wav": "/home/dnocera/branch/ML-Audio/src/ml/Pipeline/speech_commands_v0.02/wow/78102205_nohash_1.wav",
+      "ground_truth_class": 5,
+      "ground_truth_name": "wow",
+      "pytorch_class": 5,
+      "pytorch_name": "wow",
+      "arith_class": 5,
+      "arith_name": "wow",
+      "non_zero": 852
     },
     {
       "index": 1,
       "hex_file": "spectrograms/spectrogram_1.hex",
-      "wav": "/workspace/src/ml/Pipeline/speech_commands_v0.02/yes/8dc18a75_nohash_0.wav",
-      "ground_truth_class": 6,
-      "ground_truth_name": "yes",
+      "wav": "/home/dnocera/branch/ML-Audio/src/ml/Pipeline/speech_commands_v0.02/wow/b83c1acf_nohash_0.wav",
+      "ground_truth_class": 5,
+      "ground_truth_name": "wow",
       "pytorch_class": 5,
       "pytorch_name": "wow",
-      "arith_class": 6,
-      "arith_name": "yes",
-      "non_zero": 354
+      "arith_class": 5,
+      "arith_name": "wow",
+      "non_zero": 1565
+    },
+    {
+      "index": 2,
+      "hex_file": "spectrograms/spectrogram_2.hex",
+      "wav": "/home/dnocera/branch/ML-Audio/src/ml/Pipeline/speech_commands_v0.02/wow/e882abb2_nohash_0.wav",
+      "ground_truth_class": 5,
+      "ground_truth_name": "wow",
+      "pytorch_class": 5,
+      "pytorch_name": "wow",
+      "arith_class": 5,
+      "arith_name": "wow",
+      "non_zero": 1040
+    },
+    {
+      "index": 3,
+      "hex_file": "spectrograms/spectrogram_3.hex",
+      "wav": "/home/dnocera/branch/ML-Audio/src/ml/Pipeline/speech_commands_v0.02/wow/f9f9751d_nohash_0.wav",
+      "ground_truth_class": 5,
+      "ground_truth_name": "wow",
+      "pytorch_class": 5,
+      "pytorch_name": "wow",
+      "arith_class": 5,
+      "arith_name": "wow",
+      "non_zero": 1143
+    },
+    {
+      "index": 4,
+      "hex_file": "spectrograms/spectrogram_4.hex",
+      "wav": "/home/dnocera/branch/ML-Audio/src/ml/Pipeline/speech_commands_v0.02/wow/ff63ab0b_nohash_1.wav",
+      "ground_truth_class": 5,
+      "ground_truth_name": "wow",
+      "pytorch_class": 5,
+      "pytorch_name": "wow",
+      "arith_class": 5,
+      "arith_name": "wow",
+      "non_zero": 1170
     }
   ]
 }

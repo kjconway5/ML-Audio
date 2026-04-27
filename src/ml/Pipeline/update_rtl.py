@@ -7,9 +7,9 @@ Updates:
   2. Case statement in bias_DFFs.sv                             ← from bias.hex
 
 Usage (run from src/ml/Pipeline/ or anywhere):
-    python3 update_rtl.py [--ckpt-dir <dir>] [--dry-run]
+    python3 update_rtl.py [--ckpt <dir>] [--dry-run]
 
---ckpt-dir : directory containing scales.txt and bias.hex
+--ckpt : directory containing scales.txt and bias.hex
              (default: same directory as this script)
 --dry-run  : print what would change without writing files
 """
@@ -190,16 +190,22 @@ def update_bias_sv(sv_path: Path, biases: list, dry_run: bool) -> bool:
 def main():
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--ckpt-dir", type=Path, default=MODEL_DIR,
+    parser.add_argument("--ckpt", type=Path, default=MODEL_DIR,
                         help="Directory containing scales.txt and bias.hex (default: %(default)s)")
     parser.add_argument("--dry-run", action="store_true",
                         help="Show changes without writing files")
     args = parser.parse_args()
 
-    scales_path = args.ckpt_dir / "scales.txt"
-    bias_path   = args.ckpt_dir / "bias.hex"
+    ckpt_dir = args.ckpt
+    if not ckpt_dir.exists():
+        alt = HERE.parent / "models" / ckpt_dir
+        if alt.exists():
+            ckpt_dir = alt
 
-    weights_src  = args.ckpt_dir / "weights.hex"
+    scales_path = ckpt_dir / "scales.txt"
+    bias_path   = ckpt_dir / "bias.hex"
+
+    weights_src  = ckpt_dir / "weights.hex"
     weights_dest = WEIGHT_SRAM_DIR / "weights.hex"
 
     missing = [p for p in [scales_path, bias_path, weights_src, TEST_FILE, BIAS_SV] if not p.exists()]

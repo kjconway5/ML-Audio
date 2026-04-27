@@ -2,11 +2,11 @@
 # Based on Google Speech Commands dataset
 
 dataset:
-  data_dir: "./speech_commands_v0.02"
-
+  data_dir: "/home/dnocera/branch/ML-Audio/src/ml/Pipeline/speech_commands_v0.02"
+#  data_dir: "/Users/diegonocera/Documents/ML-Audio/ML-Audio/src/ml/Pipeline/speech_commands_v0.02"
 data:
-  output_dir: "../output"
-
+  output_dir: "/home/dnocera/branch/ML-Audio/src/ml/output"
+#  output_dir: "/Users/diegonocera/Documents/ML-Audio/ML-Audio/src/ml/output"
   classes:
     - "yes"
     - "no"
@@ -63,7 +63,7 @@ model:
     stride: [1, 1]
 
 training:
-  n_epochs: 5
+  n_epochs: 80
   batch_size: 64
 
   optimizer: "sgd"
@@ -75,9 +75,9 @@ training:
   # Float phase: epochs 1-59  (warmup 1-5, cosine 6-59 → eta_min_float)
   # QAT phase:   epochs 60-80 (warm restart at qat_start_lr, cosine → eta_min_qat)
   # 20 QAT epochs gives the fbgemm per-channel scales time to settle with multiply-shift.
-  qat_start_epoch: 3
+  qat_start_epoch: 60
   qat_start_lr: 0.001
-  freeze_bn_epoch: 4
+  freeze_bn_epoch: 77
 
   lr_schedule:
     eta_min_float: 0.0001
@@ -90,5 +90,5 @@ vad:
   default_energy_threshold: 0.0001
 
 output:
-  model_save_path: "../models/dscnn-32requant-v0/dscnn-32requant-vtest.pt"
-  log_file: "../models/dscnn-32requant-v0/training_log_32requant_vtest.txt"
+  model_save_path: "/home/dnocera/branch/ML-Audio/src/ml/models/dscnn-32requant-v11/dscnn-32requant-v11.pt"
+  log_file: "/home/dnocera/branch/ML-Audio/src/ml/models/dscnn-32requant-v11/training_log_32requant_v11.txt"

@@ -103,8 +103,12 @@ def main():
 
     ckpt_path = args.ckpt
     if not ckpt_path.exists():
-        print(f"ERROR: checkpoint not found: {ckpt_path}", file=sys.stderr)
-        sys.exit(1)
+        alt = HERE.parent / "models" / ckpt_path
+        if alt.exists():
+            ckpt_path = alt
+        else:
+            print(f"ERROR: checkpoint not found: {ckpt_path}", file=sys.stderr)
+            sys.exit(1)
 
     out_dir = ckpt_path.parent
     print(f"Loading checkpoint : {ckpt_path}")
