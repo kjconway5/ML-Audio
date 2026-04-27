@@ -84,4 +84,4 @@ src/rtl/Log-Mel/rtl/logmel_top/*.hex
   src/ml/Pipeline/speech_commands_v0.02/                                                                                           
   src/ml/Pipeline/speech_commands_v0.02.tar.gz                                                                                     
   src/ml/output/                                                                                                                   
-  *.npy  
+  *.npy  src/rtl/top/speech_data/
