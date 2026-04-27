@@ -24,7 +24,12 @@ module mel_coeff_sram #(
 
     // Runtime read for index (start, end, or offset depending on address)
     input  wire [INDEX_AW-1:0]  index_addr_i,
-    output wire [INDEX_W-1:0]   index_data_o
+    output wire [INDEX_W-1:0]   index_data_o,
+
+    // Test mode
+    input  wire                 test_mode_i,
+    input  wire [COEFF_AW-1:0]  test_coeff_addr_i,
+    input  wire [INDEX_AW-1:0]  test_index_addr_i
 );
 
 `ifndef SYNTHESIS
@@ -39,6 +44,9 @@ module mel_coeff_sram #(
         $readmemh("mel_indices.hex", index_mem);
     end
 
+    wire [COEFF_AW-1:0] coeff_rd_addr = test_mode_i ? test_coeff_addr_i : coeff_addr_i;
+    wire [INDEX_AW-1:0] index_rd_addr = test_mode_i ? test_index_addr_i : index_addr_i;
+
     reg [COEFF_W-1:0] coeff_data_r;
     reg [INDEX_W-1:0] index_data_r;
 
@@ -46,12 +54,12 @@ module mel_coeff_sram #(
         if (flash_coeff_we_i)
             coeff_mem[flash_coeff_addr_i] <= flash_coeff_data_i;
         else
-            coeff_data_r <= coeff_mem[coeff_addr_i];
+            coeff_data_r <= coeff_mem[coeff_rd_addr];
 
         if (flash_index_we_i)
             index_mem[flash_index_addr_i] <= flash_index_data_i;
         else
-            index_data_r <= index_mem[index_addr_i];
+            index_data_r <= index_mem[index_rd_addr];
     end
 
     assign coeff_data_o = coeff_data_r;
@@ -59,8 +67,11 @@ module mel_coeff_sram #(
 
 `else
 
+    wire [COEFF_AW-1:0] coeff_rd_muxed = test_mode_i ? test_coeff_addr_i : coeff_addr_i;
+    wire [INDEX_AW-1:0] index_rd_muxed = test_mode_i ? test_index_addr_i : index_addr_i;
+
     // Coefficient SRAM: 246 entries x 16-bit, two sram256x8 banks (hi/lo byte)
-    wire [COEFF_AW-1:0] coeff_addr = flash_coeff_we_i ? flash_coeff_addr_i : coeff_addr_i;
+    wire [COEFF_AW-1:0] coeff_addr = flash_coeff_we_i ? flash_coeff_addr_i : coeff_rd_muxed;
     wire coeff_gwen = flash_coeff_we_i ? 1'b0 : 1'b1;
     wire [7:0] coeff_wen = flash_coeff_we_i ? 8'h00 : 8'hFF;
     wire [7:0] coeff_hi, coeff_lo;
@@ -75,11 +86,12 @@ module mel_coeff_sram #(
         .GWEN (coeff_gwen), .WEN (coeff_wen),
         .A    (coeff_addr), .D  (flash_coeff_data_i[7:0]),  .Q (coeff_lo)
     );
+
     assign coeff_data_o = {coeff_hi, coeff_lo};
 
     // Index SRAM: 256 x 8-bit, one sram256x8
     // Layout: [0:39] = start_bin, [40:79] = end_bin, [80:119] = coeff_offset
-    wire [INDEX_AW-1:0] index_addr = flash_index_we_i ? flash_index_addr_i : index_addr_i;
+    wire [INDEX_AW-1:0] index_addr = flash_index_we_i ? flash_index_addr_i : index_rd_muxed;
     wire index_gwen = flash_index_we_i ? 1'b0 : 1'b1;
     wire [7:0] index_wen = flash_index_we_i ? 8'h00 : 8'hFF;
     wire [7:0] index_q;

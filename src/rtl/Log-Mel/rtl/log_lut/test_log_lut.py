@@ -77,6 +77,7 @@ async def reset_dut(dut, cycles: int = 5):
     dut.reset_i.value = 1
     dut.log_en_i.value = 0
     dut.mel_idx_i.value = 0
+    dut.test_mode_i.value = 0
     _idle_flash(dut)
     # Drive mel_energy_i to zero
     dut.mel_energy_i.value = 0

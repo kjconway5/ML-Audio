@@ -62,7 +62,13 @@ module pipeline_top #(
 
     input  logic               flash_log_lut_we_i,
     input  logic [LUT_FRAC-1:0]  flash_log_lut_addr_i,
-    input  logic [LOG_OUT_W-1:0] flash_log_lut_data_i
+    input  logic [LOG_OUT_W-1:0] flash_log_lut_data_i,
+
+    // Test mode for SRAM readback
+    input  logic               test_mode_i,
+    input  logic [7:0]         test_coeff_addr_i,
+    input  logic [7:0]         test_index_addr_i,
+    input  logic [LUT_FRAC-1:0] test_lut_addr_i
 );
 
 // ==========================================================================
@@ -216,7 +222,11 @@ logmel_top #(
     .flash_mel_index_data_i (flash_mel_index_data_i),
     .flash_log_lut_we_i     (flash_log_lut_we_i),
     .flash_log_lut_addr_i   (flash_log_lut_addr_i),
-    .flash_log_lut_data_i   (flash_log_lut_data_i)
+    .flash_log_lut_data_i   (flash_log_lut_data_i),
+    .test_mode_i            (test_mode_i),
+    .test_coeff_addr_i      (test_coeff_addr_i),
+    .test_index_addr_i      (test_index_addr_i),
+    .test_lut_addr_i        (test_lut_addr_i)
 );
 
 // ==========================================================================

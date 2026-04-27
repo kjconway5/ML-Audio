@@ -2,10 +2,11 @@
 Calculate Power/Magnitude = real^2 + imag^2 from STFT output
 */
 module power_calc #(
-    parameter int IW = 18, // input width from STFT
+    parameter int IW = 18, // input width from STFT (should this be changed??)
     parameter int SHIFT = 6
 )(
     input  logic                clk,
+    input  logic                reset_i,
     input  logic [IW-1:0]       real_il, // fft_data[35:18]
     input  logic [IW-1:0]       imag_il, // fft_data[17:0]
     input  logic                valid_il,
@@ -16,28 +17,26 @@ module power_calc #(
     logic [2*IW-1:0] real_sq, imag_sq;
     logic [2*IW:0]   sum_full;
 
-`ifndef SYNTHESIS
-    // Behavioral squarers for simulation (SqrSgn IP uses constructs unsupported by Icarus)
-    assign real_sq = {{IW{real_il[IW-1]}}, real_il} * {{IW{real_il[IW-1]}}, real_il};
-    assign imag_sq = {{IW{imag_il[IW-1]}}, imag_il} * {{IW{imag_il[IW-1]}}, imag_il};
-`else
-    // squarers for real and imaginary components
-    SqrSgn #(
-        .width(IW),
-        .speed(2)
-    ) u_re_sq (
-        .X(real_il),
-        .P(real_sq)
-    );
+    `ifndef SYNTHESIS
+        assign real_sq = {{IW{real_il[IW-1]}}, real_il} * {{IW{real_il[IW-1]}}, real_il};
+        assign imag_sq = {{IW{imag_il[IW-1]}}, imag_il} * {{IW{imag_il[IW-1]}}, imag_il};
+    `else
+        SqrSgn #(
+            .width(IW),
+            .speed(2)
+        ) u_re_sq (
+            .X(real_il),
+            .P(real_sq)
+        );
 
-    SqrSgn #(
-        .width(IW),
-        .speed(2)
-    ) u_im_sq (
-        .X(imag_il),
-        .P(imag_sq)
-    );
-`endif
+        SqrSgn #(
+            .width(IW),
+            .speed(2)
+        ) u_im_sq (
+            .X(imag_il),
+            .P(imag_sq)
+        );
+    `endif
 
     // Sum and scale
     // MAY NEED TO CHANGE LATER: it all depends on matching the model, 
@@ -46,10 +45,17 @@ module power_calc #(
     // aren't crazy wide but we'll prob need to test this against python model
     assign sum_full  = {1'b0, real_sq} + {1'b0, imag_sq};  // 37-bit
 
+
     // Register both power and valid together so data is stable when valid fires
     always_ff @(posedge clk) begin
-        power_ol <= sum_full[2*IW:SHIFT];
-        valid_ol <= valid_il;
+        if (reset_i) begin
+            power_ol <= '0;
+            valid_ol <= 1'b0;
+        end else begin
+            power_ol <= sum_full[2*IW:SHIFT];
+            valid_ol <= valid_il;
+        end
     end
+
 
 endmodule

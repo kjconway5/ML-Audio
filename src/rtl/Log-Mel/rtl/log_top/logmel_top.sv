@@ -38,29 +38,29 @@ module logmel_top #(
     // Flash write for log LUT SRAM (64 x 16-bit via two sram64x8)
     input  logic [0:0]          flash_log_lut_we_i,
     input  logic [LUT_FRAC-1:0] flash_log_lut_addr_i,
-    input  logic [LOG_OUT_W-1:0] flash_log_lut_data_i
+    input  logic [LOG_OUT_W-1:0] flash_log_lut_data_i,
+
+    // Test mode for SRAM readback
+    input  logic                test_mode_i,
+    input  logic [7:0]          test_coeff_addr_i,
+    input  logic [7:0]          test_index_addr_i,
+    input  logic [LUT_FRAC-1:0] test_lut_addr_i
 );
 
     // Internal Signals
-
     // connect power_calc to mel_filterbank
     logic [POWER_W-1:0]   power;
     logic [0:0]    power_valid;
-
     // connect mel_filterbank to frame_controller + log_lut
     logic [N_MELS-1:0][ACCUM_W-1:0] mel_energy;
     logic [0:0]   filterbank_done;      
-
-
     // connect frame_controller to log_lut + output_buffer
     logic [$clog2(N_MELS)-1:0] mel_idx;
     logic [0:0] log_en;
     logic [0:0] output_valid;
-
     // connect log_lut to output_buffer
     logic [N_MELS-1:0][LOG_OUT_W-1:0] log_out;  // all 40 log values
     logic [0:0] log_done;          // all 40 compressed
-
     // connect output_buffer to frame_controller
     logic [0:0] frame_sent;
 
@@ -71,6 +71,7 @@ module logmel_top #(
         .SHIFT(SHIFT)
     ) u_power_calc (
         .clk      (clk_i),
+        .reset_i  (reset_i),
         .real_il  (re_il),
         .imag_il  (im_il),
         .valid_il (fft_valid_il),
@@ -95,14 +96,15 @@ module logmel_top #(
         .valid_il            (power_valid),
         .mel_ol              (mel_energy),
         .valid_ol            (filterbank_done),
-        // Flash coeff SRAM
         .flash_coeff_we_i    (flash_mel_coeff_we_i),
         .flash_coeff_addr_i  (flash_mel_coeff_addr_i),
         .flash_coeff_data_i  (flash_mel_coeff_data_i),
-        // Flash index SRAM
         .flash_index_we_i    (flash_mel_index_we_i),
         .flash_index_addr_i  (flash_mel_index_addr_i),
-        .flash_index_data_i  (flash_mel_index_data_i)
+        .flash_index_data_i  (flash_mel_index_data_i),
+        .test_mode_i         (test_mode_i),
+        .test_coeff_addr_i   (test_coeff_addr_i),
+        .test_index_addr_i   (test_index_addr_i)
     );
 
     // frame_controller
@@ -141,7 +143,9 @@ module logmel_top #(
         // Flash log LUT SRAM
         .flash_write_enable_i (flash_log_lut_we_i),
         .flash_addr_i         (flash_log_lut_addr_i),
-        .flash_write_data_i   (flash_log_lut_data_i)
+        .flash_write_data_i   (flash_log_lut_data_i),
+        .test_mode_i          (test_mode_i),
+        .test_addr_i          (test_lut_addr_i)
     );
 
     // output_buffer

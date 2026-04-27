@@ -143,6 +143,9 @@ async def reset_dut(dut, cycles: int = 5):
     await RisingEdge(dut.clk_i)
     dut.reset_i.value  = 1
     dut.valid_il.value = 0
+    dut.test_mode_i.value = 0
+    dut.test_coeff_addr_i.value = 0
+    dut.test_index_addr_i.value = 0
     _idle_flash(dut)
     await ClockCycles(dut.clk_i, cycles)
     dut.reset_i.value = 0

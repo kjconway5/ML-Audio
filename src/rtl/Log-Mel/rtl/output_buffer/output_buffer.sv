@@ -18,7 +18,7 @@ module output_buffer #(
     output logic                    frame_sent_o  // all 40 values accepted by CNN
 );
 
-    logic [OUT_W-1:0] buf_q [N_MELS]; // internal register array
+    logic [N_MELS-1:0][OUT_W-1:0] buf_q; // internal register array
     logic [$clog2(N_MELS)-1:0] rd_ptr_q; // which value to send next
     logic active_q; // buffer has data to send
 
@@ -32,8 +32,7 @@ module output_buffer #(
 
             // load all 40 values when log_lut signals done
             if (load_i) begin
-                for (int i = 0; i < N_MELS; i++)
-                    buf_q[i] <= log_out_i[i];
+                buf_q    <= log_out_i;
                 rd_ptr_q <= '0;
                 active_q <= 1'b1;
             end

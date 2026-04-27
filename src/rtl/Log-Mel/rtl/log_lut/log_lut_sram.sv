@@ -12,11 +12,17 @@ module log_lut_sram #(
 
     // Runtime read
     input  wire [ADDR_W-1:0]   rd_addr_i,
-    output wire [DATA_W-1:0]   rd_data_o
+    output wire [DATA_W-1:0]   rd_data_o,
+
+    // Test mode
+    input  wire [0:0]          test_mode_i,
+    input  wire [ADDR_W-1:0]   test_addr_i
 );
 
+    wire [ADDR_W-1:0] rd_addr_muxed = test_mode_i ? test_addr_i : rd_addr_i;
+
     wire [7:0] sram_addr = flash_write_enable_i ? {2'b00, flash_addr_i}
-                                                : {2'b00, rd_addr_i};
+                                                : {2'b00, rd_addr_muxed};
     wire       gwen = flash_write_enable_i ? 1'b0 : 1'b1;
     wire [7:0] wen  = flash_write_enable_i ? 8'h00 : 8'hFF;
 
