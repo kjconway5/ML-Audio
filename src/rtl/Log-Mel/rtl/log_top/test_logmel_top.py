@@ -186,6 +186,10 @@ class LogMelDriver:
         dut.flash_log_lut_we_i.value = 0
         dut.flash_log_lut_addr_i.value = 0
         dut.flash_log_lut_data_i.value = 0
+        dut.test_mode_i.value = 0
+        dut.test_lut_addr_i.value = 0
+        dut.test_coeff_addr_i.value = 0
+        dut.test_index_addr_i.value = 0
         await ClockCycles(dut.clk_i, cycles)
         dut.reset_i.value = 0
         await ClockCycles(dut.clk_i, 2)

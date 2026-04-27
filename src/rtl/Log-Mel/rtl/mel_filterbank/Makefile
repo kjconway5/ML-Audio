@@ -4,8 +4,8 @@ TOP        := mel_filterbank
 SOURCES    := mel_filterbank.sv ../mel_coeff_rom.sv
 TB_SOURCES := tb_mel_filterbank.sv
 
-TOP_NEW     := mel_filterbank_new
-SOURCES_NEW := mel_filterbank_new.sv ../mel_coeff_sram.sv
+TOP_NEW     := mel_filterbank
+SOURCES_NEW := mel_filterbank.sv ../mel_coeff_sram.sv
 
 TB_MODULE  := tb_$(TOP)
 RUN_DIR    := run

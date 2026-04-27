@@ -50,16 +50,28 @@ def compute_mult_shift(scale: float) -> tuple:
     return mult, shift
 
 
+def _int8_sym_qconfig():
+    """Static-PTQ version of the INT8 symmetric qconfig used by get_int8_sym_qat_qconfig()."""
+    obs = torch.quantization.observer.MinMaxObserver.with_args(
+        dtype=torch.qint8,
+        qscheme=torch.per_tensor_symmetric,
+        reduce_range=False,
+    )
+    return torch.quantization.QConfig(activation=obs, weight=obs)
+
+
 def load_model(ckpt_path: Path) -> torch.nn.Module:
     checkpoint = torch.load(str(ckpt_path), map_location="cpu", weights_only=False)
     cfg     = checkpoint["config"]["model"]
     preproc = checkpoint["config"]["preprocessing"]
     backend = checkpoint.get("qat_backend", "fbgemm")
 
-    # "pow2" is our training label, not a PyTorch engine name.
-    # The pow2 model uses per-tensor symmetric weights — qnnpack matches that.
-    # fbgemm uses per-channel weights by default and would misload the state_dict.
-    if backend == "pow2":
+    # Map training-time labels to PyTorch engine names.
+    # qnnpack_int8sym: INT8 symmetric activations — reconstruct with matching qconfig.
+    # pow2/qnnpack: per-tensor symmetric weights, quint8 activations.
+    # fbgemm: per-channel weights — do NOT use (mean_wscale approximation causes errors).
+    int8_sym = (backend == "qnnpack_int8sym")
+    if backend in ("pow2", "qnnpack_int8sym"):
         backend = "qnnpack"
 
     model = DSCNN(
@@ -76,7 +88,7 @@ def load_model(ckpt_path: Path) -> torch.nn.Module:
     torch.backends.quantized.engine = backend
     model.eval()
     model.fuse_model()
-    model.qconfig = torch.quantization.get_default_qconfig(backend)
+    model.qconfig = _int8_sym_qconfig() if int8_sym else torch.quantization.get_default_qconfig(backend)
     torch.quantization.prepare(model, inplace=True)
     torch.quantization.convert(model, inplace=True)
     model.load_state_dict(checkpoint["model_state_dict"])
@@ -86,7 +98,7 @@ def load_model(ckpt_path: Path) -> torch.nn.Module:
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--ckpt", type=Path, default=MODEL_DIR.parent / "dscnn-32mac-v1" / "dscnn-32mac-v1.pt")
+    parser.add_argument("--ckpt", type=Path, default=MODEL_DIR.parent / "dscnn-32requant-v11" / "dscnn-32requant-v11.pt")
     args = parser.parse_args()
 
     ckpt_path = args.ckpt
@@ -186,8 +198,13 @@ def main():
     print(f"bias.hex     : {bias_path}  ({len(all_biases)} INT32 values)")
 
     # ── QuantStub input scale (for generate_spect.py / spect_buffer_ctrl) ─────
+    # The mel features are Q6.10 fixed-point (divide by 2^Q_FRAC to get float log2).
+    # RTL applies: int8 = Q6.10_uint16 >> SPECT_SHIFT
+    # Match condition: 2^SPECT_SHIFT ≈ 2^Q_FRAC / (1/scale) = 2^Q_FRAC * scale
+    # → SPECT_SHIFT = round(Q_FRAC + log2(scale)) = Q_FRAC - round(-log2(scale))
+    Q_FRAC_LOG = 10  # must match golden_model.py Q_FRAC
     input_scale = float(model.quant.scale)
-    spect_shift = round(-math.log2(input_scale))
+    spect_shift = Q_FRAC_LOG - round(-math.log2(input_scale))
     spect_shift = max(0, min(15, spect_shift))
     print(f"\nQuantStub scale   : {input_scale:.8f}  → SPECT_SHIFT={spect_shift}")
     print("  (Update SPECT_SHIFT in spect_buffer_ctrl.sv if needed)")

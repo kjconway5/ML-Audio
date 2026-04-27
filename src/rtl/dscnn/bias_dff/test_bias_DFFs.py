@@ -27,16 +27,16 @@ def load_hex_file(filename):
 
 
 EXPECTED_HEX = load_hex_file("bias.hex")
-DEPTH = 223
+DEPTH = 295
 DATA_W = 32
 
 
 @cocotb.test()
 async def test_bias_dffs_basic_addresses(dut):
     test_addrs = [
-        0, 1, 23, 24, 48, 71, 72, 96,
-        120, 144, 168, 192, 216, 222,
-        223, 255,
+        0, 1, 31, 32, 63, 64, 95, 96,
+        127, 128, 159, 160, 191, 192,
+        223, 255, 256, 287, 288, 294,
     ]
 
     for addr in test_addrs:
@@ -56,7 +56,7 @@ async def test_bias_dffs_basic_addresses(dut):
 
 @cocotb.test()
 async def test_bias_dffs_full_sweep(dut):
-    for addr in range(256):
+    for addr in range(295):
         dut.addr.value = addr
         await Timer(1, units="ns")
 
@@ -74,16 +74,16 @@ async def test_bias_dffs_full_sweep(dut):
 @cocotb.test()
 async def test_bias_dffs_block_boundaries(dut):
     boundary_addrs = [
-        0, 23,
-        24, 47,
-        48, 71,
-        72, 95,
-        96, 119,
-        120, 143,
-        144, 167,
-        168, 191,
-        192, 215,
-        216, 222,
+        0, 31,       # first_conv
+        32, 63,      # ds_blocks.0.depthwise
+        64, 95,      # ds_blocks.0.pointwise
+        96, 127,     # ds_blocks.1.depthwise
+        128, 159,    # ds_blocks.1.pointwise
+        160, 191,    # ds_blocks.2.depthwise
+        192, 223,    # ds_blocks.2.pointwise
+        224, 255,    # ds_blocks.3.depthwise
+        256, 287,    # ds_blocks.3.pointwise
+        288, 294,    # classifier
     ]
 
     for addr in boundary_addrs:

@@ -1,9 +1,30 @@
+"""
+golden_model.py
+===============
+Bit-accurate golden model for the RTL audio feature pipeline.
+
+Contains two extractors:
+
+  GoldenExtractor
+    -- STFFT-only pipeline (pipeline_top.sv, 16 kHz PCM input)
+    -- Stages: Hann window -> R2FFT (BFP) -> power -> mel filterbank
+                -> log2 LUT -> bfpexp compensation
+
+  FullPipelineGoldenExtractor
+    -- Full pipeline (full_pipeline_top.sv, PDM microphone input)
+    -- Stages: PCM -> sigma-delta PDM -> CIC decimator -> truncation
+                -> compFIR -> truncation -> all STFFT stages above
+
+Both classes produce (N_MELS, n_frames) uint16 in Q_FRAC fixed-point log2.
+Call .extract_float() for float32 log2 values.
+"""
+
 import numpy as np
 import torch
 import os
 from pathlib import Path
 
-# RTL parameters (must match logmel_top defaults)
+# RTL parameters  (must match logmel_top defaults)
 SAMPLE_RATE = 16000
 N_FFT       = 256
 N_BINS      = N_FFT // 2 + 1   # 129
@@ -14,8 +35,8 @@ HOP_LENGTH  = N_FFT // 2       # 128
 SAMPLE_W    = 16
 FFT_W       = 16
 SHIFT       = 6
-POWER_W     = 2 * FFT_W - SHIFT + 1  # 31
-WEIGHT_W    = 16                # Q0.15 mel coefficients
+POWER_W     = 2 * FFT_W - SHIFT + 1   # 27
+WEIGHT_W    = 16
 FRAC_BITS   = 15
 ACCUM_W     = 54
 MAX_COEFFS  = 16
@@ -26,7 +47,7 @@ Q_FRAC      = 10
 POWER_MASK = (1 << POWER_W) - 1
 ACCUM_MASK = (1 << ACCUM_W) - 1
 LOG_MASK   = (1 << LOG_OUT_W) - 1
-SAMPLE_MAX = (1 << (SAMPLE_W - 1)) - 1   # 8191
+SAMPLE_MAX = (1 << (SAMPLE_W - 1)) - 1   # 32767
 
 WIN_COEFF_SCALE = 2047
 
@@ -34,34 +55,30 @@ WIN_COEFF_SCALE = 2047
 _IW = SAMPLE_W
 _TW = SAMPLE_W
 _OW = SAMPLE_W
-_AW = _IW + _TW  # 28
+_AW = _IW + _TW   # 32
 
 # Hex data paths
-_HERE       = Path(__file__).resolve().parent
-_DATA_DIR   = _HERE.parent / "rtl" / "Log-Mel" / "data"
-_WIN_HEX    = _HERE.parent / "rtl" / "STFFT" / "ZipCPU" / "hanning.hex"
+_HERE      = Path(__file__).resolve().parent
+_DATA_DIR  = _HERE.parent / "rtl" / "Log-Mel" / "data"
+_WIN_HEX   = _HERE.parent / "rtl" / "STFFT" / "ZipCPU" / "hanning.hex"
 
 
-def _load_hex(path: Path) -> list[int]:
+def _load_hex(path: Path) -> list:
     with open(path) as f:
         return [int(line.strip(), 16) for line in f if line.strip()]
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# R2FFT emulation — bit-accurate replica of the RTL's per-stage BFP + 16-bit
-# radix-2 butterfly.  Matches:
-#   src/rtl/STFFT/R2FFT/hdl/radix2Butterfly.sv  (butterfly arithmetic)
-#   src/rtl/STFFT/R2FFT/hdl/bfp_Shifter.sv       (operand normalization)
-#   src/rtl/STFFT/R2FFT/hdl/bfp_bitWidthAcc.sv  (bfpexp accumulation)
-#   src/rtl/STFFT/R2FFT/hdl/bfp_bitWidthDetector.sv  (stage bit-width detect)
-# The overall control / addressing logic of R2FFT.sv is abstracted away — we
-# just run the standard textbook DIF radix-2 FFT with the same underlying math.
-# ═══════════════════════════════════════════════════════════════════════════════
 
+# R2FFT emulation
+# Bit-accurate replica of the RTL's per-stage BFP + 16-bit radix-2 butterfly.
+# Matches:
+#   radix2Butterfly.sv       (butterfly arithmetic)
+#   bfp_Shifter.sv           (operand normalisation)
+#   bfp_bitWidthAcc.sv       (bfpexp accumulation)
+#   bfp_bitWidthDetector.sv  (stage bit-width detection)
 
 def _bit_reverse_perm(x: np.ndarray, log2N: int) -> np.ndarray:
-    """Return a copy of x with entries permuted by bit-reversal of index."""
-    N = x.shape[0]
+    N   = x.shape[0]
     idx = np.arange(N)
     rev = np.zeros(N, dtype=np.int64)
     for b in range(log2N):
@@ -70,63 +87,29 @@ def _bit_reverse_perm(x: np.ndarray, log2N: int) -> np.ndarray:
 
 
 def _bit_width(v: int, DW: int = 16) -> int:
-    """Compute the RTL's bfp_bitWidthDetector output for a single value.
-
-    The RTL takes |value| (two's complement negate for negatives), then finds
-    the highest set bit position + 1.  Range is [0, FFT_DW].
-    """
     v = abs(int(v))
     if v == 0:
         return 0
-    bw = v.bit_length()
-    return min(bw, DW)
+    return min(v.bit_length(), DW)
 
 
 def _bfp_scale(bw: int, DW: int = 16) -> int:
-    """RTL bfp_bitWidthAcc formula for per-stage exponent increment."""
-    if bw == DW:
-        return 1
-    if bw == 0:
-        return 0
+    if bw == DW: return 1
+    if bw == 0:  return 0
     return bw - (DW - 2)
 
 
-def _bfp_shifter(v: int, bw: int, DW: int = 16) -> int:
-    """RTL bfp_Shifter: left-shift operand by (DW-1-bw) bits to normalize."""
-    if bw == DW or bw == DW - 1 or bw == 0:
-        return int(v)
-    shift = (DW - 1) - bw
-    return int(v) << shift
-
-
-def _rtl_butterfly(a_re: int, a_im: int, b_re: int, b_im: int,
-                   w_re: int, w_im: int, DW: int = 16):
-    """Exact radix2Butterfly.sv arithmetic.
-
-    Args:
-      a_re, a_im, b_re, b_im: signed ints in [-2^(DW-1), 2^(DW-1)-1]
-      w_re, w_im: twiddle components, signed ints in [-2^(DW-1), 2^(DW-1)]
-                  (Q(DW-1), one extra bit so -1.0 is representable)
-    Returns:
-      (dst_a_re, dst_a_im, dst_b_re, dst_b_im), each signed int in DW bits.
-    """
-    # AddAvg / SubAvg: truncated (a op b) / 2.  Python >> floors for negatives,
-    # which matches Verilog's {opa[DW-1], opa} +/- {opb[DW-1], opb}, then
-    # taking bits [DW:1] (dropping bit 0).
+def _rtl_butterfly(a_re, a_im, b_re, b_im, w_re, w_im, DW=16):
+    """Exact radix2Butterfly.sv arithmetic."""
     a_re, a_im = int(a_re), int(a_im)
     b_re, b_im = int(b_re), int(b_im)
     w_re, w_im = int(w_re), int(w_im)
 
     dst_a_re = (a_re + b_re) >> 1
     dst_a_im = (a_im + b_im) >> 1
+    xbuf_re  = (a_re - b_re) >> 1
+    xbuf_im  = (a_im - b_im) >> 1
 
-    xbuf_re = (a_re - b_re) >> 1
-    xbuf_im = (a_im - b_im) >> 1
-
-    # Three-multiplication complex multiply:
-    #   dst_b = ((xbuf_re + i*xbuf_im) * (w_re + i*w_im))
-    #         = ((x_re + x_im)*w_re - (w_re + w_im)*x_im
-    #            + i*((x_re + x_im)*w_re - (w_re - w_im)*x_re))
     xbuf_re_p_im = xbuf_re + xbuf_im
     tw_re_p_im   = w_re + w_im
     tw_re_m_im   = w_re - w_im
@@ -135,74 +118,43 @@ def _rtl_butterfly(a_re: int, a_im: int, b_re: int, b_im: int,
     tmp_r = tw_re_p_im   * xbuf_im
     tmp_i = tw_re_m_im   * xbuf_re
 
-    # Rounding addend: 2^(DW-2) at the position of bit (DW-2) in the product.
     round_add = 1 << (DW - 2)
-    yr = (tmp_a - tmp_r) + round_add
-    yi = (tmp_a - tmp_i) + round_add
+    yr = (tmp_a - tmp_r + round_add) >> (DW - 1)
+    yi = (tmp_a - tmp_i + round_add) >> (DW - 1)
 
-    # Arithmetic shift right by (DW-1) — Python >> on signed ints is floor.
-    yr_shifted = yr >> (DW - 1)
-    yi_shifted = yi >> (DW - 1)
-
-    # LimitOperand: saturate to DW-bit signed.
     hi = (1 << (DW - 1)) - 1
     lo = -(1 << (DW - 1))
-    yr_sat = max(lo, min(hi, yr_shifted))
-    yi_sat = max(lo, min(hi, yi_shifted))
-
-    return dst_a_re, dst_a_im, yr_sat, yi_sat
+    return dst_a_re, dst_a_im, max(lo, min(hi, yr)), max(lo, min(hi, yi))
 
 
 def _r2fft_emulate(x_real: np.ndarray, FFT_W: int = 16):
-    """Emulate R2FFT.  Returns (re_u[N/2+1], im_u[N/2+1], bfpexp_signed_int8).
+    """Emulate R2FFT. Returns (re_u, im_u, bfpexp)."""
+    DW    = FFT_W
+    N     = x_real.shape[0]
+    log2N = int(np.log2(N))
+    assert 1 << log2N == N
 
-    Algorithm:
-      1. Initialize complex buffer: X_re = samples (int), X_im = 0.
-         Bit-width detection is done at input (matches the RTL's
-         istreamBitWidthDetector running over the input stream).
-      2. For each of log2(N) DIF stages:
-           a. Apply bfp_Shifter to every sample (left-shift to normalize).
-           b. For each butterfly pair at this stage, compute with exact RTL
-              math and collect the output bit-width across all outputs.
-           c. Accumulate bfpexp using the RTL rule.
-      3. Bit-reverse permute the output to natural DFT order (standard DIF).
-      4. Take the first N/2+1 bins and return as unsigned-DW representations.
-    """
-    DW = FFT_W
-    N  = x_real.shape[0]
-    log2N = int(np.log2(N)); assert 1 << log2N == N
-
-    # Samples arrive as int16-signed; clip/check the DW-bit range.
     hi = (1 << (DW - 1)) - 1
     lo = -(1 << (DW - 1))
     X_re = [int(max(lo, min(hi, int(v)))) for v in x_real]
     X_im = [0] * N
 
-    # Initial bit-width across the input stream.
-    max_abs_in = max((abs(v) for v in X_re + X_im), default=0)
-    bw = _bit_width(max_abs_in, DW)
+    max_abs_in = max((abs(v) for v in X_re), default=0)
+    bw     = _bit_width(max_abs_in, DW)
     bfpexp = _bfp_scale(bw, DW)
 
-    # Precompute twiddles for size-N DFT (shared across stages; indexing differs per stage).
-    # Twiddle values in Q(DW-1) signed format — one extra bit for -1.0.
-    tw_lim_hi = 1 << (DW - 1)        # =  2^(DW-1), matches +1.0 saturation
-    tw_lim_lo = -tw_lim_hi           # = -2^(DW-1), matches -1.0
-    tw_re = [0] * N
-    tw_im = [0] * N
+    tw_lim = 1 << (DW - 1)
+    tw_re  = [0] * N
+    tw_im  = [0] * N
     for k in range(N):
-        ang = -2.0 * np.pi * k / N
-        tr = int(round(np.cos(ang) * (1 << (DW - 1))))
-        ti = int(round(np.sin(ang) * (1 << (DW - 1))))
-        tw_re[k] = max(tw_lim_lo, min(tw_lim_hi, tr))
-        tw_im[k] = max(tw_lim_lo, min(tw_lim_hi, ti))
+        ang    = -2.0 * np.pi * k / N
+        tw_re[k] = max(-tw_lim, min(tw_lim, int(round(np.cos(ang) * tw_lim))))
+        tw_im[k] = max(-tw_lim, min(tw_lim, int(round(np.sin(ang) * tw_lim))))
 
-    # Run log2(N) DIF stages.  Group size halves each stage.
     group_size = N
     for s in range(log2N):
         half = group_size >> 1
 
-        # BFP-normalize every sample based on the bit-width of the *previous*
-        # stage's output (or of the input, for the first stage).
         if bw == 0 or bw == DW or bw == DW - 1:
             Xs_re, Xs_im = X_re, X_im
         else:
@@ -210,91 +162,233 @@ def _r2fft_emulate(x_real: np.ndarray, FFT_W: int = 16):
             Xs_re = [v << shift for v in X_re]
             Xs_im = [v << shift for v in X_im]
 
-        new_re = [0] * N
-        new_im = [0] * N
+        new_re  = [0] * N
+        new_im  = [0] * N
         max_out = 0
-
-        # Twiddle stride: for DIF stage s, the k-th butterfly of each group
-        # uses twiddle W^(k * 2^s) in a size-N DFT.
         tw_stride = 1 << s
 
         for g in range(0, N, group_size):
             for k in range(half):
-                tw_idx = k * tw_stride
-                wr = tw_re[tw_idx]
-                wi = tw_im[tw_idx]
-
                 ai = g + k
                 bi = g + k + half
-
+                wr = tw_re[k * tw_stride]
+                wi = tw_im[k * tw_stride]
                 ya_re, ya_im, yb_re, yb_im = _rtl_butterfly(
-                    Xs_re[ai], Xs_im[ai], Xs_re[bi], Xs_im[bi], wr, wi, DW
-                )
-
-                new_re[ai] = ya_re
-                new_im[ai] = ya_im
-                new_re[bi] = yb_re
-                new_im[bi] = yb_im
-
+                    Xs_re[ai], Xs_im[ai], Xs_re[bi], Xs_im[bi], wr, wi, DW)
+                new_re[ai] = ya_re; new_im[ai] = ya_im
+                new_re[bi] = yb_re; new_im[bi] = yb_im
                 for v in (ya_re, ya_im, yb_re, yb_im):
-                    av = -v if v < 0 else v
-                    if av > max_out:
-                        max_out = av
+                    av = abs(v)
+                    if av > max_out: max_out = av
 
         X_re, X_im = new_re, new_im
         bw = _bit_width(max_out, DW)
-        # Match RTL bfp_bitWidthAcc: the last stage's output-bw scale is NOT
-        # accumulated into bfpexp, because `update` is gated by
-        # !fftStageCountFull in R2FFT.sv.  The RTL only tracks the cumulative
-        # shift applied up to and including the shifter at the start of this
-        # stage (which used the previous stage's output bw).
         if s < log2N - 1:
             bfpexp += _bfp_scale(bw, DW)
         group_size = half
 
-    # DIF on natural-order input puts results in bit-reversed order.  Permute.
-    Xr = np.asarray(X_re, dtype=np.int64)
-    Xi = np.asarray(X_im, dtype=np.int64)
-    Xr_nat = _bit_reverse_perm(Xr, log2N)
-    Xi_nat = _bit_reverse_perm(Xi, log2N)
+    Xr_nat = _bit_reverse_perm(np.asarray(X_re, dtype=np.int64), log2N)
+    Xi_nat = _bit_reverse_perm(np.asarray(X_im, dtype=np.int64), log2N)
+    nbins  = N // 2 + 1
+    mask   = (1 << DW) - 1
+    return ((Xr_nat[:nbins] & mask).astype(np.uint64),
+            (Xi_nat[:nbins] & mask).astype(np.uint64),
+            int(bfpexp))
 
-    # Take the first N/2+1 bins and wrap to unsigned DW-bit.
-    nbins = N // 2 + 1
-    mask = (1 << DW) - 1
-    re_u = (Xr_nat[:nbins] & mask).astype(np.uint64)
-    im_u = (Xi_nat[:nbins] & mask).astype(np.uint64)
-    return re_u, im_u, int(bfpexp)
 
+# CIC Decimator emulation
+#
+# Critical: all always @(posedge clk) blocks are simultaneous.
+# When cycle==0, the comb stages fire using OLD int_reg values -- BEFORE
+# the new sample is added to the integrators this cycle.
+# Integrators also update simultaneously using OLD values of each other.
+
+def _s(v: int, bits: int) -> int:
+    """Wrap to signed bits-wide two's complement."""
+    mask = (1 << bits) - 1
+    v    = int(v) & mask
+    return v - (1 << bits) if v >= (1 << (bits - 1)) else v
+
+
+class _CICDecimator:
+    """
+    N=3, M=1, R=63 CIC decimator matching cic_decimator.v.
+
+    All registers are signed 34-bit (REG_WIDTH = 16 + ceil(log2(63^3)) = 34).
+    Integrators run every sample; combs fire once per R samples.
+    Simultaneous register update semantics (Verilog non-blocking assignments).
+    """
+    N   = 3
+    M   = 1
+    R   = 63
+    REG = 34    # bits
+
+    def __init__(self):
+        self._reset()
+
+    def _reset(self):
+        self._int   = [0] * self.N
+        self._comb  = [0] * self.N
+        self._delay = [0] * self.N   # M=1: one delay per comb stage
+        self._cycle = 0
+
+    def process(self, samples: np.ndarray) -> np.ndarray:
+        """
+        Feed int16/int32 samples (PDM values: +32767 or -32768).
+        Returns int64 array of 34-bit signed CIC outputs, one per R samples.
+        """
+        self._reset()
+        B   = self.REG
+        out = []
+
+        for x in samples:
+            x = int(x)
+
+            # Step 1: comb stages fire FIRST using OLD integrator values
+            # (matches Verilog: comb block reads int_reg before integrator block updates it)
+            if self._cycle == 0:
+                i2_old = self._int[2]
+                c0_old = self._comb[0]
+                c1_old = self._comb[1]
+                d0, d1, d2 = self._delay
+
+                new_c0 = _s(i2_old - d0, B)
+                new_c1 = _s(c0_old - d1, B)
+                new_c2 = _s(c1_old - d2, B)
+
+                self._comb  = [new_c0, new_c1, new_c2]
+                self._delay = [i2_old, c0_old, c1_old]
+                out.append(new_c2)
+
+            # Step 2: integrators update simultaneously using OLD values of each other
+            i0_old, i1_old, i2_old = self._int
+            self._int[0] = _s(i0_old + x,      B)
+            self._int[1] = _s(i1_old + i0_old, B)
+            self._int[2] = _s(i2_old + i1_old, B)
+
+            # Step 3: advance cycle counter
+            self._cycle = 0 if self._cycle >= self.R - 1 else self._cycle + 1
+
+        return np.array(out, dtype=np.int64)
+
+    @staticmethod
+    def truncate(raw: np.ndarray) -> np.ndarray:
+        """
+        Keep bits [33:18] of the 34-bit accumulator.
+        Matches: assign cic_trunc = cic_data[CIC_REG_W-1 : CIC_REG_W-16];
+        """
+        shifted = raw >> 18
+        masked  = shifted & 0xFFFF
+        return np.where(masked >= (1 << 15),
+                        masked - (1 << 16), masked).astype(np.int16)
+
+
+# compFIR emulation  (matches compFIR.sv with sr_next delay line)
+#
+# The sr_next structure means:
+#   output[n] uses [x[n], x[n-1], ..., x[n-32]] as the delay line.
+# Equivalent to a standard causal FIR with the current sample already included
+# (1-cycle latency).  Python implementation: shift first, then convolve.
+
+class _CompFIR:
+    """
+    33-tap CIC compensation FIR matching compFIR.sv.
+    Half-coefficients (k=0 outermost, k=16 centre) from the Verilog CSD assigns.
+    OW = 37 bits (IW=16 + CW=14 + ceil(log2(33)) + 1).
+    """
+    _HALF = np.array([
+        11952, -2084, -77, 699, -845, 802, -680, 533, -390, 267,
+        -169, 99, -53, 25, -10, 3, -1
+    ], dtype=np.int64)
+
+    NTAPS = 33
+    OW    = 37
+
+    def __init__(self):
+        M    = (self.NTAPS - 1) // 2
+        h    = np.zeros(self.NTAPS, dtype=np.int64)
+        for k in range(M):
+            h[k]              = self._HALF[k]
+            h[self.NTAPS-1-k] = self._HALF[k]
+        h[M] = self._HALF[M]
+        self._h   = h
+        self._max =  (1 << (self.OW - 1)) - 1
+        self._min = -(1 << (self.OW - 1))
+
+    def process(self, samples: np.ndarray) -> np.ndarray:
+        """
+        Process int16 array through the FIR.
+        Returns int64 array of OW=37-bit full-precision outputs.
+        """
+        buf = np.zeros(self.NTAPS, dtype=np.int64)
+        out = np.empty(len(samples), dtype=np.int64)
+        for i, x in enumerate(samples):
+            buf[1:] = buf[:-1]
+            buf[0]  = int(x)
+            y       = int(np.dot(buf, self._h))
+            out[i]  = max(self._min, min(self._max, y))
+        return out
+
+    @staticmethod
+    def truncate(raw: np.ndarray) -> np.ndarray:
+        """
+        Keep bits [30:15] of the 37-bit output.
+        Matches: assign fir_trunc = fir_tdata[30:15];
+        """
+        shifted = raw >> 15
+        masked  = shifted & 0xFFFF
+        return np.where(masked >= (1 << 15),
+                        masked - (1 << 16), masked).astype(np.int16)
+
+
+# Sigma-delta PDM modulator
+# Matches pcm_to_pdm() + drive_pdm() in the cocotb testbench exactly.
+
+def _pcm_to_cic_input(pcm: np.ndarray, decim: int = 63) -> np.ndarray:
+    """
+    First-order sigma-delta modulator.
+    Each PCM sample -> decim PDM bits.
+    PDM bit 1 -> +32767, PDM bit 0 -> -32768  (matches drive_pdm in testbench).
+    Returns int16 array of length len(pcm)*decim fed into the CIC.
+    """
+    vals = []
+    acc  = 0
+    for x in pcm:
+        for _ in range(decim):
+            acc += int(x)
+            if acc >= 0:
+                vals.append(0x7FFF)
+                acc -= (1 << 15)
+            else:
+                vals.append(-0x8000)
+                acc += (1 << 15)
+    return np.array(vals, dtype=np.int16)
+
+
+# GoldenExtractor  (STFFT-only pipeline -- pipeline_top.sv)
 
 class GoldenExtractor:
-    """Fixed-point replica of the RTL feature pipeline.
+    """
+    Bit-accurate replica of the STFFT-only RTL pipeline (pipeline_top.sv).
 
-    Models the RTL stages: window (Q0.15 Hann) → R2FFT with per-frame BFP
-    (approximated; R2FFT actually uses per-stage BFP) → power (>>SHIFT) →
-    sparse mel filterbank (Q0.15 weights, 54-bit accum) → log2 LUT → +2·bfpexp
-    correction (pipeline_top's `mel_compensated` path).
+    Stages:
+      Hann window -> R2FFT (per-stage BFP) -> power (>>SHIFT) ->
+      sparse mel filterbank -> log2 LUT -> bfpexp compensation
 
-    Accuracy: post-FFT stages are bit-identical to RTL.  The FFT stage is a
-    float-domain approximation of R2FFT BFP, so bin values can differ by ~1-4
-    LSB and the resulting bfpexp may be off by ±1 relative to R2FFT's
-    per-stage decisions.  Set `bfp_compensate=False` to get the raw
-    pre-compensation log output (what pipeline_top's `u_logmel.cnn_data_ol`
-    produces before the `+2·bfpexp` correction — useful for debugging
-    pre-compensation stages).
+    Input:  16-bit signed PCM at 16 kHz
+    Output: (N_MELS, n_frames) uint16 in Q_FRAC fixed-point log2 units
+
+    Set bfp_compensate=False to get raw pre-compensation values
+    (matches u_logmel.cnn_data_ol before the mel_compensated_o adder).
     """
 
     def __init__(self, bfp_compensate: bool = True):
-        # If False, extract() returns raw pre-compensation log values (what
-        # the RTL's u_logmel.cnn_data_ol probe used to expose).  If True, the
-        # bfpexp correction from pipeline_top.sv:213–251 is applied on top,
-        # matching the new `mel_compensated_o` output.
         self.bfp_compensate = bfp_compensate
 
         self.win_coeffs = np.array(_load_hex(_WIN_HEX), dtype=np.int32)
         assert len(self.win_coeffs) == N_FFT
 
-        # Mel filterbank: sparse ROM → dense matrix
-        raw_coeffs = _load_hex(_DATA_DIR / "mel_coeffs.hex")
+        raw_coeffs      = _load_hex(_DATA_DIR / "mel_coeffs.hex")
         self.mel_starts = _load_hex(_DATA_DIR / "mel_starts.hex")
         self.mel_ends   = _load_hex(_DATA_DIR / "mel_ends.hex")
         self.mel_coeffs = np.array(raw_coeffs, dtype=np.int64).reshape(N_MELS, MAX_COEFFS)
@@ -305,184 +399,226 @@ class GoldenExtractor:
             e = self.mel_ends[m]
             self.fb_dense[s:e+1, m] = self.mel_coeffs[m, :e - s + 1]
 
-        # Log2 LUT (Q4.12)
         self.log_lut = _load_hex(_DATA_DIR / "log2_lut.hex")
         assert len(self.log_lut) == (1 << LUT_FRAC)
 
     def _window_frame(self, frame: np.ndarray) -> np.ndarray:
-        """RTL stfft windowing: `a_s2_prod[2*IW-2 : IW-1]`.
-
-        In Verilog this means "take the top IW bits of the product, skipping
-        the MSB sign bit and the bottom (IW-1) bits".  Equivalent to a signed
-        right-shift by (IW-1) bits with truncation (no rounding), then
-        reinterpret the bottom IW bits as signed.  No saturation.
-
-        IMPORTANT: this is shift-by-15, not shift-by-16.  Keeping the full
-        `shift_amt = IW` (=16) as before halves every windowed sample
-        compared to the RTL and propagates a +1-bit bfpexp drift through the
-        FFT, which shifts the BFP noise floor by ~2 log2 units and shows up
-        as a visible delta against rtl_features_precomp.npy.
         """
-        data = frame.astype(np.int64)
-        tap  = self.win_coeffs.astype(np.int64)
-        product = data * tap
-
-        # Match stfft.sv:128 — a_win_samp_w = a_s2_prod[2*IW-2 : IW-1].
-        # That is: arithmetic right shift by (IW-1) = 15 bits, truncating
-        # the bottom bits (no rounding), then take the low IW bits.
-        shift_amt = _IW - 1   # 15 for IW=16
-        shifted = product >> shift_amt
-
-        # Reinterpret the low IW bits as signed.  Top bit (`a_s2_prod[2*IW-1]`,
-        # the true sign) is dropped by the bit selection, producing wrap-around
-        # for full-magnitude negative products — this is an RTL quirk that
-        # only matters at the exact ±full-scale boundary.
-        mask = (1 << _OW) - 1
-        wrapped = shifted & mask
-        sign_bit = 1 << (_OW - 1)
-        return np.where(wrapped >= sign_bit, wrapped - (1 << _OW), wrapped).astype(np.int32)
-
-    def _fft_frame(self, windowed: np.ndarray) -> tuple[np.ndarray, np.ndarray, int]:
-        """RTL-accurate R2FFT emulation with per-stage BFP + 16-bit butterfly.
-
-        Computes a 256-point radix-2 DIF FFT of the real windowed input using
-        the exact arithmetic of `radix2Butterfly.sv` (AddAvg, SubAvg, 3-mul
-        complex multiply with rounding and saturation) and the per-stage BFP
-        bookkeeping of `bfp_bitWidthAcc.sv` / `bfp_bitWidthDetector.sv` /
-        `bfp_Shifter.sv`.  Output bins are mapped back to natural DFT order.
-
-        Returns (re_u, im_u, bfpexp) — the unsigned 16-bit representations of
-        the first N/2+1 bins plus the accumulated BFP exponent, matching what
-        the RTL's DMA bus delivers.
+        windowfn.v: a_win_samp_w = a_s2_prod[2*IW-2 : IW-1]
+        Arithmetic right-shift by (IW-1)=15, take low IW bits as signed.
         """
-        re_u, im_u, bfpexp = _r2fft_emulate(
-            windowed.astype(np.int64), FFT_W=FFT_W
-        )
-        return re_u, im_u, bfpexp
+        product   = frame.astype(np.int64) * self.win_coeffs.astype(np.int64)
+        shifted   = product >> (_IW - 1)
+        mask      = (1 << _OW) - 1
+        wrapped   = shifted & mask
+        sign_bit  = 1 << (_OW - 1)
+        return np.where(wrapped >= sign_bit,
+                        wrapped - (1 << _OW), wrapped).astype(np.int32)
+
+    def _fft_frame(self, windowed: np.ndarray):
+        """R2FFT emulation. Returns (re_u, im_u, bfpexp)."""
+        return _r2fft_emulate(windowed.astype(np.int64), FFT_W=FFT_W)
 
     def _power(self, re: np.ndarray, im: np.ndarray) -> np.ndarray:
-        #power_calc.sv: (re² + im²) >> SHIFT
+        """power_calc.sv: (re^2 + im^2) >> SHIFT, masked to POWER_W bits."""
         half = 1 << (FFT_W - 1)
         r = re.astype(np.int64)
         i = im.astype(np.int64)
         r = np.where(r >= half, r - (1 << FFT_W), r)
         i = np.where(i >= half, i - (1 << FFT_W), i)
-        s = (r * r + i * i) >> SHIFT
-        return (s & POWER_MASK).astype(np.uint64)
+        return ((r * r + i * i) >> SHIFT & POWER_MASK).astype(np.uint64)
 
     def _filterbank(self, power: np.ndarray) -> np.ndarray:
-        #mel_filterbank.sv: 54-bit accumulator, no saturation.
-        p = power.astype(np.int64)
-        accum = p @ self.fb_dense
-        return (accum & ACCUM_MASK).astype(np.uint64)
+        """mel_filterbank.sv: 54-bit accumulator, no saturation."""
+        return (power.astype(np.int64) @ self.fb_dense & ACCUM_MASK).astype(np.uint64)
 
     def _log_one(self, energy: int) -> int:
-        #log_lut.sv: (floor(log2(e)) << Q_FRAC) + lut[frac]. Returns 0 for energy==0.
+        """log_lut.sv: (floor(log2(e)) << Q_FRAC) + lut[frac]."""
         if energy == 0:
             return 0
         lg = int(energy).bit_length() - 1
-        max_lg = (1 << (LOG_OUT_W - Q_FRAC)) - 1  # 15
-        if lg > max_lg:
-            return LOG_MASK  # saturate to 0xFFFF
+        if lg > (1 << (LOG_OUT_W - Q_FRAC)) - 1:
+            return LOG_MASK
         mask = (1 << LUT_FRAC) - 1
-        if lg >= LUT_FRAC:
-            addr = (energy >> (lg - LUT_FRAC)) & mask
-        else:
-            addr = (energy << (LUT_FRAC - lg)) & mask
+        addr = (energy >> (lg - LUT_FRAC)) & mask if lg >= LUT_FRAC \
+               else (energy << (LUT_FRAC - lg)) & mask
         return ((lg << Q_FRAC) + self.log_lut[addr]) & LOG_MASK
 
     def _log_compress(self, mel_energy: np.ndarray) -> np.ndarray:
-        return np.array(
-            [self._log_one(int(mel_energy[k])) for k in range(N_MELS)],
-            dtype=np.uint16,
-        )
+        return np.array([self._log_one(int(mel_energy[k])) for k in range(N_MELS)],
+                        dtype=np.uint16)
 
     def _bfp_compensate(self, log_vals: np.ndarray, bfpexp: int) -> np.ndarray:
-        """Apply the bfpexp correction that pipeline_top.sv:213–251 adds.
-
-          correction = 2 * bfpexp * 2^Q_FRAC
-          mel_compensated = saturate_unsigned(log_val + correction, 0, 2^LOG_OUT_W-1)
-
-        The R2FFT right-shifts FFT bins by bfpexp, so logmel computes
-        `log2(|stored|²) = log2(|true|²) - 2*bfpexp`.  Adding 2*bfpexp recovers
-        `log2(|true|²)` in log2 units, scaled by 2^Q_FRAC for the fixed-point
-        representation.
         """
-        correction = 2 * int(bfpexp) * (1 << Q_FRAC)  # same as BFP_Q_FRAC in RTL
-        widened = log_vals.astype(np.int64) + correction
-        hi = (1 << LOG_OUT_W) - 1
-        return np.clip(widened, 0, hi).astype(np.uint16)
+        pipeline_top.sv bfpexp correction:
+          mel_compensated = log_val + 2 * bfpexp * 2^Q_FRAC
+        """
+        correction = 2 * int(bfpexp) * (1 << Q_FRAC)
+        widened    = log_vals.astype(np.int64) + correction
+        return np.clip(widened, 0, (1 << LOG_OUT_W) - 1).astype(np.uint16)
 
     def _process_frame(self, frame_samples: np.ndarray) -> np.ndarray:
-        #Run one frame. Returns bfpexp-compensated Q_FRAC uint16 if
-        #self.bfp_compensate is True, else the raw pre-comp log output.
-        windowed = self._window_frame(frame_samples)
-        re, im, bfpexp = self._fft_frame(windowed)
-        power = self._power(re, im)
-        mel_e = self._filterbank(power)
-        log_pre = self._log_compress(mel_e)
+        windowed        = self._window_frame(frame_samples)
+        re, im, bfpexp  = self._fft_frame(windowed)
+        power           = self._power(re, im)
+        mel_e           = self._filterbank(power)
+        log_pre         = self._log_compress(mel_e)
         if not self.bfp_compensate:
             return log_pre
         return self._bfp_compensate(log_pre, bfpexp)
 
     def extract(self, audio: np.ndarray) -> np.ndarray:
-        #Extract log-mel features (bit-accurate to RTL).
-       #Input: PCM audio (clipped to 14-bit). Output: (N_MELS, n_frames) uint16 Q4.12.
-        samples = np.clip(np.asarray(audio, dtype=np.int32), -SAMPLE_MAX - 1, SAMPLE_MAX)
-        n_samples = len(samples)
-        n_frames  = max(0, (n_samples - N_FFT) // HOP_LENGTH + 1)
-
+        """
+        Extract log-mel features.
+        Input:  1-D int32/int16 PCM at 16 kHz.
+        Output: (N_MELS, n_frames) uint16 Q_FRAC fixed-point log2.
+        """
+        samples  = np.clip(np.asarray(audio, dtype=np.int32),
+                           -SAMPLE_MAX - 1, SAMPLE_MAX)
+        n        = len(samples)
+        n_frames = max(0, (n - N_FFT) // HOP_LENGTH + 1)
         if n_frames == 0:
             return np.zeros((N_MELS, 0), dtype=np.uint16)
-
         out = np.zeros((N_MELS, n_frames), dtype=np.uint16)
         for f in range(n_frames):
-            start = f * HOP_LENGTH
-            frame = samples[start : start + N_FFT]
-            out[:, f] = self._process_frame(frame)
+            s         = f * HOP_LENGTH
+            out[:, f] = self._process_frame(samples[s : s + N_FFT])
         return out
 
     def extract_float(self, audio: np.ndarray) -> np.ndarray:
-        #Same as extract() but returns float32 in log₂ units.
+        """Same as extract() but returns float32 log2 values."""
         return self.extract(audio).astype(np.float32) / (1 << Q_FRAC)
 
     def get_config(self) -> dict:
-        return {
-            "sample_rate": SAMPLE_RATE,
-            "n_fft": N_FFT,
-            "n_mels": N_MELS,
-            "hop_length": HOP_LENGTH,
-            "window_length": WIN_LENGTH,
-            "sample_w": SAMPLE_W,
-            "fft_w": FFT_W,
-            "shift": SHIFT,
-            "weight_w": WEIGHT_W,
-            "accum_w": ACCUM_W,
-            "log_out_w": LOG_OUT_W,
-            "q_frac": Q_FRAC,
-        }
+        return dict(
+            sample_rate=SAMPLE_RATE, n_fft=N_FFT, n_mels=N_MELS,
+            hop_length=HOP_LENGTH, window_length=WIN_LENGTH,
+            sample_w=SAMPLE_W, fft_w=FFT_W, shift=SHIFT,
+            weight_w=WEIGHT_W, accum_w=ACCUM_W,
+            log_out_w=LOG_OUT_W, q_frac=Q_FRAC,
+        )
+
+
+# FullPipelineGoldenExtractor  (full pipeline -- full_pipeline_top.sv)
+
+class FullPipelineGoldenExtractor:
+    """
+    Bit-accurate golden model for the full RTL pipeline (full_pipeline_top.sv).
+
+    Stages:
+      PCM -> sigma-delta PDM -> CIC decimator (N=3, M=1, R=63) ->
+      truncation [33:18] -> compFIR (33 taps, CSD) -> truncation [30:15] ->
+      Hann window -> R2FFT (BFP) -> power -> mel filterbank ->
+      log2 LUT -> bfpexp compensation
+
+    The PDM conversion exactly matches the cocotb testbench:
+      pcm_to_pdm():  first-order sigma-delta, DECIM=63 bits per sample
+      drive_pdm():   bit 1 -> +32767, bit 0 -> -32768
+
+    Input:  1-D int32/int16 PCM at 16 kHz  (same as make_chirp/make_yes/etc.)
+    Output: (N_MELS, n_frames) uint16 Q_FRAC fixed-point log2
+
+    Truncation parameters (must match full_pipeline_top.sv):
+      CIC:  cic_data[33:18]   -> shift=18
+      FIR:  fir_tdata[30:15]  -> shift=15  (sum(full_h)=20143)
+    """
+
+    DECIM = 63
+
+    def __init__(self, bfp_compensate: bool = True):
+        self._stfft = GoldenExtractor(bfp_compensate=bfp_compensate)
+        self._cic   = _CICDecimator()
+        self._fir   = _CompFIR()
+        self.bfp_compensate = bfp_compensate
+
+    def extract(self, pcm: np.ndarray) -> np.ndarray:
+        """
+        Full pipeline extraction.
+
+        Args:
+            pcm: 1-D int32/int16 PCM at 16 kHz.
+                 This is the same array produced by make_chirp(), _load_wav(), etc.
+
+        Returns:
+            (N_MELS, n_frames) uint16 matching mel_compensated_o in the RTL.
+        """
+        pcm = np.clip(np.asarray(pcm, dtype=np.int32), -32768, 32767)
+
+        # Stage 1: PCM -> PDM -> CIC input stream (+/-32767/32768)
+        cic_in = _pcm_to_cic_input(pcm, decim=self.DECIM)
+
+        # Stage 2: CIC decimation (34-bit signed, simultaneous updates)
+        cic_raw = self._cic.process(cic_in)
+
+        # Stage 3: CIC truncation [33:18] -> 16-bit signed
+        cic_trunc = _CICDecimator.truncate(cic_raw)
+
+        # Stage 4: compFIR (OW=37-bit output, sr_next structure)
+        fir_raw = self._fir.process(cic_trunc)
+
+        # Stage 5: FIR truncation [30:15] -> 16-bit signed
+        fir_trunc = _CompFIR.truncate(fir_raw)
+
+        # Stages 6-9: STFFT + LogMel (reuse GoldenExtractor internals)
+        n        = len(fir_trunc)
+        n_frames = max(0, (n - N_FFT) // HOP_LENGTH + 1)
+        if n_frames == 0:
+            return np.zeros((N_MELS, 0), dtype=np.uint16)
+
+        b   = self._stfft
+        out = np.zeros((N_MELS, n_frames), dtype=np.uint16)
+        for f in range(n_frames):
+            s        = f * HOP_LENGTH
+            frame    = fir_trunc[s : s + N_FFT].astype(np.int32)
+            windowed = b._window_frame(frame)
+            re, im, bfpexp = b._fft_frame(windowed)
+            power    = b._power(re, im)
+            mel_e    = b._filterbank(power)
+            log_pre  = b._log_compress(mel_e)
+            out[:, f] = (b._bfp_compensate(log_pre, bfpexp)
+                         if self.bfp_compensate else log_pre)
+        return out
+
+    def extract_float(self, pcm: np.ndarray) -> np.ndarray:
+        """Same as extract() but returns float32 log2 values."""
+        return self.extract(pcm).astype(np.float32) / (1 << Q_FRAC)
 
 
 if __name__ == "__main__":
     import time
 
+    print("=== GoldenExtractor (STFFT only) ===")
     ext = GoldenExtractor()
-    print("GoldenExtractor config:", ext.get_config())
+    t   = np.arange(SAMPLE_RATE) / SAMPLE_RATE
+    chirp = (np.sin(2 * np.pi * (200 * t + (7000-200)/2 * t**2)) * SAMPLE_MAX
+             ).astype(np.int32)
 
-    t = np.arange(SAMPLE_RATE) / SAMPLE_RATE
-    chirp = np.sin(2 * np.pi * (200 * t + (7000 - 200) / 2 * t ** 2))
-    audio_i16 = (chirp * SAMPLE_MAX).astype(np.int16)
+    t0    = time.perf_counter()
+    feats = ext.extract(chirp)
+    dt    = time.perf_counter() - t0
+    feats_f = feats.astype(np.float32) / (1 << Q_FRAC)
+    print("  Input : %d samples (%.2fs)" % (len(chirp), len(chirp)/SAMPLE_RATE))
+    print("  Output: %s  dtype=%s" % (feats.shape, feats.dtype))
+    print("  Range : [%.3f, %.3f] log2" % (feats_f.min(), feats_f.max()))
+    print("  Time  : %.1f ms" % (dt * 1000))
 
-    t0 = time.perf_counter()
-    feats = ext.extract(audio_i16)
-    dt = time.perf_counter() - t0
+    print()
+    print("=== FullPipelineGoldenExtractor (CIC + compFIR + STFFT) ===")
+    full = FullPipelineGoldenExtractor()
+    # Use a shorter chirp to keep runtime reasonable in smoke test
+    short_chirp = (np.sin(2 * np.pi * (200 * t[:7500] +
+                   (7000-200) / (2 * 0.47) * t[:7500]**2)) * SAMPLE_MAX
+                  ).astype(np.int32)
 
-    print(f"Input: {len(audio_i16)} samples ({len(audio_i16)/SAMPLE_RATE:.2f}s)")
-    print(f"Output: {feats.shape} (n_mels={feats.shape[0]}, n_frames={feats.shape[1]})")
-    print(f"Time: {dt*1000:.1f} ms, dtype: {feats.dtype}")
-    print(f"Range: [{feats.min()}, {feats.max()}]  "
-          f"(Q4.12: [{feats.min()/4096:.3f}, {feats.max()/4096:.3f}] log₂)")
+    t0      = time.perf_counter()
+    feats_f = full.extract_float(short_chirp)
+    dt      = time.perf_counter() - t0
+    print("  Input : %d PCM -> %d PDM bits" % (len(short_chirp), len(short_chirp)*63))
+    print("  Output: %s  dtype=%s" % (feats_f.shape, feats_f.dtype))
+    print("  Range : [%.3f, %.3f] log2" % (feats_f.min(), feats_f.max()))
+    print("  Time  : %.1f ms" % (dt * 1000))
 
-    feats_f = ext.extract_float(audio_i16)
-    print(f"Float range: [{feats_f.min():.4f}, {feats_f.max():.4f}] log₂")
-    print(f"Non-zero bins: {(feats_f > 0).sum()} / {feats_f.size}")
+    if feats_f.max() > 5.0:
+        print("  PASS -- signal content detected")
+    else:
+        print("  WARN -- very low energy, check CIC/FIR truncation")
