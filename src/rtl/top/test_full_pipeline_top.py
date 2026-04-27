@@ -123,10 +123,6 @@ async def do_reset(dut):
     dut.reset_i.value  = 1
     dut.valid_i.value  = 0
     dut.data_i.value   = 0
-    dut.test_mode_i.value = 0
-    dut.test_coeff_addr_i.value = 0
-    dut.test_index_addr_i.value = 0
-    dut.test_lut_addr_i.value = 0
     _idle_flash(dut)
     await ClockCycles(dut.clk_i, 20)
     dut.reset_i.value  = 0

@@ -1,0 +1,12 @@
+layer                                  mean_w_scale    in_scale   out_scale   shift
+-----------------------------------------------------------------------------------
+first_conv                               0.00012207    0.125000    0.007812       9
+ds_blocks.0.depthwise                    0.12500000    0.007812    0.031250       5
+ds_blocks.0.pointwise                    0.00195312    0.031250    0.015625       8
+ds_blocks.1.depthwise                    0.03125000    0.015625    0.031250       6
+ds_blocks.1.pointwise                    0.00390625    0.031250    0.015625       7
+ds_blocks.2.depthwise                    0.03125000    0.015625    0.062500       7
+ds_blocks.2.pointwise                    0.00390625    0.062500    0.007812       5
+ds_blocks.3.depthwise                    0.12500000    0.007812    0.062500       6
+ds_blocks.3.pointwise                    0.03125000    0.062500    0.125000       6
+classifier                               0.00781250    0.125000    1.000000      10

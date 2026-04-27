@@ -1,0 +1,17 @@
+read_verilog -sv fil24_7class.sv
+hierarchy -check -top fil24_7class
+
+# GF180 stdcell liberty (logic-only area)
+read_liberty -lib ./gf180mcu_fd_sc_mcu7t5v0__tt_025C_5v00.lib
+
+# Minimal lowering (avoid long OPT loops)
+proc
+opt
+stat
+
+# Map
+# dfflibmap -liberty ./gf180mcu_fd_sc_mcu7t5v0__tt_025C_5v00.lib
+# abc -fast -liberty ./gf180mcu_fd_sc_mcu7t5v0__tt_025C_5v00.lib
+
+# Area
+# stat -liberty ./gf180mcu_fd_sc_mcu7t5v0__tt_025C_5v00.lib
