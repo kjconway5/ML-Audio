@@ -25,7 +25,12 @@ module mel_filterbank #(
     // Flash write — index SRAM (starts, ends, offsets packed)
     input  logic        flash_index_we_i,
     input  logic [7:0]  flash_index_addr_i,
-    input  logic [7:0]  flash_index_data_i
+    input  logic [7:0]  flash_index_data_i,
+
+    // Test mode for SRAM readback
+    input  logic        test_mode_i,
+    input  logic [7:0]  test_coeff_addr_i,
+    input  logic [7:0]  test_index_addr_i
 );
 
     // Power buffer
@@ -76,15 +81,16 @@ module mel_filterbank #(
         .coeff_addr_i       (coeff_addr),
         .coeff_data_o       (weight),
         .index_addr_i       (index_addr),
-        .index_data_o       (index_out)
+        .index_data_o       (index_out),
+        .test_mode_i        (test_mode_i),
+        .test_coeff_addr_i  (test_coeff_addr_i),
+        .test_index_addr_i  (test_index_addr_i)
     );
 
     // Calculate MAC product
     logic [POWER_W+WEIGHT_W-1:0] product;
 
-`ifndef SYNTHESIS
-    assign product = power_buf[proc_bin] * weight;
-`else
+
     MulUns #(
         .widthX(POWER_W),
         .widthY(WEIGHT_W),
@@ -94,7 +100,6 @@ module mel_filterbank #(
         .Y(weight),
         .P(product)
     );
-`endif
 
     // ----------------------------------------------------------------
     // Pipeline timing

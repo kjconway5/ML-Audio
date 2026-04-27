@@ -17,7 +17,10 @@ from golden_model import GoldenExtractor, SAMPLE_RATE, SAMPLE_W, N_MELS, N_FFT, 
 from features import LogMelExtractor
 
 SAMPLE_MAX   = (1 << (SAMPLE_W - 1)) - 1
-STARTUP_LOSS = 3      # RTL drops first 3 frames (FFT pipeline fill)
+# STARTUP_LOSS was 2 for the legacy pipeline (drift caused RTL frame 0 to
+# correspond to golden frame 2).  The fixed pipeline (pipeline_top_fixed
+# with stfft_fixed + Bug D fix) emits RTL frame 0 == golden frame 0.
+STARTUP_LOSS = 0
 N_SAMPLES    = 7500   # must match test_pipeline_top.py
 
 
@@ -35,8 +38,14 @@ def main():
                         help="RTL features .npy from test_pipeline_top.py")
     args = parser.parse_args()
 
-    samples = make_chirp(N_SAMPLES)
-    print(f"Generated chirp: {len(samples)} samples, {len(samples)/SAMPLE_RATE:.2f}s")
+    # Match the cocotb driver exactly: chirp + N_FFT zero padding at the
+    # tail so the RTL can flush its last in-flight FFT.  Pass the SAME
+    # padded stream to the golden so both emit the same number of frames
+    # aligned frame-by-frame.
+    chirp = make_chirp(N_SAMPLES)
+    samples = np.concatenate([chirp, np.zeros(N_FFT, dtype=np.int32)])
+    print(f"Generated chirp: {len(chirp)} samples + {N_FFT} pad = "
+          f"{len(samples)} total ({len(samples)/SAMPLE_RATE:.2f}s)")
 
     # Load RTL output
     if os.path.exists(args.rtl):
@@ -46,17 +55,24 @@ def main():
         print(f"WARNING: {args.rtl} not found. Run 'make test-cocotb' first.")
         rtl_mat = None
 
-    # Golden model — bit-accurate fixed-point replica
+    # Golden model — fixed-point replica with per-frame BFP + bfpexp compensation.
+    # Default matches pipeline_top's mel_compensated_o (the new probe point of
+    # test_pipeline_top.py).  Pass bfp_compensate=False for the raw pre-comp
+    # output (equivalent to u_logmel.cnn_data_ol).
     golden = GoldenExtractor()
-    golden_q12 = golden.extract(samples)                        # (N_MELS, n_frames) uint16
-    golden_float = golden_q12.astype(np.float32) / (1 << Q_FRAC)
+    golden_q10 = golden.extract(samples)                         # (N_MELS, n_frames) uint16
+    golden_float = golden_q10.astype(np.float32) / (1 << Q_FRAC)
     print(f"Golden model: {golden_float.shape}  ({golden_float.shape[1]} frames)")
 
-    # Torchaudio floating-point reference
+    # Torchaudio floating-point reference — center=False to match the
+    # non-padding framing used by golden (and the cocotb RTL).
     extractor = LogMelExtractor(
         sample_rate=SAMPLE_RATE, n_fft=N_FFT, n_mels=N_MELS,
         hop_length=N_FFT // 2, window_length=N_FFT,
     )
+    # LogMelExtractor uses torchaudio's default center=True; override so the
+    # boundary frames aren't reflected-padded.
+    extractor.mel_transform.spectrogram.center = False
     feat_spec, _ = extractor.extract(samples)
     print(f"features.py:  {feat_spec.shape}  ({feat_spec.shape[1]} frames)")
 

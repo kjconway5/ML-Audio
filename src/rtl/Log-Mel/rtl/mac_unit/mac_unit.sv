@@ -13,22 +13,20 @@ module mac_unit #(
 );
     logic [POWER_W+COEFF_W-1:0] product;
 
-`ifndef SYNTHESIS
-    // Behavioral multiply for simulation (avoids elaborating PULP MulUns IP)
-    assign product = power_i * weight_i;
-`else
-    MulUns #(
-        .widthX(POWER_W),
-        .widthY(COEFF_W),
-        .speed(2)
-    ) u_mul (
-        .X(power_i),
-        .Y(weight_i),
-        .P(product)
-    );
-`endif
+    `ifndef SYNTHESIS
+        assign product = power_i * weight_i;
+    `else
+        MulUns #(
+            .widthX(POWER_W),
+            .widthY(COEFF_W),
+            .speed(2)
+        ) u_mul (
+            .X(power_i),
+            .Y(weight_i),
+            .P(product)
+        );
+    `endif
 
-    // accumulator
     always_ff @(posedge clk_i) begin
         if (reset_i || clear_i)
             accum_o <= '0;

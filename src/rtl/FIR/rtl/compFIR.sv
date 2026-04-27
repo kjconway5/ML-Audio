@@ -4,15 +4,29 @@ Architecture:
   * Type I symmetric FIR (linear phase, required for STFFT)
   * Pre-adder structure  → halves the number of multiply operations
   * CSD shift-add trees  → zero multiplier cells (hardwired shifts only)
+  * AXI-Stream ready/valid handshake on both input and output ports
+
 I/O widths:
   IW  = input word width  (CIC output, truncated/rounded)
   CW  = coefficient bits  (14)
   OW  = output word width = IW + CW + ceil(log2(NTAPS)) + 1 guard
+
 Integration:
-  Connect CIC o_result (truncated to IW bits) → i_sample.
-  i_ce   = 1 every 16 kHz clock (one sample per cycle at 16 kHz, or
-           strobe if shared with a faster clock).
-  o_result feeds directly into STFFT i_sample port.
+  Connect CIC output_tdata (truncated to IW bits) → i_tdata.
+  i_tvalid / i_tready form the upstream handshake.
+  o_tvalid / o_tready form the downstream handshake.
+  o_tdata feeds directly into STFFT i_sample port.
+
+Back-pressure behaviour:
+  The FIR is a single-stage pipeline (1-cycle latency).  Standard
+  1-deep pipeline handshake:
+    i_tready = !o_tvalid || o_tready
+  This means:
+    - We accept a new input whenever the output slot is empty, OR the
+      downstream is simultaneously consuming the current output.
+    - If downstream stalls (o_tready=0) and we have valid output, we
+      hold both the output register AND the delay line (no new sample
+      is consumed from upstream until the stall clears).
 */
 
 //     set_dont_use [get_lib_cells *MULT*]
@@ -21,43 +35,76 @@ Integration:
 
 module compFIR #(
     parameter NTAPS = 33,   // Total taps (must be odd)
-    parameter IW    = 16,      // Input word width
-    parameter CW    = 14,    // Coefficient word width
-    parameter OW    = 37       // Output width = IW+CW+ceil(log2(NTAPS))+1
+    parameter IW    = 16,   // Input word width
+    parameter CW    = 14,   // Coefficient word width
+    parameter OW    = 37    // Output width = IW+CW+ceil(log2(NTAPS))+1
 ) (
-    input  wire               i_clk,
-    input  wire               i_reset,
-    input  wire               i_ce,
-    input  wire signed [IW-1:0] i_sample,
-    output reg  signed [OW-1:0] o_result
+    input  wire                   i_clk,
+    input  wire                   i_reset,
+
+    // ── Upstream (from CIC decimator) ──────────────────────────────────────
+    input  wire signed [IW-1:0]   i_tdata,
+    input  wire                   i_tvalid,
+    output wire                   i_tready,
+
+    // ── Downstream (to STFFT) ──────────────────────────────────────────────
+    output reg  signed [OW-1:0]   o_tdata,
+    output reg                    o_tvalid,
+    input  wire                   o_tready
 );
 
     localparam M  = (NTAPS-1)/2;   // Index of centre tap
-    localparam PW = IW + CW + 1;   // Pre-adder product width (before accumulate)
 
-    // Delay line 
+    // Handshake
+    //
+    // We can accept a new sample when the output slot is empty OR the
+    // downstream is consuming it this cycle (1-deep pipeline).
+    assign i_tready = !o_tvalid || o_tready;
+    
+    wire advance = i_tvalid && i_tready;  // a new sample is accepted this cycle
+
+    // Delay line — advances only when we accept a new sample
     reg signed [IW-1:0] sr [0:NTAPS-1];
     integer i;
-    always @(posedge i_clk)
-    if (i_reset) begin
-        for (i = 0; i < NTAPS; i = i+1) sr[i] <= 0;
-    end else if (i_ce) begin
-        for (i = NTAPS-1; i > 0; i = i-1) sr[i] <= sr[i-1];
-        sr[0] <= i_sample;
+    always @(posedge i_clk) begin
+        if (i_reset) begin
+            for (i = 0; i < NTAPS; i = i+1) sr[i] <= 0;
+        end else if (advance) begin
+            for (i = NTAPS-1; i > 0; i = i-1) sr[i] <= sr[i-1];
+            sr[0] <= i_tdata;
+        end
     end
 
-    // Pre-adders (exploit symmetry: sr[k] + sr[NTAPS-1-k]) 
+    // Next-state delay line (combinational view of "after shift")
+    wire signed [IW-1:0] sr_next [0:NTAPS-1];
+
+    assign sr_next[0] = i_tdata;
+
+    genvar si;
+    generate
+    for (si = 1; si < NTAPS; si = si+1) begin : SR_NEXT_GEN
+        assign sr_next[si] = sr[si-1];
+    end
+    endgenerate
+
+    // Pre-adders (use next-state when advancing, otherwise hold state)
     wire signed [IW:0] sym [0:M];
+
     genvar k;
     generate
     for (k = 0; k < M; k = k+1) begin : PREADD
-        assign sym[k] = $signed({sr[k][IW-1], sr[k]}) +
-                        $signed({sr[NTAPS-1-k][IW-1], sr[NTAPS-1-k]});
+        wire signed [IW-1:0] a = advance ? sr_next[k] : sr[k];
+        wire signed [IW-1:0] b = advance ? sr_next[NTAPS-1-k] : sr[NTAPS-1-k];
+
+        assign sym[k] = $signed({a[IW-1], a}) +
+                        $signed({b[IW-1], b});
     end
     endgenerate
-    assign sym[M] = $signed({sr[M][IW-1], sr[M]});  // centre tap
 
-    // CSD multiply (shift-add, no multiplier cells)
+    wire signed [IW-1:0] mid = advance ? sr_next[M] : sr[M];
+    assign sym[M] = $signed({mid[IW-1], mid});
+
+    // CSD multiply  (shift-add, no multiplier cells)
     // PW = IW+CW+1 = 31
     wire signed [OW-1:0] prod [0:M];
 
@@ -112,28 +159,37 @@ module compFIR #(
     // tap k=16: -1  CSD: -2^0
     assign prod[16] = -$signed({{OW-IW-1{sym[16][IW]}}, sym[16]});
 
-    // Accumulator
-    always @(posedge i_clk)
-    if (i_reset)
-        o_result <= 0;
-    else if (i_ce) begin
-        o_result <= prod[0]
-                    + prod[1]
-                    + prod[2]
-                    + prod[3]
-                    + prod[4]
-                    + prod[5]
-                    + prod[6]
-                    + prod[7]
-                    + prod[8]
-                    + prod[9]
-                    + prod[10]
-                    + prod[11]
-                    + prod[12]
-                    + prod[13]
-                    + prod[14]
-                    + prod[15]
-                    + prod[16];
+    // Output register  —  advances only when we accept a new sample
+    // o_tvalid is set one cycle after the first accepted sample,
+    // cleared only on reset.
+    always @(posedge i_clk) begin
+        if (i_reset) begin
+            o_tdata  <= 0;
+            o_tvalid <= 0;
+        end else if (advance) begin
+            o_tdata  <= prod[0]
+                      + prod[1]
+                      + prod[2]
+                      + prod[3]
+                      + prod[4]
+                      + prod[5]
+                      + prod[6]
+                      + prod[7]
+                      + prod[8]
+                      + prod[9]
+                      + prod[10]
+                      + prod[11]
+                      + prod[12]
+                      + prod[13]
+                      + prod[14]
+                      + prod[15]
+                      + prod[16];
+            o_tvalid <= 1;
+        end else if (o_tready) begin
+            // Downstream consumed the output but no new sample arrived;
+            // de-assert valid so downstream knows the slot is empty.
+            o_tvalid <= 0;
+        end
     end
 
 endmodule

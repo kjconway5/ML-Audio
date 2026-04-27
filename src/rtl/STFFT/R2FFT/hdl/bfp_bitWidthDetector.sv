@@ -30,6 +30,20 @@ module bfp_bitWidthDetector
                ToAbsValue( operand3 );
 
    integer           i;
+`ifndef SYNTHESIS
+   // Icarus does not accept `break` in always_comb.  Iterate from LSB to MSB
+   // and let the highest set bit win — semantically equivalent to "find the
+   // leading 1 bit, return its position + 1".
+   always_comb begin
+      bw_r = 0;
+      for ( i = 0; i < FFT_DW; i = i + 1 ) begin
+         if ( operand_abs[i] )
+            bw_r = i + 1;
+      end
+   end
+`else
+   // Synthesis path — original from-MSB priority loop with break for tool
+   // support that recognises it as a priority encoder.
    always_comb begin
       bw_r = 0;
       for ( i = (FFT_DW-1); i >= 0; i-- ) begin
@@ -39,6 +53,7 @@ module bfp_bitWidthDetector
          end
       end
    end
+`endif
    
 endmodule // bfp_bitWidth
 

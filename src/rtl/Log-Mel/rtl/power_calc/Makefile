@@ -2,6 +2,7 @@
 
 TOP        := power_calc
 SOURCES    := power_calc.sv
+IP_SOURCES := $(shell find ../../ip -name "*.sv")
 TB_SOURCES :=
 
 TB_MODULE  := tb_$(TOP)
@@ -36,11 +37,11 @@ COCOTB_MAKEFILES := $(shell cocotb-config --makefiles 2>/dev/null)
 
 test-cocotb test-cocotb-icarus:
 	SIM=icarus TOPLEVEL_LANG=verilog TOPLEVEL=$(TOP) MODULE=$(COCOTB_MODULE) \
-		VERILOG_SOURCES="$(abspath $(SOURCES))" \
+		VERILOG_SOURCES="$(abspath $(SOURCES) $(IP_SOURCES))" \
 		$(MAKE) -f $(COCOTB_MAKEFILES)/Makefile.sim
 test-cocotb-verilator:
 	SIM=verilator TOPLEVEL_LANG=verilog TOPLEVEL=$(TOP) MODULE=$(COCOTB_MODULE) \
-		VERILOG_SOURCES="$(abspath $(SOURCES))" \
+		VERILOG_SOURCES="$(abspath $(SOURCES) $(IP_SOURCES))" \
 		$(MAKE) -f $(COCOTB_MAKEFILES)/Makefile.sim
 .PHONY: test-cocotb test-cocotb-icarus test-cocotb-verilator
 
