@@ -267,22 +267,37 @@ MACROS:
       # i_chip_core.pipeline_inst.u_logmel.i_mel_fb.i_coeff_sram_0:
       #   location: [500, 500]
       #   orientation: N
-
-  gf180mcu_ocd_ip_sram__sram512x8m8wm1:
-    gds:
-      - dir::../gf180mcu_ocd_ip_sram/cells/gf180mcu_ocd_ip_sram__sram512x8m8wm1/gf180mcu_ocd_ip_sram__sram512x8m8wm1.gds
-    lef:
-      - dir::../gf180mcu_ocd_ip_sram/cells/gf180mcu_ocd_ip_sram__sram512x8m8wm1/gf180mcu_ocd_ip_sram__sram512x8m8wm1.lef
-    vh:
-      - dir::../gf180mcu_ocd_ip_sram/cells/gf180mcu_ocd_ip_sram__sram512x8m8wm1/gf180mcu_ocd_ip_sram__sram512x8m8wm1.blackbox.v
-    lib:
-      "*__tt_025C_3v30":
-        - dir::../gf180mcu_ocd_ip_sram/cells/gf180mcu_ocd_ip_sram__sram512x8m8wm1/gf180mcu_ocd_ip_sram__sram512x8m8wm1__tt_025C_3v30.lib
-      "*__ff_n40C_3v60":
-        - dir::../gf180mcu_ocd_ip_sram/cells/gf180mcu_ocd_ip_sram__sram512x8m8wm1/gf180mcu_ocd_ip_sram__sram512x8m8wm1__ff_n40C_3v60.lib
-      "*__ss_125C_3v00":
-        - dir::../gf180mcu_ocd_ip_sram/cells/gf180mcu_ocd_ip_sram__sram512x8m8wm1/gf180mcu_ocd_ip_sram__sram512x8m8wm1__ss_125C_3v00.lib
-    instances:
+      i_chip_core.pipeline_inst.u_logmel.u_mel_filterbank.u_sram.u_coeff_hi:
+        location: [500, 500]
+        orientation: N
+      i_chip_core.pipeline_inst.u_logmel.u_mel_filterbank.u_sram.u_coeff_lo:
+        location: [500, 750]
+        orientation: N
+      i_chip_core.pipeline_inst.u_logmel.u_mel_filterbank.u_sram.u_index:
+        location: [500, 1000]
+        orientation: N
+      i_chip_core.pipeline_inst.u_logmel.u_log_lut.u_lut_sram.u_lut_lo:
+        location: [500, 1250]
+        orientation: N
+      i_chip_core.pipeline_inst.u_logmel.u_log_lut.u_lut_sram.u_lut_hi:
+        location: [500, 1500]
+        orientation: N
+  # No instances for this macro, if any added then uncomment out and place
+  # gf180mcu_ocd_ip_sram__sram512x8m8wm1:
+  #   gds:
+  #     - dir::../gf180mcu_ocd_ip_sram/cells/gf180mcu_ocd_ip_sram__sram512x8m8wm1/gf180mcu_ocd_ip_sram__sram512x8m8wm1.gds
+  #   lef:
+  #     - dir::../gf180mcu_ocd_ip_sram/cells/gf180mcu_ocd_ip_sram__sram512x8m8wm1/gf180mcu_ocd_ip_sram__sram512x8m8wm1.lef
+  #   vh:
+  #     - dir::../gf180mcu_ocd_ip_sram/cells/gf180mcu_ocd_ip_sram__sram512x8m8wm1/gf180mcu_ocd_ip_sram__sram512x8m8wm1.blackbox.v
+  #   lib:
+  #     "*__tt_025C_3v30":
+  #       - dir::../gf180mcu_ocd_ip_sram/cells/gf180mcu_ocd_ip_sram__sram512x8m8wm1/gf180mcu_ocd_ip_sram__sram512x8m8wm1__tt_025C_3v30.lib
+  #     "*__ff_n40C_3v60":
+  #       - dir::../gf180mcu_ocd_ip_sram/cells/gf180mcu_ocd_ip_sram__sram512x8m8wm1/gf180mcu_ocd_ip_sram__sram512x8m8wm1__ff_n40C_3v60.lib
+  #     "*__ss_125C_3v00":
+  #       - dir::../gf180mcu_ocd_ip_sram/cells/gf180mcu_ocd_ip_sram__sram512x8m8wm1/gf180mcu_ocd_ip_sram__sram512x8m8wm1__ss_125C_3v00.lib
+  #   instances:
       # You'll fill these in after inventorying your SRAM instances
       # i_chip_core.pipeline_inst.u_logmel.i_mel_fb.i_coeff_sram_0:
       #   location: [500, 500]
@@ -307,29 +322,257 @@ MACROS:
       # i_chip_core.pipeline_inst.u_logmel.i_mel_fb.i_coeff_sram_0:
       #   location: [500, 500]
       #   orientation: N
+      # Feature SRAM Macros
+      i_chip_core.kws_inst.inst_fsram.gen_feat_banks[0].inst_feature_sram:
+        location: [2000, 500]
+        orientation: N
+      i_chip_core.kws_inst.inst_fsram.gen_feat_banks[0].inst_feature_sram2:
+        location: [2000, 1050]
+        orientation: N
+      i_chip_core.kws_inst.inst_fsram.gen_feat_banks[1].inst_feature_sram:
+        location: [2350, 500]
+        orientation: N
+      i_chip_core.kws_inst.inst_fsram.gen_feat_banks[1].inst_feature_sram2:
+        location: [2350, 1050]
+        orientation: N
+      i_chip_core.kws_inst.inst_fsram.gen_feat_banks[2].inst_feature_sram:
+        location: [2700, 500]
+        orientation: N
+      i_chip_core.kws_inst.inst_fsram.gen_feat_banks[2].inst_feature_sram2:
+        location: [2700, 1050]
+        orientation: N
+      i_chip_core.kws_inst.inst_fsram.gen_feat_banks[3].inst_feature_sram:
+        location: [3050, 500]
+        orientation: N
+      i_chip_core.kws_inst.inst_fsram.gen_feat_banks[3].inst_feature_sram2:
+        location: [3050, 1050]
+        orientation: N
+      i_chip_core.kws_inst.inst_fsram.gen_feat_banks[4].inst_feature_sram:
+        location: [2000, 1600]
+        orientation: N
+      i_chip_core.kws_inst.inst_fsram.gen_feat_banks[4].inst_feature_sram2:
+        location: [2000, 2150]
+        orientation: N
+      i_chip_core.kws_inst.inst_fsram.gen_feat_banks[5].inst_feature_sram:
+        location: [2350, 1600]
+        orientation: N
+      i_chip_core.kws_inst.inst_fsram.gen_feat_banks[5].inst_feature_sram2:
+        location: [2350, 2150]
+        orientation: N
+      i_chip_core.kws_inst.inst_fsram.gen_feat_banks[6].inst_feature_sram:
+        location: [2700, 1600]
+        orientation: N
+      i_chip_core.kws_inst.inst_fsram.gen_feat_banks[6].inst_feature_sram2:
+        location: [2700, 2150]
+        orientation: N
+      i_chip_core.kws_inst.inst_fsram.gen_feat_banks[7].inst_feature_sram:
+        location: [3050, 1600]
+        orientation: N
+      i_chip_core.kws_inst.inst_fsram.gen_feat_banks[7].inst_feature_sram2:
+        location: [3050, 2150]
+        orientation: N
+      i_chip_core.kws_inst.inst_fsram.gen_feat_banks[8].inst_feature_sram:
+        location: [2000, 2700]
+        orientation: N
+      i_chip_core.kws_inst.inst_fsram.gen_feat_banks[8].inst_feature_sram2:
+        location: [2000, 3250]
+        orientation: N
+      i_chip_core.kws_inst.inst_fsram.gen_feat_banks[9].inst_feature_sram:
+        location: [2350, 2700]
+        orientation: N
+      i_chip_core.kws_inst.inst_fsram.gen_feat_banks[9].inst_feature_sram2:
+        location: [2350, 3250]
+        orientation: N
+      i_chip_core.kws_inst.inst_fsram.gen_feat_banks[10].inst_feature_sram:
+        location: [2700, 2700]
+        orientation: N
+      i_chip_core.kws_inst.inst_fsram.gen_feat_banks[10].inst_feature_sram2:
+        location: [2700, 3250]
+        orientation: N
+      i_chip_core.kws_inst.inst_fsram.gen_feat_banks[11].inst_feature_sram:
+        location: [3050, 2700]
+        orientation: N
+      i_chip_core.kws_inst.inst_fsram.gen_feat_banks[11].inst_feature_sram2:
+        location: [3050, 3250]
+        orientation: N
+      i_chip_core.kws_inst.inst_fsram.gen_feat_banks[12].inst_feature_sram:
+        location: [2000, 3800]
+        orientation: N
+      i_chip_core.kws_inst.inst_fsram.gen_feat_banks[12].inst_feature_sram2:
+        location: [2000, 4350]
+        orientation: N
+      i_chip_core.kws_inst.inst_fsram.gen_feat_banks[13].inst_feature_sram:
+        location: [2350, 3800]
+        orientation: N
+      i_chip_core.kws_inst.inst_fsram.gen_feat_banks[13].inst_feature_sram2:
+        location: [2350, 4350]
+        orientation: N
+      i_chip_core.kws_inst.inst_fsram.gen_feat_banks[14].inst_feature_sram:
+        location: [2700, 3800]
+        orientation: N
+      i_chip_core.kws_inst.inst_fsram.gen_feat_banks[14].inst_feature_sram2:
+        location: [2700, 4350]
+        orientation: N
+      i_chip_core.kws_inst.inst_fsram.gen_feat_banks[15].inst_feature_sram:
+        location: [3050, 3800]
+        orientation: N
+      i_chip_core.kws_inst.inst_fsram.gen_feat_banks[15].inst_feature_sram2:
+        location: [3050, 4350]
+        orientation: N
+      # Spectrogram SRAM
+      i_chip_core.kws_inst.inst_specram.gen_spect_banks[0].inst_spectrogram_sram:
+        location: [500, 2100]
+        orientation: N
+      i_chip_core.kws_inst.inst_specram.gen_spect_banks[0].inst_spectrogram_sram2:
+        location: [500, 2650]
+        orientation: N
+      i_chip_core.kws_inst.inst_specram.gen_spect_banks[1].inst_spectrogram_sram:
+        location: [500, 3200]
+        orientation: N
+      i_chip_core.kws_inst.inst_specram.gen_spect_banks[1].inst_spectrogram_sram2:
+        location: [500, 3750]
+        orientation: N
+      # Weight SRAM
+      i_chip_core.kws_inst.inst_wsram.gen_weight_banks[0].inst_weight_sram:
+        location: [500, 4300]
+        orientation: N
+      i_chip_core.kws_inst.inst_wsram.gen_weight_banks[1].inst_weight_sram:
+        location: [850, 4300]
+        orientation: N
+      i_chip_core.kws_inst.inst_wsram.gen_weight_banks[2].inst_weight_sram:
+        location: [1200, 4300]
+        orientation: N
+      i_chip_core.kws_inst.inst_wsram.gen_weight_banks[3].inst_weight_sram:
+        location: [1550, 4300]
+        orientation: N
+      i_chip_core.kws_inst.inst_wsram.gen_weight_banks[4].inst_weight_sram:
+        location: [1900, 4300]
+        orientation: N
+      i_chip_core.kws_inst.inst_wsram.gen_weight_banks[5].inst_weight_sram:
+        location: [2250, 4300]
+        orientation: N
+      i_chip_core.kws_inst.inst_wsram.gen_weight_banks[6].inst_weight_sram:
+        location: [2600, 4300]
+        orientation: N
 
-  # gf180mcu_fd_ip_sram__sram512x8m8wm1:
-  #   gds:
-  #     - pdk_dir::libs.ref/gf180mcu_fd_ip_sram/gds/gf180mcu_fd_ip_sram__sram512x8m8wm1.gds
-  #   lef:
-  #     - pdk_dir::libs.ref/gf180mcu_fd_ip_sram/lef/gf180mcu_fd_ip_sram__sram512x8m8wm1.lef
-  #   vh:
-  #     - pdk_dir::libs.ref/gf180mcu_fd_ip_sram/verilog/gf180mcu_fd_ip_sram__sram512x8m8wm1__blackbox.v
-  #   lib:
-  #     "*_tt_025C_5v00":
-  #       - pdk_dir::libs.ref/gf180mcu_fd_ip_sram/lib/gf180mcu_fd_ip_sram__sram512x8m8wm1__tt_025C_5v00.lib
-  #     "*_ff_n40C_5v50":
-  #       - pdk_dir::libs.ref/gf180mcu_fd_ip_sram/lib/gf180mcu_fd_ip_sram__sram512x8m8wm1__ff_n40C_5v50.lib
-  #     "*_ss_125C_4v50":
-  #       - pdk_dir::libs.ref/gf180mcu_fd_ip_sram/lib/gf180mcu_fd_ip_sram__sram512x8m8wm1__ss_125C_4v50.lib
-  #   instances:
-  #     # Make sure to specify the SRAMs in pdn_cfg.tcl
-  #     i_chip_core.sram_0:
-  #       location: [490, 500]
-  #       orientation: N
-  #     i_chip_core.sram_1:
-  #       location: [970, 500]
-  #       orientation: E
+  gf180mcu_fd_ip_sram__sram128x8m8wm1:
+    gds:
+      - pdk_dir::libs.ref/gf180mcu_fd_ip_sram/gds/gf180mcu_fd_ip_sram__sram128x8m8wm1.gds
+    lef:
+      - pdk_dir::libs.ref/gf180mcu_fd_ip_sram/lef/gf180mcu_fd_ip_sram__sram128x8m8wm1.lef
+    vh:
+      - pdk_dir::libs.ref/gf180mcu_fd_ip_sram/verilog/gf180mcu_fd_ip_sram__sram128x8m8wm1__blackbox.v
+    lib:
+      "*_tt_025C_5v00":
+        - pdk_dir::libs.ref/gf180mcu_fd_ip_sram/lib/gf180mcu_fd_ip_sram__sram128x8m8wm1__tt_025C_5v00.lib
+      "*_ff_n40C_5v50":
+        - pdk_dir::libs.ref/gf180mcu_fd_ip_sram/lib/gf180mcu_fd_ip_sram__sram128x8m8wm1__ff_n40C_5v50.lib
+      "*_ss_125C_4v50":
+        - pdk_dir::libs.ref/gf180mcu_fd_ip_sram/lib/gf180mcu_fd_ip_sram__sram128x8m8wm1__ss_125C_4v50.lib
+    instances:
+      # Make sure to specify the SRAMs in pdn_cfg.tcl
+      # i_chip_core.sram_0:
+      #   location: [490, 500]
+      #   orientation: N
+      # i_chip_core.sram_1:
+      #   location: [970, 500]
+      #   orientation: E
+      i_chip_core.pipeline_inst.u_stfft.u_a_ram0.u_a_b0:
+        location: [800, 500]
+        orientation: N
+      i_chip_core.pipeline_inst.u_stfft.u_a_ram0.u_a_b1:
+        location: [800, 700]
+        orientation: N
+      i_chip_core.pipeline_inst.u_stfft.u_a_ram0.u_a_b2:
+        location: [800, 900]
+        orientation: N
+      i_chip_core.pipeline_inst.u_stfft.u_a_ram0.u_a_b3:
+        location: [800, 1100]
+        orientation: N
+      i_chip_core.pipeline_inst.u_stfft.u_a_ram0.u_b_b0:
+        location: [800, 1300]
+        orientation: N
+      i_chip_core.pipeline_inst.u_stfft.u_a_ram0.u_b_b1:
+        location: [800, 1500]
+        orientation: N
+      i_chip_core.pipeline_inst.u_stfft.u_a_ram0.u_b_b2:
+        location: [800, 1700]
+        orientation: N
+      i_chip_core.pipeline_inst.u_stfft.u_a_ram0.u_b_b3:
+        location: [800, 1900]
+        orientation: N
+      i_chip_core.pipeline_inst.u_stfft.u_a_ram1.u_a_b0:
+        location: [1100, 500]
+        orientation: N
+      i_chip_core.pipeline_inst.u_stfft.u_a_ram1.u_a_b1:
+        location: [1100, 700]
+        orientation: N
+      i_chip_core.pipeline_inst.u_stfft.u_a_ram1.u_a_b2:
+        location: [1100, 900]
+        orientation: N
+      i_chip_core.pipeline_inst.u_stfft.u_a_ram1.u_a_b3:
+        location: [1100, 1100]
+        orientation: N
+      i_chip_core.pipeline_inst.u_stfft.u_a_ram1.u_b_b0:
+        location: [1100, 1300]
+        orientation: N
+      i_chip_core.pipeline_inst.u_stfft.u_a_ram1.u_b_b1:
+        location: [1100, 1500]
+        orientation: N
+      i_chip_core.pipeline_inst.u_stfft.u_a_ram1.u_b_b2:
+        location: [1100, 1700]
+        orientation: N
+      i_chip_core.pipeline_inst.u_stfft.u_a_ram1.u_b_b3:
+        location: [1100, 1900]
+        orientation: N
+      i_chip_core.pipeline_inst.u_stfft.u_b_ram0.u_a_b0:
+        location: [1400, 500]
+        orientation: N
+      i_chip_core.pipeline_inst.u_stfft.u_b_ram0.u_a_b1:
+        location: [1400, 700]
+        orientation: N
+      i_chip_core.pipeline_inst.u_stfft.u_b_ram0.u_a_b2:
+        location: [1400, 900]
+        orientation: N
+      i_chip_core.pipeline_inst.u_stfft.u_b_ram0.u_a_b3:
+        location: [1400, 1100]
+        orientation: N
+      i_chip_core.pipeline_inst.u_stfft.u_b_ram0.u_b_b0:
+        location: [1400, 1300]
+        orientation: N
+      i_chip_core.pipeline_inst.u_stfft.u_b_ram0.u_b_b1:
+        location: [1400, 1500]
+        orientation: N
+      i_chip_core.pipeline_inst.u_stfft.u_b_ram0.u_b_b2:
+        location: [1400, 1700]
+        orientation: N
+      i_chip_core.pipeline_inst.u_stfft.u_b_ram0.u_b_b3:
+        location: [1400, 1900]
+        orientation: N
+      i_chip_core.pipeline_inst.u_stfft.u_b_ram1.u_a_b0:
+        location: [1700, 500]
+        orientation: N
+      i_chip_core.pipeline_inst.u_stfft.u_b_ram1.u_a_b1:
+        location: [1700, 700]
+        orientation: N
+      i_chip_core.pipeline_inst.u_stfft.u_b_ram1.u_a_b2:
+        location: [1700, 900]
+        orientation: N
+      i_chip_core.pipeline_inst.u_stfft.u_b_ram1.u_a_b3:
+        location: [1700, 1100]
+        orientation: N
+      i_chip_core.pipeline_inst.u_stfft.u_b_ram1.u_b_b0:
+        location: [1700, 1300]
+        orientation: N
+      i_chip_core.pipeline_inst.u_stfft.u_b_ram1.u_b_b1:
+        location: [1700, 1500]
+        orientation: N
+      i_chip_core.pipeline_inst.u_stfft.u_b_ram1.u_b_b2:
+        location: [1700, 1700]
+        orientation: N
+      i_chip_core.pipeline_inst.u_stfft.u_b_ram1.u_b_b3:
+        location: [1700, 1900]
+        orientation: N
 
 # This is an alternative method compared to
 # specifying the power connections in the RTL
@@ -341,8 +584,8 @@ PDN_MACRO_CONNECTIONS:
 # Workaround for: https://github.com/The-OpenROAD-Project/OpenROAD/issues/8868
 FP_MACRO_HORIZONTAL_HALO: 10
 FP_MACRO_VERTICAL_HALO: 10
-FP_PDN_HORIZONTAL_HALO: 5
-FP_PDN_VERTICAL_HALO: 5
+PDN_HORIZONTAL_HALO: 5
+PDN_VERTICAL_HALO: 5
 
 PDN_CFG: dir::pdn_cfg.tcl
 

@@ -95,10 +95,10 @@ module spectrogram_sram #(
                 .A    (a_bank_addr),
                 .D    (a_wdata),
                 .Q    (a_q[gi])
-                `ifdef USE_POWER_PINS
-                ,.VDD  (1'b1)
-                ,.VSS  (1'b0)
-                `endif
+                //`ifdef USE_POWER_PINS
+                //, .VDD  (1'b1)
+                //, .VSS  (1'b0)
+                //`endif
             );
 
             // Bank B
@@ -113,10 +113,10 @@ module spectrogram_sram #(
                 .A    (b_bank_addr),
                 .D    (b_wdata),
                 .Q    (b_q[gi])
-                `ifdef USE_POWER_PINS
-                ,.VDD  (1'b1)
-                ,.VSS  (1'b0)
-                `endif
+                //`ifdef USE_POWER_PINS
+                //, .VDD  (1'b1)
+                //, .VSS  (1'b0)
+                //`endif
             );
 
         end

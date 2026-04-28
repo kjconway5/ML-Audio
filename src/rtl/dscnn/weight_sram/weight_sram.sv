@@ -63,10 +63,10 @@ module weight_sram #(
                 .A    (bank_addr),
                 .D    (wdata),
                 .Q    (q_out[gi])
-                `ifdef USE_POWER_PINS
-                ,.VDD  (1'b1)
-                ,.VSS  (1'b0)
-                `endif
+                //`ifdef USE_POWER_PINS
+                //, .VDD  (1'b1)
+                //, .VSS  (1'b0)
+                //`endif
             );
         end
     endgenerate
