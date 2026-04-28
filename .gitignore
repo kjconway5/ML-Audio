@@ -15,6 +15,9 @@ dsp-venv/
 .venv/
 venv/
 
+# Librelane Outputs
+librelane/runs/
+
 # Simulation outputs
 run/
 build/

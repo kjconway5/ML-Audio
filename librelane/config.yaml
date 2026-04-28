@@ -28,16 +28,84 @@ DESIGN_NAME: chip_top
 VERILOG_FILES:
 - dir::../src/chip_top.sv
 - dir::../src/chip_core.sv
+# Pipeline and DSCNN Top Levels
+- dir::../src/rtl/dscnn/kws_top.sv
+- dir::../src/rtl/top/full_pipeline_top.sv
+- dir::../src/rtl/top/pipeline_top.sv
+# DSCNN SRCS
+- dir::../src/rtl/dscnn/bias_dff/bias_DFFs.sv
+- dir::../src/rtl/dscnn/feature_sram/feature_sram.sv
+- dir::../src/rtl/dscnn/fsm/FSM.sv
+- dir::../src/rtl/dscnn/mac_array/mac_array.sv
+- dir::../src/rtl/dscnn/requant/requant.sv
+- dir::../src/rtl/dscnn/spectrogram_sram/spectrogram_sram.sv
+- dir::../src/rtl/dscnn/weight_sram/weight_sram.sv
+# Logmel Filterbank SRCS
+- dir::../src/rtl/Log-Mel/rtl/log_top/logmel_top.sv
+- dir::../src/rtl/Log-Mel/rtl/frame_control/frame_control.sv
+- dir::../src/rtl/Log-Mel/rtl/log_lut/log_lut_sram.sv
+- dir::../src/rtl/Log-Mel/rtl/log_lut/log_lut.sv
+- dir::../src/rtl/Log-Mel/rtl/mac_unit/mac_unit.sv
+- dir::../src/rtl/Log-Mel/rtl/mel_filterbank/mel_coeff_sram.sv
+- dir::../src/rtl/Log-Mel/rtl/mel_filterbank/mel_filterbank.sv
+- dir::../src/rtl/Log-Mel/rtl/output_buffer/output_buffer.sv
+- dir::../src/rtl/Log-Mel/rtl/power_calc/power_calc.sv
+# Logmel IP
+- dir::../src/rtl/Log-Mel/ip/Add.sv
+- dir::../src/rtl/Log-Mel/ip/AddMopCsv.sv
+- dir::../src/rtl/Log-Mel/ip/Cpr.sv
+- dir::../src/rtl/Log-Mel/ip/Encode.sv
+- dir::../src/rtl/Log-Mel/ip/FullAdder.sv
+- dir::../src/rtl/Log-Mel/ip/LeadZeroDet.sv
+- dir::../src/rtl/Log-Mel/ip/Log2.sv
+- dir::../src/rtl/Log-Mel/ip/MulPPGenUns.sv
+- dir::../src/rtl/Log-Mel/ip/MulUns.sv
+- dir::../src/rtl/Log-Mel/ip/PrefixAnd.sv
+- dir::../src/rtl/Log-Mel/ip/PrefixAndOr.sv
+- dir::../src/rtl/Log-Mel/ip/SqrPPGenSgn.sv
+- dir::../src/rtl/Log-Mel/ip/SqrSgn.sv
+# STFFT SRCS
+- dir::../src/rtl/STFFT/rtl/stfft.sv
+- dir::../src/rtl/STFFT/rtl/fft_twiddle_rom.sv
+- dir::../src/rtl/STFFT/rtl/fft_data_ram.sv
+# STFFT IP
+- dir::../src/rtl/STFFT/R2FFT/hdl/R2FFT.sv
+- dir::../src/rtl/STFFT/R2FFT/hdl/bfp_bitWidthAcc.sv
+- dir::../src/rtl/STFFT/R2FFT/hdl/bfp_bitWidthDetector.sv
+- dir::../src/rtl/STFFT/R2FFT/hdl/bfp_maxBitWidth.sv
+- dir::../src/rtl/STFFT/R2FFT/hdl/bfp_Shifter.sv
+- dir::../src/rtl/STFFT/R2FFT/hdl/bitReverseCounter.sv
+- dir::../src/rtl/STFFT/R2FFT/hdl/butterflyCore.sv
+- dir::../src/rtl/STFFT/R2FFT/hdl/butterflyUnit.sv
+- dir::../src/rtl/STFFT/R2FFT/hdl/fftAddressGenerator.sv
+- dir::../src/rtl/STFFT/R2FFT/hdl/radix2Butterfly.sv
+- dir::../src/rtl/STFFT/R2FFT/hdl/ramPipelineBridge.sv
+- dir::../src/rtl/STFFT/R2FFT/hdl/readBusMux_tribuf.sv
+- dir::../src/rtl/STFFT/R2FFT/hdl/readBusMux.sv
+- dir::../src/rtl/STFFT/R2FFT/hdl/twiddleFactorRomBridge.sv
+- dir::../src/rtl/STFFT/R2FFT/hdl/writeBusMux_tribuf.sv
+- dir::../src/rtl/STFFT/R2FFT/hdl/writeBusMux.sv
+# flash directory sources
 - dir::../src/rtl/flash/boot_pkg.sv
 - dir::../src/rtl/flash/boot_controller.sv
 - dir::../src/rtl/flash/features_boot_router.sv
 - dir::../src/rtl/flash/dscnn_boot_router.sv
+- dir::../src/rtl/flash/flash_top.sv
+- dir::../src/rtl/flash/simple_flash.sv
 - dir::../src/rtl/flash/uart_rx.v
 - dir::../src/rtl/flash/uart_tx.v
+- dir::../src/rtl/flash/uart.v
+# CIC
+- dir::../src/rtl/CIC/cic.sv
+# SPECT_BUFFER
+- dir::../src/rtl/SPECT_BUFFER/spect_buffer_ctrl.sv
+# FIR
+- dir::../src/rtl/FIR/rtl/compFIR.sv
+
 
 # Enable plugin for better SystemVerilog support
-# USE_SLANG: True
-# SLANG_ARGUMENTS: ['--keep-hierarchy']
+USE_SLANG: True
+SLANG_ARGUMENTS: ['--keep-hierarchy']
 
 # Slightly smaller file sizes
 PRIMARY_GDSII_STREAMOUT_TOOL: klayout
@@ -180,28 +248,88 @@ MACROS:
         location: ["expr::$DIE_AREA[2] + -169.25", "expr::$DIE_AREA[3] + -169.25"]
         orientation: N
 
-  gf180mcu_fd_ip_sram__sram512x8m8wm1:
+  gf180mcu_ocd_ip_sram__sram256x8m8wm1:
     gds:
-      - pdk_dir::libs.ref/gf180mcu_fd_ip_sram/gds/gf180mcu_fd_ip_sram__sram512x8m8wm1.gds
+      - dir::../gf180mcu_ocd_ip_sram/cells/gf180mcu_ocd_ip_sram__sram256x8m8wm1/gf180mcu_ocd_ip_sram__sram256x8m8wm1.gds
     lef:
-      - pdk_dir::libs.ref/gf180mcu_fd_ip_sram/lef/gf180mcu_fd_ip_sram__sram512x8m8wm1.lef
+      - dir::../gf180mcu_ocd_ip_sram/cells/gf180mcu_ocd_ip_sram__sram256x8m8wm1/gf180mcu_ocd_ip_sram__sram256x8m8wm1.lef
     vh:
-      - pdk_dir::libs.ref/gf180mcu_fd_ip_sram/verilog/gf180mcu_fd_ip_sram__sram512x8m8wm1__blackbox.v
+      - dir::../gf180mcu_ocd_ip_sram/cells/gf180mcu_ocd_ip_sram__sram256x8m8wm1/gf180mcu_ocd_ip_sram__sram256x8m8wm1.blackbox.v
     lib:
-      "*_tt_025C_5v00":
-        - pdk_dir::libs.ref/gf180mcu_fd_ip_sram/lib/gf180mcu_fd_ip_sram__sram512x8m8wm1__tt_025C_5v00.lib
-      "*_ff_n40C_5v50":
-        - pdk_dir::libs.ref/gf180mcu_fd_ip_sram/lib/gf180mcu_fd_ip_sram__sram512x8m8wm1__ff_n40C_5v50.lib
-      "*_ss_125C_4v50":
-        - pdk_dir::libs.ref/gf180mcu_fd_ip_sram/lib/gf180mcu_fd_ip_sram__sram512x8m8wm1__ss_125C_4v50.lib
+      "*__tt_025C_3v30":
+        - dir::../gf180mcu_ocd_ip_sram/cells/gf180mcu_ocd_ip_sram__sram256x8m8wm1/gf180mcu_ocd_ip_sram__sram256x8m8wm1__tt_025C_3v30.lib
+      "*__ff_n40C_3v60":
+        - dir::../gf180mcu_ocd_ip_sram/cells/gf180mcu_ocd_ip_sram__sram256x8m8wm1/gf180mcu_ocd_ip_sram__sram256x8m8wm1__ff_n40C_3v60.lib
+      "*__ss_125C_3v00":
+        - dir::../gf180mcu_ocd_ip_sram/cells/gf180mcu_ocd_ip_sram__sram256x8m8wm1/gf180mcu_ocd_ip_sram__sram256x8m8wm1__ss_125C_3v00.lib
     instances:
-      # Make sure to specify the SRAMs in pdn_cfg.tcl
-      i_chip_core.sram_0:
-        location: [490, 500]
-        orientation: N
-      i_chip_core.sram_1:
-        location: [970, 500]
-        orientation: E
+      # You'll fill these in after inventorying your SRAM instances
+      # i_chip_core.pipeline_inst.u_logmel.i_mel_fb.i_coeff_sram_0:
+      #   location: [500, 500]
+      #   orientation: N
+
+  gf180mcu_ocd_ip_sram__sram512x8m8wm1:
+    gds:
+      - dir::../gf180mcu_ocd_ip_sram/cells/gf180mcu_ocd_ip_sram__sram512x8m8wm1/gf180mcu_ocd_ip_sram__sram512x8m8wm1.gds
+    lef:
+      - dir::../gf180mcu_ocd_ip_sram/cells/gf180mcu_ocd_ip_sram__sram512x8m8wm1/gf180mcu_ocd_ip_sram__sram512x8m8wm1.lef
+    vh:
+      - dir::../gf180mcu_ocd_ip_sram/cells/gf180mcu_ocd_ip_sram__sram512x8m8wm1/gf180mcu_ocd_ip_sram__sram512x8m8wm1.blackbox.v
+    lib:
+      "*__tt_025C_3v30":
+        - dir::../gf180mcu_ocd_ip_sram/cells/gf180mcu_ocd_ip_sram__sram512x8m8wm1/gf180mcu_ocd_ip_sram__sram512x8m8wm1__tt_025C_3v30.lib
+      "*__ff_n40C_3v60":
+        - dir::../gf180mcu_ocd_ip_sram/cells/gf180mcu_ocd_ip_sram__sram512x8m8wm1/gf180mcu_ocd_ip_sram__sram512x8m8wm1__ff_n40C_3v60.lib
+      "*__ss_125C_3v00":
+        - dir::../gf180mcu_ocd_ip_sram/cells/gf180mcu_ocd_ip_sram__sram512x8m8wm1/gf180mcu_ocd_ip_sram__sram512x8m8wm1__ss_125C_3v00.lib
+    instances:
+      # You'll fill these in after inventorying your SRAM instances
+      # i_chip_core.pipeline_inst.u_logmel.i_mel_fb.i_coeff_sram_0:
+      #   location: [500, 500]
+      #   orientation: N
+
+  gf180mcu_ocd_ip_sram__sram1024x8m8wm1:
+    gds:
+      - dir::../gf180mcu_ocd_ip_sram/cells/gf180mcu_ocd_ip_sram__sram1024x8m8wm1/gf180mcu_ocd_ip_sram__sram1024x8m8wm1.gds
+    lef:
+      - dir::../gf180mcu_ocd_ip_sram/cells/gf180mcu_ocd_ip_sram__sram1024x8m8wm1/gf180mcu_ocd_ip_sram__sram1024x8m8wm1.lef
+    vh:
+      - dir::../gf180mcu_ocd_ip_sram/cells/gf180mcu_ocd_ip_sram__sram1024x8m8wm1/gf180mcu_ocd_ip_sram__sram1024x8m8wm1.blackbox.v
+    lib:
+      "*__tt_025C_3v30":
+        - dir::../gf180mcu_ocd_ip_sram/cells/gf180mcu_ocd_ip_sram__sram1024x8m8wm1/gf180mcu_ocd_ip_sram__sram1024x8m8wm1__tt_025C_3v30.lib
+      "*__ff_n40C_3v60":
+        - dir::../gf180mcu_ocd_ip_sram/cells/gf180mcu_ocd_ip_sram__sram1024x8m8wm1/gf180mcu_ocd_ip_sram__sram1024x8m8wm1__ff_n40C_3v60.lib
+      "*__ss_125C_3v00":
+        - dir::../gf180mcu_ocd_ip_sram/cells/gf180mcu_ocd_ip_sram__sram1024x8m8wm1/gf180mcu_ocd_ip_sram__sram1024x8m8wm1__ss_125C_3v00.lib
+    instances:
+      # You'll fill these in after inventorying your SRAM instances
+      # i_chip_core.pipeline_inst.u_logmel.i_mel_fb.i_coeff_sram_0:
+      #   location: [500, 500]
+      #   orientation: N
+
+  # gf180mcu_fd_ip_sram__sram512x8m8wm1:
+  #   gds:
+  #     - pdk_dir::libs.ref/gf180mcu_fd_ip_sram/gds/gf180mcu_fd_ip_sram__sram512x8m8wm1.gds
+  #   lef:
+  #     - pdk_dir::libs.ref/gf180mcu_fd_ip_sram/lef/gf180mcu_fd_ip_sram__sram512x8m8wm1.lef
+  #   vh:
+  #     - pdk_dir::libs.ref/gf180mcu_fd_ip_sram/verilog/gf180mcu_fd_ip_sram__sram512x8m8wm1__blackbox.v
+  #   lib:
+  #     "*_tt_025C_5v00":
+  #       - pdk_dir::libs.ref/gf180mcu_fd_ip_sram/lib/gf180mcu_fd_ip_sram__sram512x8m8wm1__tt_025C_5v00.lib
+  #     "*_ff_n40C_5v50":
+  #       - pdk_dir::libs.ref/gf180mcu_fd_ip_sram/lib/gf180mcu_fd_ip_sram__sram512x8m8wm1__ff_n40C_5v50.lib
+  #     "*_ss_125C_4v50":
+  #       - pdk_dir::libs.ref/gf180mcu_fd_ip_sram/lib/gf180mcu_fd_ip_sram__sram512x8m8wm1__ss_125C_4v50.lib
+  #   instances:
+  #     # Make sure to specify the SRAMs in pdn_cfg.tcl
+  #     i_chip_core.sram_0:
+  #       location: [490, 500]
+  #       orientation: N
+  #     i_chip_core.sram_1:
+  #       location: [970, 500]
+  #       orientation: E
 
 # This is an alternative method compared to
 # specifying the power connections in the RTL
