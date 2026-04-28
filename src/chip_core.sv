@@ -223,8 +223,8 @@ module chip_core #(
     wire [2:0]      kws_class_out;
 
     pipeline_top #(
-        .IW_STFFT   (14),
-        .OW_STFFT   (18),
+        .IW_STFFT   (16), // i think should be 16 for both I and O
+        .OW_STFFT   (16),
         .FFT_SIZE   (256),
         .N_MELS     (40),
         .N_BINS     (129),
