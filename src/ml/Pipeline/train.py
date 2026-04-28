@@ -9,7 +9,7 @@ from tqdm import tqdm
 from datetime import datetime
 from pathlib import Path
 import sys
-sys.path.insert(0, str(Path(__file__).parent.parent / "models" / "dscnn"))
+sys.path.insert(0, str(Path(__file__).parent))
 from dscnn import create_model
 import numpy as np
 from torch.utils.data import Dataset, DataLoader

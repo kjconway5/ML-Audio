@@ -228,7 +228,7 @@ def main():
     else:
         print(f"\n  Features produce same prediction. Check other causes.")
 
-    print(f"\n  FIX: Retrain with process_data_golden.py + fix Pipeline/model.py groups.")
+    print(f"\n  FIX: Retrain with process_full_data.py + fix Pipeline/model.py groups.")
     print(f"  See diagnosis for details.\n")
 
 

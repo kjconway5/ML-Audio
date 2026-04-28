@@ -23,6 +23,7 @@ import numpy as np
 import torch
 import os
 from pathlib import Path
+from numba import njit
 
 # RTL parameters  (must match logmel_top defaults)
 SAMPLE_RATE = 16000
@@ -237,39 +238,7 @@ class _CICDecimator:
         Feed int16/int32 samples (PDM values: +32767 or -32768).
         Returns int64 array of 34-bit signed CIC outputs, one per R samples.
         """
-        self._reset()
-        B   = self.REG
-        out = []
-
-        for x in samples:
-            x = int(x)
-
-            # Step 1: comb stages fire FIRST using OLD integrator values
-            # (matches Verilog: comb block reads int_reg before integrator block updates it)
-            if self._cycle == 0:
-                i2_old = self._int[2]
-                c0_old = self._comb[0]
-                c1_old = self._comb[1]
-                d0, d1, d2 = self._delay
-
-                new_c0 = _s(i2_old - d0, B)
-                new_c1 = _s(c0_old - d1, B)
-                new_c2 = _s(c1_old - d2, B)
-
-                self._comb  = [new_c0, new_c1, new_c2]
-                self._delay = [i2_old, c0_old, c1_old]
-                out.append(new_c2)
-
-            # Step 2: integrators update simultaneously using OLD values of each other
-            i0_old, i1_old, i2_old = self._int
-            self._int[0] = _s(i0_old + x,      B)
-            self._int[1] = _s(i1_old + i0_old, B)
-            self._int[2] = _s(i2_old + i1_old, B)
-
-            # Step 3: advance cycle counter
-            self._cycle = 0 if self._cycle >= self.R - 1 else self._cycle + 1
-
-        return np.array(out, dtype=np.int64)
+        return _cic_decimate_nb(np.asarray(samples, dtype=np.int32), self.R, self.REG)
 
     @staticmethod
     def truncate(raw: np.ndarray) -> np.ndarray:
@@ -320,14 +289,8 @@ class _CompFIR:
         Process int16 array through the FIR.
         Returns int64 array of OW=37-bit full-precision outputs.
         """
-        buf = np.zeros(self.NTAPS, dtype=np.int64)
-        out = np.empty(len(samples), dtype=np.int64)
-        for i, x in enumerate(samples):
-            buf[1:] = buf[:-1]
-            buf[0]  = int(x)
-            y       = int(np.dot(buf, self._h))
-            out[i]  = max(self._min, min(self._max, y))
-        return out
+        raw = np.convolve(samples.astype(np.int64), self._h)[:len(samples)]
+        return np.clip(raw, self._min, self._max).astype(np.int64)
 
     @staticmethod
     def truncate(raw: np.ndarray) -> np.ndarray:
@@ -341,6 +304,69 @@ class _CompFIR:
                         masked - (1 << 16), masked).astype(np.int16)
 
 
+@njit(cache=True)
+def _pdm_modulate_nb(pcm, decim):
+    out = np.empty(len(pcm) * decim, dtype=np.int16)
+    acc = np.int64(0)
+    idx = 0
+    for i in range(len(pcm)):
+        x = np.int64(pcm[i])
+        for _ in range(decim):
+            acc += x
+            if acc >= np.int64(0):
+                out[idx] = np.int16(32767)
+                acc -= np.int64(32768)
+            else:
+                out[idx] = np.int16(-32768)
+                acc += np.int64(32768)
+            idx += 1
+    return out
+
+
+@njit(cache=True)
+def _cic_decimate_nb(samples, R, B):
+    mask  = (np.int64(1) << np.int64(B)) - np.int64(1)
+    half  = np.int64(1) << np.int64(B - 1)
+    width = np.int64(1) << np.int64(B)
+
+    int0 = np.int64(0); int1 = np.int64(0); int2 = np.int64(0)
+    c0   = np.int64(0); c1   = np.int64(0)
+    d0   = np.int64(0); d1   = np.int64(0); d2   = np.int64(0)
+
+    n_max = len(samples) // R + 1
+    out   = np.empty(n_max, dtype=np.int64)
+    out_idx = 0
+    cycle   = 0
+
+    for i in range(len(samples)):
+        x = np.int64(samples[i])
+
+        if cycle == 0:
+            v   = (int2 - d0) & mask
+            nc0 = v - width if v >= half else v
+            v   = (c0 - d1) & mask
+            nc1 = v - width if v >= half else v
+            v   = (c1 - d2) & mask
+            nc2 = v - width if v >= half else v
+
+            d0 = int2;  d1 = c0;  d2 = c1
+            c0 = nc0;   c1 = nc1
+            out[out_idx] = nc2
+            out_idx += 1
+
+        new0 = (int0 + x) & mask
+        if new0 >= half: new0 -= width
+        new1 = (int1 + int0) & mask
+        if new1 >= half: new1 -= width
+        new2 = (int2 + int1) & mask
+        if new2 >= half: new2 -= width
+
+        int0 = new0; int1 = new1; int2 = new2
+        cycle = 0 if cycle >= R - 1 else cycle + 1
+
+    return out[:out_idx]
+
+
 # Sigma-delta PDM modulator
 # Matches pcm_to_pdm() + drive_pdm() in the cocotb testbench exactly.
 
@@ -351,18 +377,7 @@ def _pcm_to_cic_input(pcm: np.ndarray, decim: int = 63) -> np.ndarray:
     PDM bit 1 -> +32767, PDM bit 0 -> -32768  (matches drive_pdm in testbench).
     Returns int16 array of length len(pcm)*decim fed into the CIC.
     """
-    vals = []
-    acc  = 0
-    for x in pcm:
-        for _ in range(decim):
-            acc += int(x)
-            if acc >= 0:
-                vals.append(0x7FFF)
-                acc -= (1 << 15)
-            else:
-                vals.append(-0x8000)
-                acc += (1 << 15)
-    return np.array(vals, dtype=np.int16)
+    return _pdm_modulate_nb(np.asarray(pcm, dtype=np.int32), decim)
 
 
 # GoldenExtractor  (STFFT-only pipeline -- pipeline_top.sv)

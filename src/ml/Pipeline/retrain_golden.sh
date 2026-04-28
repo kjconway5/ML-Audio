@@ -16,9 +16,9 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR"
 
 echo "============================================================"
-echo "  Step 1: Generate golden features (process_data_golden.py)"
+echo "  Step 1: Generate golden features (process_full_data.py)"
 echo "============================================================"
-python3 process_data_golden.py
+python3 process_full_data.py
 
 echo ""
 echo "============================================================"

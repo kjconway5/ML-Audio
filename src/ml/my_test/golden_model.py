@@ -4,7 +4,7 @@ This file used to be a stale fork of the golden model with
 `SAMPLE_W=14`, `FFT_W=18`, and `Q_FRAC=12`.  Those constants no longer
 match the RTL pipeline (which is now `SAMPLE_W=16`, `FFT_W=16`,
 `Q_FRAC=10` after the R2FFT / BFP rewrite), and the fork was used only
-by `src/ml/Pipeline/process_data_golden.py`, which silently produced
+by `src/ml/Pipeline/process_full_data.py`, which silently produced
 training features at a different scale than what the hardware actually
 computes.
 

@@ -90,5 +90,5 @@ vad:
   default_energy_threshold: 0.0001
 
 output:
-  model_save_path: "../models/dscnn-32requant-v0/dscnn-32full-v1.pt"
-  log_file: "../models/dscnn-32requant-v0/training_log_32full-v1.txt"
+  model_save_path: "../models/dscnn-32full-v1/dscnn-32full-v1.pt"
+  log_file: "../models/dscnn-32full-v1/training_log_32full-v1.txt"

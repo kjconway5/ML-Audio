@@ -98,7 +98,7 @@ def load_model(ckpt_path: Path) -> torch.nn.Module:
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--ckpt", type=Path, default=MODEL_DIR.parent / "dscnn-32requant-v11" / "dscnn-32requant-v11.pt")
+    parser.add_argument("--ckpt", type=Path, default=MODEL_DIR.parent / "dscnn-32full-v1" / "dscnn-32full-v1.pt")
     args = parser.parse_args()
 
     ckpt_path = args.ckpt

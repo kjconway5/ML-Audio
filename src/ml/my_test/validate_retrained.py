@@ -3,7 +3,7 @@
 validate_retrained.py — Post-retrain validation suite.
 
 Confirms that a newly trained model is compatible with golden/RTL features.
-Run after retraining with process_data_golden.py.
+Run after retraining with process_full_data.py.
 
 Usage:
     python validate_retrained.py --model <new_checkpoint.pt>
