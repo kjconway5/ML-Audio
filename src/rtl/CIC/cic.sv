@@ -94,14 +94,14 @@ assign output_tdata = comb_reg[N-1];
 assign output_tvalid = input_tvalid & cycle_reg == 0;
 
 genvar k;
-integer i;
+// integer i;
 
-initial begin
-    for (i = 0; i < N; i = i + 1) begin
-        int_reg[i] <= 0;
-        comb_reg[i] <= 0;
-    end
-end
+// initial begin
+//     for (i = 0; i < N; i = i + 1) begin
+//         int_reg[i] <= 0;
+//         comb_reg[i] <= 0;
+//     end
+// end
 
 // integrator stages
 generate
@@ -130,13 +130,14 @@ generate
 for (k = 0; k < N; k = k + 1) begin : comb
     reg [REG_WIDTH-1:0] delay_reg[M-1:0];
 
-    initial begin
-        for (i = 0; i < M; i = i + 1) begin
-            delay_reg[i] <= 0;
-        end
-    end
+    // initial begin
+    //     for (i = 0; i < M; i = i + 1) begin
+    //         delay_reg[i] <= 0;
+    //     end
+    // end
 
     always @(posedge clk) begin
+        integer i;
         if (rst) begin
             for (i = 0; i < M; i = i + 1) begin
                 delay_reg[i] <= 0;
