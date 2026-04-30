@@ -1,13 +1,18 @@
 """
 compare_wav_outputs.py
 ======================
-Compare RTL speech features against the full-pipeline golden model
-for real .wav files saved by test_full_pipeline_speech.
+Compare RTL speech features against the full-pipeline golden model,
+grouped by keyword.
 
-Usage:
-    python3 compare_wav_outputs.py
-    python3 compare_wav_outputs.py --wav_dir /path/to/speech_data
-    python3 compare_wav_outputs.py --rtl_dir /path/to/rtl/top --wav_dir /data/yes
+For each keyword (subdirectory of speech_data/):
+  - Computes per-file RTL vs golden delta
+  - Plots one averaged spectrogram comparison (RTL | Golden | Delta)
+  - Reports accuracy as a percentage:
+      accuracy = 100 * (1 - mean_delta / max_possible_log2)
+
+Final summary:
+  - Bar chart of accuracy % per keyword
+  - Full table of per-file metrics
 """
 
 import os, sys, argparse
@@ -28,22 +33,21 @@ from golden_model import (
     SAMPLE_RATE, SAMPLE_W, N_MELS, N_FFT, Q_FRAC
 )
 
-SAMPLE_MAX    = (1 << (SAMPLE_W - 1)) - 1
-STARTUP_LOSS  = 0
-N_SAMPLES     = 7500    # must match test_full_pipeline_top.py N_PCM_SAMPLES
-WAV_DURATION_S = N_SAMPLES / SAMPLE_RATE   # 0.46875 s
+SAMPLE_MAX     = (1 << (SAMPLE_W - 1)) - 1
+STARTUP_LOSS   = 0
+N_SAMPLES      = 7500
+WAV_DURATION_S = N_SAMPLES / SAMPLE_RATE
+
+# Maximum possible log2 value (LOG_OUT_W=16 bits, Q_FRAC=10)
+MAX_LOG2       = (1 << (16 - Q_FRAC)) - 1 / (1 << Q_FRAC)   # ~63.999
 
 
+# ---------------------------------------------------------------------------
+# WAV loading  (identical to testbench _load_wav)
+# ---------------------------------------------------------------------------
 
 def load_wav_as_pcm(path: str) -> np.ndarray:
-    """
-    Load a .wav file and return int32 PCM at SAMPLE_RATE=16000 Hz,
-    trimmed or zero-padded to exactly N_SAMPLES samples.
-
-    Handles: mono/stereo, any sample rate (resampled), int16/int32/float encodings.
-    Requires scipy or soundfile:
-        pip install scipy --break-system-packages
-    """
+    """Load .wav -> int32 PCM at SAMPLE_RATE, trimmed/padded to N_SAMPLES."""
     data = rate = None
     try:
         from scipy.io import wavfile as _wf
@@ -58,12 +62,10 @@ def load_wav_as_pcm(path: str) -> np.ndarray:
         except Exception as e:
             raise RuntimeError(
                 "Cannot load %s.\n"
-                "Install scipy:   pip install scipy --break-system-packages\n"
-                "or soundfile:    pip install soundfile --break-system-packages\n"
+                "Install scipy:  pip install scipy --break-system-packages\n"
                 "Error: %s" % (path, e)
             )
 
-    # Normalise to float64 [-1, 1]
     dt = np.asarray(data).dtype
     if dt == np.int16:
         pcm_f = data.astype(np.float64) / 32768.0
@@ -74,11 +76,9 @@ def load_wav_as_pcm(path: str) -> np.ndarray:
     else:
         pcm_f = np.asarray(data, dtype=np.float64)
 
-    # Stereo -> mono
     if pcm_f.ndim == 2:
         pcm_f = pcm_f.mean(axis=1)
 
-    # Resample to SAMPLE_RATE if needed
     if rate != SAMPLE_RATE:
         try:
             from scipy.signal import resample_poly
@@ -93,152 +93,244 @@ def load_wav_as_pcm(path: str) -> np.ndarray:
                 pcm_f,
             )
 
-    # Trim or zero-pad to N_SAMPLES
-    if len(pcm_f) >= N_SAMPLES:
-        pcm_f = pcm_f[:N_SAMPLES]
-    else:
-        pcm_f = np.concatenate([pcm_f, np.zeros(N_SAMPLES - len(pcm_f))])
+    target = int(round(WAV_DURATION_S * SAMPLE_RATE))
+    pcm_f  = pcm_f[:target] if len(pcm_f) >= target \
+             else np.concatenate([pcm_f, np.zeros(target - len(pcm_f))])
 
     return np.clip(np.round(pcm_f * SAMPLE_MAX), -SAMPLE_MAX - 1, SAMPLE_MAX
-                  ).astype(np.int32)
+                   ).astype(np.int32)
 
 
-def find_rtl_npy_files(rtl_dir: str) -> list:
-    """Find rtl_features_<stem>.npy files, skipping the baseline test files."""
-    skip = {
-        "rtl_features.npy",
-        "rtl_features_silence.npy",
-        "rtl_features_tone.npy",
-        "rtl_features_yes.npy",
-    }
-    matches = []
-    for fname in sorted(os.listdir(rtl_dir)):
-        if fname.startswith("rtl_features_") and fname.endswith(".npy") \
-                and fname not in skip:
-            matches.append(os.path.join(rtl_dir, fname))
-    return matches
-
-
-def stem_from_npy(npy_path: str) -> str:
-    """Extract the stem from rtl_features_<stem>.npy."""
-    return os.path.basename(npy_path)[len("rtl_features_"):-len(".npy")]
-
-
-def find_wav_for_stem(stem: str, wav_dir: str) -> str | None:
-    """
-    Find a .wav whose sanitised stem (spaces->_, first 40 chars) matches.
-    The testbench uses:  stem = wav_path.stem.replace(' ', '_')[:40]
-    """
-    for root, _, files in os.walk(wav_dir):
-        for fname in files:
-            if not fname.lower().endswith(".wav"):
-                continue
-            wav_stem = os.path.splitext(fname)[0].replace(" ", "_")[:40]
-            if wav_stem == stem:
-                return os.path.join(root, fname)
-    return None
-
+# ---------------------------------------------------------------------------
+# File helpers
+# ---------------------------------------------------------------------------
 
 def load_rtl_mat(npy_path: str) -> np.ndarray:
-    """Load RTL .npy, normalise to float32 log2, ensure (N_MELS, n_frames)."""
+    """Load RTL .npy -> float32 log2, (N_MELS, n_frames)."""
     mat = np.load(npy_path)
     if mat.dtype in (np.uint16, np.int16, np.uint32, np.int32):
         mat = mat.astype(np.float32) / (1 << Q_FRAC)
     elif mat.dtype == np.float64:
         mat = mat.astype(np.float32)
-    # Fix orientation if saved transposed
     if mat.ndim == 2 and mat.shape[0] != N_MELS and mat.shape[1] == N_MELS:
         mat = mat.T
     return mat
 
 
-def plot_comparison(rtl_mat: np.ndarray,
-                    golden_mat: np.ndarray,
-                    title: str,
-                    out_path: str) -> dict:
+def parse_npy_name(fname: str):
     """
-    Three-panel plot: RTL | Golden | |RTL - Golden|.
-    Returns accuracy metrics dict.
+    Parse rtl_features_<keyword>_<stem>.npy -> (keyword, stem).
+    Falls back to (None, stem) for non-speech files.
     """
-    n_frames = min(rtl_mat.shape[1], golden_mat.shape[1])
-    rtl   = rtl_mat[:,    STARTUP_LOSS : STARTUP_LOSS + n_frames]
-    gold  = golden_mat[:, STARTUP_LOSS : STARTUP_LOSS + n_frames]
-    delta = np.abs(rtl - gold)
+    base = fname[len("rtl_features_"):-len(".npy")]
+    # keyword is the first segment before _
+    # stem may itself contain underscores, so split on first _ only up to
+    # depth 1 -- but keyword dirs are known so we match greedily.
+    # Convention: testbench saves as  <keyword>_<stem>  where keyword has no _.
+    # We split on the first _ to get keyword.
+    parts = base.split("_", 1)
+    if len(parts) == 2:
+        return parts[0], parts[1]
+    return None, base
 
-    vmin = min(rtl.min(), gold.min())
-    vmax = max(rtl.max(), gold.max())
+
+def find_npy_files(rtl_dir: str) -> dict:
+    """
+    Scan rtl_dir for rtl_features_<keyword>_<stem>.npy files.
+    Returns {keyword: [(npy_path, stem), ...]}
+    Skips baseline files (chirp, silence, tone).
+    """
+    skip = {"chirp", "silence", "tone_1kHz", "yes", "no"}   # old flat stems
+    grouped = {}
+
+    for fname in sorted(os.listdir(rtl_dir)):
+        if not (fname.startswith("rtl_features_") and fname.endswith(".npy")):
+            continue
+        keyword, stem = parse_npy_name(fname)
+        if keyword in (None,) or stem in skip:
+            continue
+        # Baseline singletons have no keyword prefix -- skip them
+        if fname in ("rtl_features.npy", "rtl_features_silence.npy",
+                     "rtl_features_tone_1kHz.npy"):
+            continue
+        grouped.setdefault(keyword, []).append(
+            (os.path.join(rtl_dir, fname), stem)
+        )
+
+    return grouped
+
+
+def find_wav(keyword: str, stem: str, wav_dir: str) -> str:
+    """
+    Find <wav_dir>/<keyword>/<stem>.wav  (stem may have spaces->_ already applied).
+    Also tries wav_dir/<keyword>/<stem with _ -> space>.wav.
+    """
+    kw_dir = os.path.join(wav_dir, keyword)
+    if not os.path.isdir(kw_dir):
+        kw_dir = wav_dir   # flat layout fallback
+
+    for root, _, files in os.walk(kw_dir):
+        for fname in files:
+            if not fname.lower().endswith(".wav"):
+                continue
+            candidate = os.path.splitext(fname)[0].replace(" ", "_")[:32]
+            if candidate == stem:
+                return os.path.join(root, fname)
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Accuracy metric
+# ---------------------------------------------------------------------------
+
+def delta_to_accuracy(mean_delta: float) -> float:
+    """
+    Convert mean |RTL - Golden| (log2) to an accuracy percentage.
+
+    accuracy = max(0, 100 * (1 - mean_delta / MAX_LOG2))
+
+    A perfect match (mean_delta=0) -> 100%.
+    A mean delta equal to the full log2 range -> 0%.
+    Values in between scale linearly.
+    """
+    return max(0.0, 100.0 * (1.0 - mean_delta / MAX_LOG2))
+
+
+# ---------------------------------------------------------------------------
+# Per-keyword averaged spectrogram plot
+# ---------------------------------------------------------------------------
+
+def plot_keyword_spectrogram(keyword: str,
+                             rtl_mats: list,
+                             golden_mats: list,
+                             out_path: str) -> dict:
+    """
+    Average all RTL and golden spectrograms for one keyword, then plot
+    three panels: Mean RTL | Mean Golden | Mean |RTL - Golden|.
+
+    All matrices are trimmed to the minimum frame count before averaging
+    so that shapes are compatible.
+
+    Returns per-keyword aggregate metrics.
+    """
+    # Trim to minimum frame count across all files
+    min_frames = min(min(m.shape[1] for m in rtl_mats),
+                     min(m.shape[1] for m in golden_mats))
+
+    rtl_stack    = np.stack([m[:, :min_frames] for m in rtl_mats],    axis=0)
+    golden_stack = np.stack([m[:, :min_frames] for m in golden_mats], axis=0)
+
+    mean_rtl    = rtl_stack.mean(axis=0)       # (N_MELS, min_frames)
+    mean_golden = golden_stack.mean(axis=0)
+    mean_delta  = np.abs(mean_rtl - mean_golden)
+
+    # Per-sample delta across all files (for per-file statistics)
+    all_deltas  = np.abs(rtl_stack - golden_stack)   # (n_files, N_MELS, min_frames)
+
+    vmin = min(float(mean_rtl.min()), float(mean_golden.min()))
+    vmax = max(float(mean_rtl.max()), float(mean_golden.max()))
 
     fig, axes = plt.subplots(3, 1, figsize=(12, 10), constrained_layout=True)
-    kw = dict(aspect="auto", origin="lower", interpolation="nearest", cmap="magma")
+    kw_plot = dict(aspect="auto", origin="lower", interpolation="nearest", cmap="magma")
 
-    im = axes[0].imshow(rtl, **kw, vmin=vmin, vmax=vmax)
-    axes[0].set_title("RTL pipeline  (%d frames)  range=[%.1f, %.1f] log2"
-                       % (n_frames, rtl.min(), rtl.max()))
+    im = axes[0].imshow(mean_rtl, **kw_plot, vmin=vmin, vmax=vmax)
+    axes[0].set_title(
+        "RTL  (mean of %d files)  range=[%.1f, %.1f] log2"
+        % (len(rtl_mats), float(mean_rtl.min()), float(mean_rtl.max()))
+    )
     axes[0].set_ylabel("Mel bin")
     fig.colorbar(im, ax=axes[0], label="log2 energy")
 
-    im = axes[1].imshow(gold, **kw, vmin=vmin, vmax=vmax)
-    axes[1].set_title("Full-pipeline golden  (CIC + compFIR + STFFT)")
+    im = axes[1].imshow(mean_golden, **kw_plot, vmin=vmin, vmax=vmax)
+    axes[1].set_title("Golden  (mean of %d files,  CIC + compFIR + STFFT)"
+                      % len(golden_mats))
     axes[1].set_ylabel("Mel bin")
     fig.colorbar(im, ax=axes[1], label="log2 energy")
 
-    im = axes[2].imshow(delta, aspect="auto", origin="lower",
-                        interpolation="nearest", cmap="hot",
-                        vmin=0, vmax=max(float(delta.max()), 0.01))
-    axes[2].set_title("|RTL - Golden|  max=%.4f log2  mean=%.4f log2"
-                      % (float(delta.max()), float(delta.mean())))
+    im = axes[2].imshow(
+        mean_delta, aspect="auto", origin="lower",
+        interpolation="nearest", cmap="hot",
+        vmin=0, vmax=max(float(mean_delta.max()), 0.01)
+    )
+    acc = delta_to_accuracy(float(all_deltas.mean()))
+    axes[2].set_title(
+        "Mean |RTL - Golden|  max=%.3f  mean=%.3f log2  accuracy=%.1f%%"
+        % (float(mean_delta.max()), float(all_deltas.mean()), acc)
+    )
     axes[2].set_xlabel("Frame index")
     axes[2].set_ylabel("Mel bin")
     fig.colorbar(im, ax=axes[2], label="|delta| log2")
 
-    fig.suptitle(title, fontsize=11, fontweight="bold")
+    fig.suptitle("Keyword: '%s'" % keyword, fontsize=13, fontweight="bold")
     fig.savefig(out_path, dpi=120)
     plt.close(fig)
 
     return dict(
-        n_frames    = n_frames,
-        max_delta   = float(delta.max()),
-        mean_delta  = float(delta.mean()),
-        rtl_mean    = float(rtl.mean()),
-        golden_mean = float(gold.mean()),
-        frames_diff = int((delta.max(axis=0) > 0.5).sum()),
+        keyword     = keyword,
+        n_files     = len(rtl_mats),
+        min_frames  = min_frames,
+        max_delta   = float(all_deltas.max()),
+        mean_delta  = float(all_deltas.mean()),
+        accuracy_pct = acc,
     )
 
 
-def plot_summary(results: list, out_path: str):
-    """Bar chart of mean delta per file."""
-    if not results:
-        return
-    names  = [r["stem"] for r in results]
-    deltas = [r["mean_delta"] for r in results]
+# ---------------------------------------------------------------------------
+# Summary accuracy bar chart
+# ---------------------------------------------------------------------------
 
-    fig, ax = plt.subplots(figsize=(max(8, len(names) * 1.4 + 2), 4),
+def plot_accuracy_summary(kw_metrics: list, out_path: str):
+    """Bar chart: accuracy % per keyword, sorted descending."""
+    kw_metrics_sorted = sorted(kw_metrics, key=lambda r: r["accuracy_pct"], reverse=True)
+    names    = [r["keyword"] for r in kw_metrics_sorted]
+    accs     = [r["accuracy_pct"] for r in kw_metrics_sorted]
+    n_files  = [r["n_files"] for r in kw_metrics_sorted]
+
+    colours = ["#2ecc71" if a >= 90 else "#e67e22" if a >= 70 else "#e74c3c"
+               for a in accs]
+
+    fig, ax = plt.subplots(figsize=(max(8, len(names) * 1.4 + 2), 5),
                            constrained_layout=True)
-    bars = ax.bar(names, deltas, color="steelblue", edgecolor="black", linewidth=0.5)
-    ax.set_xlabel("File")
-    ax.set_ylabel("Mean |RTL - Golden| (log2)")
-    ax.set_title("RTL vs Full-pipeline golden -- per-file accuracy")
-    ax.tick_params(axis="x", rotation=35)
-    for bar, val in zip(bars, deltas):
-        ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.01,
-                "%.3f" % val, ha="center", va="bottom", fontsize=8)
+    bars = ax.bar(names, accs, color=colours, edgecolor="black", linewidth=0.5)
+
+    ax.axhline(90, color="green",  linestyle="--", linewidth=1, label="90% target")
+    ax.axhline(70, color="orange", linestyle="--", linewidth=1, label="70% threshold")
+
+    for bar, val, n in zip(bars, accs, n_files):
+        ax.text(bar.get_x() + bar.get_width() / 2,
+                bar.get_height() + 0.5,
+                "%.1f%%\n(n=%d)" % (val, n),
+                ha="center", va="bottom", fontsize=8)
+
+    ax.set_ylim(0, 110)
+    ax.set_xlabel("Keyword")
+    ax.set_ylabel("Accuracy (%)")
+    ax.set_title(
+        "RTL vs Full-pipeline golden -- accuracy per keyword\n"
+        "accuracy = 100 x (1 - mean_delta / max_log2)"
+    )
+    ax.tick_params(axis="x", rotation=30)
+    ax.legend(fontsize=8)
     fig.savefig(out_path, dpi=120)
     plt.close(fig)
-    print("Summary plot -> %s" % out_path)
+    print("Accuracy summary plot -> %s" % out_path)
 
 
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Compare RTL speech features against full-pipeline golden model"
+        description="Per-keyword RTL vs golden spectrogram comparison"
     )
     parser.add_argument(
         "--rtl_dir", default=_TOP_DIR,
-        help="Directory containing rtl_features_<stem>.npy  (default: script dir)"
+        help="Directory with rtl_features_<keyword>_<stem>.npy files"
     )
     parser.add_argument(
         "--wav_dir", default=os.path.join(_TOP_DIR, "speech_data"),
-        help="Directory containing the original .wav training files"
+        help="Root of the speech dataset (one subdirectory per keyword)"
     )
     parser.add_argument(
         "--out_dir", default=None,
@@ -249,120 +341,146 @@ def main():
     out_dir = args.out_dir or args.rtl_dir
     os.makedirs(out_dir, exist_ok=True)
 
-    # Discover RTL feature files
-    npy_files = find_rtl_npy_files(args.rtl_dir)
-    if not npy_files:
-        print("No rtl_features_*.npy files found in %s" % args.rtl_dir)
-        print("Run the cocotb speech test first (test_full_pipeline_speech).")
+    # Discover grouped npy files
+    grouped = find_npy_files(args.rtl_dir)
+    if not grouped:
+        print("No keyword-grouped rtl_features_*.npy found in %s" % args.rtl_dir)
+        print("Run test_full_pipeline_speech first.")
         sys.exit(0)
 
-    print("Found %d RTL feature file(s)" % len(npy_files))
-    print("WAV directory : %s" % args.wav_dir)
-    print("Output        : %s" % out_dir)
+    total_files = sum(len(v) for v in grouped.values())
+    print("Keywords found: %s" % ", ".join(sorted(grouped)))
+    print("Total RTL feature files: %d" % total_files)
+    print("WAV directory: %s" % args.wav_dir)
+    print("Output:        %s" % out_dir)
     print()
 
-    # Instantiate golden model once  (loads SRAM hex files)
-    print("Loading FullPipelineGoldenExtractor...")
+    # Load golden model once
+    print("Loading FullPipelineGoldenExtractor ...")
     golden_model = FullPipelineGoldenExtractor(bfp_compensate=True)
     print("Ready.")
     print()
 
-    all_results = []
+    kw_summary   = []   # one entry per keyword
+    all_file_rows = []  # one entry per file (for full table)
 
-    for npy_path in npy_files:
-        stem = stem_from_npy(npy_path)
-        print("=" * 60)
-        print("File : %s" % os.path.basename(npy_path))
+    for keyword in sorted(grouped):
+        entries = grouped[keyword]   # [(npy_path, stem), ...]
+        print("=" * 64)
+        print("Keyword: '%s'  (%d files)" % (keyword, len(entries)))
+        print("=" * 64)
 
-        # Load RTL features
-        try:
-            rtl_mat = load_rtl_mat(npy_path)
-        except Exception as e:
-            print("  SKIP -- cannot load RTL npy: %s" % e)
+        kw_rtl_mats    = []
+        kw_golden_mats = []
+
+        for npy_path, stem in entries:
+            # Load RTL features
+            try:
+                rtl_mat = load_rtl_mat(npy_path)
+            except Exception as e:
+                print("  [%s] SKIP RTL load: %s" % (stem, e))
+                continue
+
+            # Find and load the matching wav
+            wav_path = find_wav(keyword, stem, args.wav_dir)
+            if wav_path is None:
+                print("  [%s] SKIP -- no matching .wav" % stem)
+                continue
+
+            try:
+                pcm = load_wav_as_pcm(wav_path)
+            except RuntimeError as e:
+                print("  [%s] SKIP wav load: %s" % (stem, e))
+                continue
+
+            # Run through golden model
+            golden_q  = golden_model.extract(pcm)
+            golden_f  = golden_q.astype(np.float32) / (1 << Q_FRAC)
+
+            # Align frame count
+            n = min(rtl_mat.shape[1], golden_f.shape[1])
+            rtl_al    = rtl_mat[:, :n]
+            golden_al = golden_f[:, :n]
+            delta     = np.abs(rtl_al - golden_al)
+
+            file_acc = delta_to_accuracy(float(delta.mean()))
+            print("  [%s] RTL=%s  golden=%s  mean_delta=%.3f  acc=%.1f%%"
+                  % (stem, rtl_mat.shape, golden_f.shape,
+                     float(delta.mean()), file_acc))
+
+            kw_rtl_mats.append(rtl_al)
+            kw_golden_mats.append(golden_al)
+
+            all_file_rows.append(dict(
+                keyword     = keyword,
+                stem        = stem,
+                n_frames    = n,
+                max_delta   = float(delta.max()),
+                mean_delta  = float(delta.mean()),
+                accuracy_pct = file_acc,
+            ))
+
+        if not kw_rtl_mats:
+            print("  No files successfully processed for '%s'" % keyword)
             continue
-        print("  RTL    : shape=%s  range=[%.2f, %.2f] log2"
-              % (rtl_mat.shape, rtl_mat.min(), rtl_mat.max()))
 
-        # Find matching .wav
-        wav_path = find_wav_for_stem(stem, args.wav_dir)
-        if wav_path is None:
-            print("  SKIP -- no matching .wav for stem '%s' in %s"
-                  % (stem, args.wav_dir))
-            print("  Tip: wav_stem = wav.stem.replace(' ','_')[:40]")
-            continue
-        print("  WAV    : %s" % os.path.basename(wav_path))
-
-        # Load wav and run through golden model
-        try:
-            pcm = load_wav_as_pcm(wav_path)
-        except RuntimeError as e:
-            print("  SKIP -- %s" % e)
-            continue
-
-        rms = float(np.sqrt(np.mean(pcm.astype(np.float64)**2)))
-        print("  PCM    : %d samples  RMS=%.0f  peak=%d"
-              % (len(pcm), rms, int(np.abs(pcm).max())))
-
-        golden_q = golden_model.extract(pcm)
-        golden_f = golden_q.astype(np.float32) / (1 << Q_FRAC)
-        print("  Golden : shape=%s  range=[%.2f, %.2f] log2"
-              % (golden_f.shape, golden_f.min(), golden_f.max()))
-
-        # Plot and compute metrics
-        plot_path = os.path.join(out_dir, "comparison_%s.png" % stem)
-        metrics   = plot_comparison(
-            rtl_mat, golden_f,
-            title    = "Speech comparison: %s" % os.path.basename(wav_path),
-            out_path = plot_path,
+        # Per-keyword averaged spectrogram plot
+        plot_path = os.path.join(out_dir, "spectrogram_%s.png" % keyword)
+        metrics   = plot_keyword_spectrogram(
+            keyword, kw_rtl_mats, kw_golden_mats, plot_path
         )
-        metrics["stem"] = stem
-        all_results.append(metrics)
+        kw_summary.append(metrics)
 
-        print("  Plot   : %s" % plot_path)
-        print("  Delta  : max=%.4f log2  mean=%.4f log2  frames_off=%d"
-              % (metrics["max_delta"], metrics["mean_delta"], metrics["frames_diff"]))
+        print("  -> Plot: %s" % plot_path)
+        print("  -> Keyword accuracy: %.1f%%  (mean_delta=%.3f log2)"
+              % (metrics["accuracy_pct"], metrics["mean_delta"]))
 
-    # Summary table
+    # -- Full per-file table --------------------------------------------------
     print()
-    print("*" * 68)
-    print("SUMMARY")
-    print("*" * 68)
+    print("*" * 72)
+    print("PER-FILE RESULTS")
+    print("*" * 72)
+    print("%-12s  %-32s  %9s  %9s  %9s"
+          % ("Keyword", "File stem", "Max delt", "Mean delt", "Accuracy"))
+    print("-" * 72)
+    for r in all_file_rows:
+        print("%-12s  %-32s  %9.4f  %9.4f  %8.1f%%"
+              % (r["keyword"][:12], r["stem"][:32],
+                 r["max_delta"], r["mean_delta"], r["accuracy_pct"]))
 
-    if not all_results:
-        print("No files compared -- check RTL .npy files and WAV directory.")
-        return
-
-    print("%-40s  %9s  %9s  %10s"
-          % ("File", "Max delta", "Mean delta", "Frames off"))
-    print("-" * 68)
-    for r in all_results:
-        print("%-40s  %9.4f  %9.4f  %10d"
-              % (r["stem"][:40], r["max_delta"], r["mean_delta"], r["frames_diff"]))
-
-    avg_max  = float(np.mean([r["max_delta"]  for r in all_results]))
-    avg_mean = float(np.mean([r["mean_delta"] for r in all_results]))
-    print("-" * 68)
-    print("%-40s  %9.4f  %9.4f" % ("AVERAGE", avg_max, avg_mean))
+    # -- Per-keyword summary table --------------------------------------------
     print()
+    print("*" * 72)
+    print("PER-KEYWORD ACCURACY SUMMARY")
+    print("*" * 72)
+    print("%-16s  %6s  %9s  %9s  %10s"
+          % ("Keyword", "Files", "Max delt", "Mean delt", "Accuracy"))
+    print("-" * 72)
+    for r in sorted(kw_summary, key=lambda x: x["accuracy_pct"], reverse=True):
+        grade = "EXCELLENT" if r["accuracy_pct"] >= 90 \
+                else "GOOD"      if r["accuracy_pct"] >= 70 \
+                else "POOR"
+        print("%-16s  %6d  %9.4f  %9.4f  %9.1f%%  %s"
+              % (r["keyword"][:16], r["n_files"],
+                 r["max_delta"], r["mean_delta"],
+                 r["accuracy_pct"], grade))
 
-    plot_summary(all_results, os.path.join(out_dir, "comparison_summary.png"))
+    if kw_summary:
+        overall_acc = float(np.mean([r["accuracy_pct"] for r in kw_summary]))
+        print("-" * 72)
+        print("%-16s  %6s  %9s  %9s  %9.1f%%"
+              % ("OVERALL", "", "", "", overall_acc))
 
-    # Accuracy verdict
-    print("Accuracy assessment (mean delta across all files):")
-    if avg_mean < 0.5:
-        print("  EXCELLENT  -- mean delta < 0.5 log2")
-    elif avg_mean < 2.0:
-        print("  GOOD       -- mean delta < 2.0 log2  (minor rounding differences)")
-    elif avg_mean < 6.0:
-        print("  ACCEPTABLE -- mean delta < 6.0 log2")
-        print("  Check: fir_trunc [30:15] and CIC truncation [33:18] in full_pipeline_top.sv")
-    else:
-        print("  POOR       -- mean delta > 6.0 log2")
-        print("  Check: fir_trunc bit range, bfpexp compensation, CIC REG_WIDTH")
+    # -- Summary accuracy bar chart -------------------------------------------
+    if kw_summary:
+        plot_accuracy_summary(
+            kw_summary,
+            os.path.join(out_dir, "accuracy_summary.png")
+        )
 
-
-if __name__ == "__main__":
-    main()
+    print()
+    print("Per-keyword spectrogram plots: spectrogram_<keyword>.png")
+    print("Accuracy bar chart:            accuracy_summary.png")
 
 
 if __name__ == "__main__":

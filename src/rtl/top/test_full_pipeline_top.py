@@ -1,3 +1,28 @@
+"""
+test_full_pipeline_top.py
+Full-pipeline cocotb testbench:
+  PDM input (1.008 MHz) -> CIC -> compFIR -> STFFT -> LogMel -> spect_buffer
+
+Tests:
+  1. test_full_pipeline_chirp    -- 200-7 kHz swept chirp (baseline sanity)
+  2. test_full_pipeline_speech   -- real .wav files grouped by keyword directory
+  3. test_full_pipeline_silence  -- all-zeros input (log floor check)
+  4. test_full_pipeline_tone     -- 1 kHz sustained tone (narrow-band check)
+
+WAV directory layout expected:
+    speech_data/
+        yes/   <-- each subdirectory is one keyword
+            0a2b400e_nohash_0.wav
+            0a2b400e_nohash_1.wav
+            ...
+        no/
+            ...
+        up/
+            ...
+
+Set SPEECH_WAV_DIR and MAX_WAV_FILES_PER_KEYWORD below.
+Features are saved as:  rtl_features_<keyword>_<stem>.npy
+"""
 
 import os
 import cocotb
@@ -6,36 +31,36 @@ from cocotb.triggers import RisingEdge, ClockCycles
 import numpy as np
 from pathlib import Path
 
+# ---------------------------------------------------------------------------
+# Constants
+# ---------------------------------------------------------------------------
 PCM_RATE = 16_000
 DECIM    = 63
 FFT_SIZE = 256
-HOP      = FFT_SIZE // 2       # 128
+HOP      = FFT_SIZE // 2
 
-N_PCM_SAMPLES = 7_500          # samples per synthesised test
+N_PCM_SAMPLES = 7_500
 N_MELS        = 40
 Q_FRAC        = 10
-DRAIN         = 100_000        # extra clocks after last PDM bit
+DRAIN         = 100_000
 
 DATA_DIR = Path(__file__).resolve().parent / ".." / "Log-Mel" / "data"
 
-SPEECH_WAV_DIR  = Path(__file__).resolve().parent / "speech_data"
-MAX_WAV_FILES   = 5            # cap to keep simulation time manageable
-WAV_DURATION_S  = 0.47         # seconds per clip (= N_PCM_SAMPLES / PCM_RATE)
+# ---------------------------------------------------------------------------
+# WAV dataset configuration
+# ---------------------------------------------------------------------------
+SPEECH_WAV_DIR            = Path(__file__).resolve().parent / "speech_data"
+MAX_WAV_FILES_PER_KEYWORD = 20    # cap per keyword subdirectory
+WAV_DURATION_S            = 0.47  # seconds per clip
 
+
+# ---------------------------------------------------------------------------
+# WAV loading
+# ---------------------------------------------------------------------------
 
 def _load_wav(path: Path) -> np.ndarray:
-    """
-    Load a .wav file and return int32 PCM at PCM_RATE=16000 Hz.
-
-    Handles:
-      - Mono and stereo (stereo averaged to mono)
-      - Any sample rate (resampled to 16 kHz)
-      - int16, int32, uint8, float32, float64 encodings
-      - Trimming to WAV_DURATION_S or zero-padding if shorter
-    """
-    # Try scipy first, then soundfile
-    data = None
-    rate = None
+    """Load .wav -> int32 PCM at PCM_RATE, trimmed/padded to N_PCM_SAMPLES."""
+    data = rate = None
     try:
         from scipy.io import wavfile as _wf
         rate, data = _wf.read(str(path))
@@ -49,12 +74,10 @@ def _load_wav(path: Path) -> np.ndarray:
         except Exception as e:
             raise RuntimeError(
                 "Cannot load %s.\n"
-                "Install scipy:    pip install scipy --break-system-packages\n"
-                "or soundfile:     pip install soundfile --break-system-packages\n"
-                "Original error:   %s" % (path, e)
+                "Install scipy:  pip install scipy --break-system-packages\n"
+                "Error: %s" % (path, e)
             )
 
-    # Normalise to float64 in [-1, 1]
     dt = np.asarray(data).dtype
     if dt == np.int16:
         pcm_f = data.astype(np.float64) / 32768.0
@@ -65,11 +88,9 @@ def _load_wav(path: Path) -> np.ndarray:
     else:
         pcm_f = np.asarray(data, dtype=np.float64)
 
-    # Stereo -> mono
     if pcm_f.ndim == 2:
         pcm_f = pcm_f.mean(axis=1)
 
-    # Resample to PCM_RATE if needed
     if rate != PCM_RATE:
         try:
             from scipy.signal import resample_poly
@@ -77,7 +98,6 @@ def _load_wav(path: Path) -> np.ndarray:
             g     = gcd(int(PCM_RATE), int(rate))
             pcm_f = resample_poly(pcm_f, PCM_RATE // g, rate // g)
         except ImportError:
-            # Fallback linear interpolation (lower quality)
             n_out = int(round(len(pcm_f) * PCM_RATE / rate))
             pcm_f = np.interp(
                 np.linspace(0, 1, n_out),
@@ -85,25 +105,42 @@ def _load_wav(path: Path) -> np.ndarray:
                 pcm_f,
             )
 
-    # Trim or zero-pad to WAV_DURATION_S seconds
     target = int(round(WAV_DURATION_S * PCM_RATE))
     if len(pcm_f) >= target:
         pcm_f = pcm_f[:target]
     else:
         pcm_f = np.concatenate([pcm_f, np.zeros(target - len(pcm_f))])
 
-    # Clip and convert to int32
     return np.clip(np.round(pcm_f * 32767), -32768, 32767).astype(np.int32)
 
 
-def discover_wav_files(directory: Path, max_files: int) -> list:
-    """Return up to max_files .wav paths found recursively under directory."""
-    if not directory.exists():
-        return []
-    return sorted(directory.rglob("*.wav"))[:max_files]
+def discover_keyword_dirs(base_dir: Path) -> dict:
+    """
+    Return {keyword: [wav_path, ...]} for each immediate subdirectory.
+    Falls back to {'speech': [wav_path, ...]} if no subdirs exist.
+    """
+    if not base_dir.exists():
+        return {}
+
+    subdirs = sorted([d for d in base_dir.iterdir() if d.is_dir()])
+    if subdirs:
+        result = {}
+        for d in subdirs:
+            wavs = sorted(d.rglob("*.wav"))[:MAX_WAV_FILES_PER_KEYWORD]
+            if wavs:
+                result[d.name] = wavs
+        return result
+
+    # Flat layout -- no subdirectories
+    wavs = sorted(base_dir.glob("*.wav"))[:MAX_WAV_FILES_PER_KEYWORD]
+    return {"speech": wavs} if wavs else {}
+
+
+# ---------------------------------------------------------------------------
+# Signal generators
+# ---------------------------------------------------------------------------
 
 def make_chirp(n: int, rate: int = PCM_RATE) -> np.ndarray:
-    """200 Hz -> 7 kHz linear chirp."""
     t   = np.arange(n) / rate
     dur = n / rate
     phase = 2 * np.pi * (200 * t + (7000 - 200) / (2 * dur) * t**2)
@@ -123,8 +160,11 @@ def make_tone(n: int, freq: float = 1000.0, rate: int = PCM_RATE) -> np.ndarray:
     return (np.sin(2 * np.pi * freq * t) * win * 32767).astype(np.int32)
 
 
+# ---------------------------------------------------------------------------
+# PDM modulator
+# ---------------------------------------------------------------------------
+
 def pcm_to_pdm(pcm: np.ndarray, decim: int = DECIM) -> np.ndarray:
-    """First-order sigma-delta: each PCM sample -> decim PDM bits (0/1)."""
     pdm = []
     acc = 0
     for x in pcm:
@@ -137,6 +177,11 @@ def pcm_to_pdm(pcm: np.ndarray, decim: int = DECIM) -> np.ndarray:
                 pdm.append(0)
                 acc += (1 << 15)
     return np.array(pdm, dtype=np.int8)
+
+
+# ---------------------------------------------------------------------------
+# DUT helpers
+# ---------------------------------------------------------------------------
 
 def _idle_flash(dut):
     dut.flash_mel_coeff_we_i.value   = 0
@@ -242,7 +287,6 @@ def save_features(frames: list, name: str):
 
 async def _run_pipeline(dut, pcm: np.ndarray, label: str,
                         npy_name: str, extra_checks=None):
-    """Reset -> flash -> PDM -> collect -> save -> assert."""
     cocotb.start_soon(Clock(dut.clk_i, 10, units="ns").start())
     await do_reset(dut)
     await flash_load_all(dut)
@@ -267,7 +311,7 @@ async def _run_pipeline(dut, pcm: np.ndarray, label: str,
     assert len(frames) > 0, "[%s] No frames produced" % label
     for i, f in enumerate(frames):
         assert len(f) == N_MELS, \
-            "[%s] Frame %d has %d mels, expected %d" % (label, i, len(f), N_MELS)
+            "[%s] Frame %d: %d mels" % (label, i, len(f))
 
     if extra_checks:
         extra_checks(frames, mat, label)
@@ -275,7 +319,10 @@ async def _run_pipeline(dut, pcm: np.ndarray, label: str,
     cocotb.log.info("[%s] PASS -- %d frames" % (label, len(frames)))
     return frames, mat
 
+
+# ---------------------------------------------------------------------------
 # Test 1 -- Chirp
+# ---------------------------------------------------------------------------
 
 @cocotb.test()
 async def test_full_pipeline_chirp(dut):
@@ -298,109 +345,114 @@ async def test_full_pipeline_chirp(dut):
 
     await _run_pipeline(dut, pcm, "chirp", "rtl_features.npy", checks)
 
-# Test 2 -- speech .wav files
+
+# ---------------------------------------------------------------------------
+# Test 2 -- Real speech .wav files (grouped by keyword directory)
+# ---------------------------------------------------------------------------
 
 @cocotb.test()
 async def test_full_pipeline_speech(dut):
     """
-    Runs real .wav files from SPEECH_WAV_DIR through the full RTL pipeline.
+    Run .wav files from SPEECH_WAV_DIR through the full RTL pipeline.
 
-    Setup:
-      Place your training-set .wav files in:
-        <test_dir>/speech_data/
-      or change SPEECH_WAV_DIR above to point at your dataset.
+    Directory layout:
+        speech_data/
+            yes/  <- one subdirectory per keyword
+                file_0.wav
+                file_1.wav
+            no/
+                ...
 
-      Each file is:
-        1. Loaded and resampled to 16 kHz
-        2. Trimmed/padded to WAV_DURATION_S = 0.47 s
-        3. Converted to PDM and driven through the RTL
-        4. Saved as rtl_features_<filename>.npy
-
-      If the directory does not exist or is empty, the test is skipped.
+    Each file produces:  rtl_features_<keyword>_<stem>.npy
+    compare_wav_outputs.py groups these by keyword automatically.
     """
-    wav_files = discover_wav_files(SPEECH_WAV_DIR, MAX_WAV_FILES)
+    keyword_dirs = discover_keyword_dirs(SPEECH_WAV_DIR)
 
-    if not wav_files:
+    if not keyword_dirs:
         cocotb.log.info(
-            "No .wav files found in %s -- skipping speech test.\n"
-            "Create the directory and copy in your training .wav files:\n"
-            "  mkdir -p %s\n"
-            "  cp /your/dataset/yes/*.wav %s/"
-            % (SPEECH_WAV_DIR, SPEECH_WAV_DIR, SPEECH_WAV_DIR)
+            "No keyword directories found in %s -- skipping." % SPEECH_WAV_DIR
         )
         return
 
-    cocotb.log.info("Found %d .wav file(s) in %s" % (len(wav_files), SPEECH_WAV_DIR))
+    total_wavs = sum(len(v) for v in keyword_dirs.values())
+    cocotb.log.info(
+        "Keywords: %s  |  Total files: %d  |  Cap: %d per keyword"
+        % (", ".join(sorted(keyword_dirs)), total_wavs, MAX_WAV_FILES_PER_KEYWORD)
+    )
 
-    # Flash SRAMs once before the loop
+    # Flash SRAMs once before any file loop
     cocotb.start_soon(Clock(dut.clk_i, 10, units="ns").start())
     await do_reset(dut)
     await flash_load_all(dut)
 
-    all_passed = True
+    all_passed   = True
+    total_done   = 0
+    total_failed = 0
 
-    for wav_path in wav_files:
-        # Safe label / filename (no spaces or long names)
-        stem  = wav_path.stem.replace(" ", "_")[:40]
-        label = "speech/%s" % stem
-        npy   = "rtl_features_%s.npy" % stem
+    for keyword in sorted(keyword_dirs):
+        wav_files  = keyword_dirs[keyword]
+        kw_passed  = 0
+        kw_failed  = 0
+        cocotb.log.info("=== Keyword: '%s'  (%d files) ===" % (keyword, len(wav_files)))
 
-        await do_reset(dut)   # clean state between files
+        for wav_path in wav_files:
+            stem  = wav_path.stem.replace(" ", "_")[:32]
+            npy   = "rtl_features_%s_%s.npy" % (keyword, stem)
+            label = "%s/%s" % (keyword, stem)
 
-        # Load wav
-        try:
-            pcm = _load_wav(wav_path)
-        except RuntimeError as e:
-            cocotb.log.info("[%s] SKIP -- %s" % (label, e))
-            continue
+            await do_reset(dut)   # clean state between files
 
-        rms = float(np.sqrt(np.mean(pcm.astype(np.float64)**2)))
-        cocotb.log.info("[%s] %s: %d samples  RMS=%.0f  peak=%d"
-                        % (label, wav_path.name, len(pcm),
-                           rms, int(np.abs(pcm).max())))
+            try:
+                pcm = _load_wav(wav_path)
+            except RuntimeError as e:
+                cocotb.log.info("[%s] SKIP -- %s" % (label, e))
+                continue
 
-        if rms < 50:
-            cocotb.log.info("[%s] WARNING: very low RMS -- file may be silent" % label)
+            rms = float(np.sqrt(np.mean(pcm.astype(np.float64)**2)))
+            if rms < 50:
+                cocotb.log.info("[%s] low RMS=%.0f (possibly silent)" % (label, rms))
 
-        # Drive pipeline
-        pdm     = pcm_to_pdm(pcm)
-        timeout = len(pdm) + DRAIN
-        cocotb.start_soon(drive_pdm(dut, pdm))
-        frames = await collect_frames(dut, timeout)
+            pdm     = pcm_to_pdm(pcm)
+            timeout = len(pdm) + DRAIN
 
-        cocotb.log.info("[%s] Frames produced: %d" % (label, len(frames)))
-        mat = save_features(frames, npy)
+            cocotb.start_soon(drive_pdm(dut, pdm))
+            frames = await collect_frames(dut, timeout)
 
-        # Assertions
-        try:
-            assert len(frames) > 0, "[%s] No frames produced" % label
+            mat = save_features(frames, npy)
+            total_done += 1
 
-            for i, f in enumerate(frames):
-                assert len(f) == N_MELS, \
-                    "[%s] Frame %d: %d mels, expected %d" % (label, i, len(f), N_MELS)
+            try:
+                assert len(frames) > 0, "[%s] No frames produced" % label
+                for i, f in enumerate(frames):
+                    assert len(f) == N_MELS, \
+                        "[%s] Frame %d has %d mels" % (label, i, len(f))
+                if mat is not None and rms >= 50:
+                    assert float(mat.mean()) > 1.0, \
+                        "[%s] Mean energy %.2f too low" % (label, mat.mean())
+                    assert float(mat.max()) < 63.0, \
+                        "[%s] Max energy %.2f saturated" % (label, mat.max())
+                kw_passed += 1
 
-            if mat is not None and rms >= 50:
-                mean_e = float(mat.mean())
-                max_e  = float(mat.max())
-                cocotb.log.info("[%s] Energy: mean=%.2f  max=%.2f log2"
-                                % (label, mean_e, max_e))
-                assert mean_e > 1.0, (
-                    "[%s] Mean energy %.2f log2 too low -- signal lost"
-                    % (label, mean_e)
-                )
-                assert max_e < 63.0, (
-                    "[%s] Max energy %.2f log2 saturated" % (label, max_e)
-                )
+            except AssertionError as exc:
+                cocotb.log.info("FAIL: %s" % exc)
+                kw_failed  += 1
+                total_failed += 1
+                all_passed   = False
 
-            cocotb.log.info("[%s] PASS" % label)
+        cocotb.log.info(
+            "Keyword '%s': %d/%d passed" % (keyword, kw_passed, kw_passed + kw_failed)
+        )
 
-        except AssertionError as exc:
-            cocotb.log.info("FAIL: %s" % exc)
-            all_passed = False
+    cocotb.log.info(
+        "Speech test done: %d/%d passed across %d keywords"
+        % (total_done - total_failed, total_done, len(keyword_dirs))
+    )
+    assert all_passed, "%d file(s) failed -- see log above" % total_failed
 
-    assert all_passed, "One or more speech files failed -- see log above"
 
+# ---------------------------------------------------------------------------
 # Test 3 -- Silence
+# ---------------------------------------------------------------------------
 
 @cocotb.test()
 async def test_full_pipeline_silence(dut):
@@ -414,18 +466,17 @@ async def test_full_pipeline_silence(dut):
         max_val  = float(mat.max())
         cocotb.log.info("[%s] Silence: mean=%.3f  max=%.3f log2"
                         % (label, mean_val, max_val))
-        assert mean_val < 15.0, (
-            "[%s] Silence mean %.2f log2 too high -- possible stuck pipeline"
-            % (label, mean_val)
-        )
-        assert max_val < 60.0, (
-            "[%s] Silence max %.2f log2 near saturation" % (label, max_val)
-        )
+        assert mean_val < 15.0, \
+            "[%s] Silence mean %.2f log2 too high" % (label, mean_val)
+        assert max_val < 60.0, \
+            "[%s] Silence max %.2f log2 saturated" % (label, max_val)
 
     await _run_pipeline(dut, pcm, "silence", "rtl_features_silence.npy", checks)
 
 
+# ---------------------------------------------------------------------------
 # Test 4 -- Sustained 1 kHz tone
+# ---------------------------------------------------------------------------
 
 @cocotb.test()
 async def test_full_pipeline_tone(dut):
@@ -444,19 +495,11 @@ async def test_full_pipeline_tone(dut):
             % (label, TONE_FREQ, peak_bins[:8].tolist(),
                on_target, len(peak_bins), lo, hi)
         )
-        assert on_target > len(peak_bins) * 0.7, (
-            "[%s] %.0f Hz: only %d/%d frames in mel [%d,%d]"
-            % (label, TONE_FREQ, on_target, len(peak_bins), lo, hi)
-        )
-        drift = int(peak_bins.max()) - int(peak_bins.min())
-        cocotb.log.info("[%s] Tone peak bin drift: %d" % (label, drift))
-        assert drift < 6, (
-            "[%s] Tone peak bin drifts by %d -- pipeline unstable?" % (label, drift)
-        )
-        mean_val = float(mat.mean())
-        cocotb.log.info("[%s] Tone mean energy: %.2f log2" % (label, mean_val))
-        assert mean_val > 2.0, (
-            "[%s] Tone mean %.2f log2 too low -- signal attenuated" % (label, mean_val)
-        )
+        assert on_target > len(peak_bins) * 0.7, \
+            "[%s] Only %d/%d in mel [%d,%d]" % (label, on_target, len(peak_bins), lo, hi)
+        assert int(peak_bins.max()) - int(peak_bins.min()) < 6, \
+            "[%s] Peak bin drifts too much" % label
+        assert float(mat.mean()) > 2.0, \
+            "[%s] Tone mean %.2f log2 too low" % (label, mat.mean())
 
     await _run_pipeline(dut, pcm, "tone_1kHz", "rtl_features_tone.npy", checks)
