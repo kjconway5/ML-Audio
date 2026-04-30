@@ -28,7 +28,7 @@ module log_lut_sram #(
 
     wire [7:0] q_lo, q_hi;
 
-`ifndef SYNTHESIS
+`ifdef SIM
     reg [7:0] mem_lo [0:255];
     reg [7:0] mem_hi [0:255];
     reg [7:0] q_lo_r, q_hi_r;

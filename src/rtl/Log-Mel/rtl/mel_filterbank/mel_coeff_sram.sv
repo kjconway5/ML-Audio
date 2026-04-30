@@ -32,7 +32,7 @@ module mel_coeff_sram #(
     input  wire [INDEX_AW-1:0]  test_index_addr_i
 );
 
-`ifndef SYNTHESIS
+`ifdef SIM
 
     reg [COEFF_W-1:0]  coeff_mem [0:COEFF_DEPTH-1];
     reg [INDEX_W-1:0]  index_mem [0:INDEX_DEPTH-1];

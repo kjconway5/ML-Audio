@@ -22,8 +22,28 @@ module fft_data_ram (
     input  wire [31:0] wdata
 );
 
-`ifdef SYNTHESIS
+`ifdef SIM
 
+    // Simulation: dual-port behavioural RAM (separate read and write ports)
+    // Matches the dual-port semantics the synthesis version achieves through
+    // ping-pong banking.
+    reg [31:0] mem [0:255];
+    integer i;
+
+    initial begin
+        for (i = 0; i < 256; i = i + 1)
+            mem[i] = 32'h0;
+        rdata = 32'h0;
+    end
+
+    always @(posedge clk) begin
+        if (wact) mem[wa] <= wdata;
+        if (ract) rdata   <= mem[ra];
+    end
+
+
+`else
+    
     // Ping-pong stage register
     //   stage_sel = 0 : Bank A is write-bank,  Bank B is read-bank
     //   stage_sel = 1 : Bank A is read-bank,   Bank B is write-bank
@@ -108,25 +128,6 @@ module fft_data_ram (
             else
                 rdata <= {qa3, qa2, qa1, qa0};    // read from A when sel=1
         end
-    end
-
-`else
-
-    // Simulation: dual-port behavioural RAM (separate read and write ports)
-    // Matches the dual-port semantics the synthesis version achieves through
-    // ping-pong banking.
-    reg [31:0] mem [0:255];
-    integer i;
-
-    initial begin
-        for (i = 0; i < 256; i = i + 1)
-            mem[i] = 32'h0;
-        rdata = 32'h0;
-    end
-
-    always @(posedge clk) begin
-        if (wact) mem[wa] <= wdata;
-        if (ract) rdata   <= mem[ra];
     end
 
 `endif

@@ -182,36 +182,47 @@ if { $::env(PDN_CORE_RING) == 1 } {
     }
 }
 
+
+
+# ─── Default macro grid ───
+# Applies to all macros (SRAMs, ID, logo, etc.) that don't have
+# a more specific grid defined below. It connects them to the main
+# Metal2/Metal3 power network.
 define_pdn_grid \
     -macro \
     -default \
     -name macro \
     -starts_with POWER \
     -halo "$::env(PDN_HORIZONTAL_HALO) $::env(PDN_VERTICAL_HALO)"
-
+ 
 add_pdn_connect \
     -grid macro \
     -layers "$::env(PDN_VERTICAL_LAYER) $::env(PDN_HORIZONTAL_LAYER)"
 
-# SRAM macros
+# ─── SRAM macro grid ───
+# All SRAM instances (256x8, 1024x8) get this grid.
+# Uses a regex to match all SRAM instance names in one shot.
+# This connects SRAMs to Metal2/Metal3 and also Metal2/Metal3→Metal4
+# for better power delivery to the large macro blocks.
 
-define_pdn_grid \
     -macro \
-    -instances i_chip_core.sram_0 \
-    -name sram_macros_NS \
+    -instances "i_chip_core.pipeline_inst.u_logmel.*" \
+               "i_chip_core.pipeline_inst.u_stfft.*" \
+               "i_chip_core.kws_inst.*" \
+    -name sram_grid \
     -starts_with POWER \
     -halo "$::env(PDN_HORIZONTAL_HALO) $::env(PDN_VERTICAL_HALO)"
-
+ 
 add_pdn_connect \
-    -grid sram_macros_NS \
+    -grid sram_grid \
     -layers "$::env(PDN_VERTICAL_LAYER) $::env(PDN_HORIZONTAL_LAYER)"
-
+ 
 add_pdn_connect \
-    -grid sram_macros_NS \
+    -grid sram_grid \
     -layers "$::env(PDN_VERTICAL_LAYER) Metal3"
 
 # Add stripes on W/E edges of SRAM
-add_pdn_stripe \
+#add_pdn_stripe \
     -grid sram_macros_NS \
     -layer Metal4 \
     -width 2.36 \
@@ -223,7 +234,7 @@ add_pdn_stripe \
 
 # Since the above stripes block the top level PDN at Metal4, add some more stripes
 # to improve the PDN's integrity and ensure a better connection for the macro.
-add_pdn_stripe \
+#add_pdn_stripe \
     -grid sram_macros_NS \
     -layer Metal4 \
     -width 4.00 \
@@ -233,23 +244,23 @@ add_pdn_stripe \
     -starts_with GROUND \
     -number_of_straps 7
 
-define_pdn_grid \
+#define_pdn_grid \
     -macro \
     -instances i_chip_core.sram_1 \
     -name sram_macros_WE \
     -starts_with POWER \
     -halo "$::env(PDN_HORIZONTAL_HALO) $::env(PDN_VERTICAL_HALO)"
 
-add_pdn_connect \
+#add_pdn_connect \
     -grid sram_macros_WE \
     -layers "$::env(PDN_VERTICAL_LAYER) $::env(PDN_HORIZONTAL_LAYER)"
 
-add_pdn_connect \
+#add_pdn_connect \
     -grid sram_macros_WE \
     -layers "$::env(PDN_VERTICAL_LAYER) Metal3"
 
 # Add stripes on W/E edges of SRAM
-add_pdn_stripe \
+#add_pdn_stripe \
     -grid sram_macros_WE \
     -layer Metal4 \
     -width 2.36 \
@@ -261,7 +272,7 @@ add_pdn_stripe \
 
 # Since the above stripes block the top level PDN at Metal4, add some more stripes
 # to improve the PDN's integrity and ensure a better connection for the macro.
-add_pdn_stripe \
+#add_pdn_stripe \
     -grid sram_macros_WE \
     -layer Metal4 \
     -width 4.00 \
