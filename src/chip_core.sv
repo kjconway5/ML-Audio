@@ -35,15 +35,23 @@ module chip_core #(
     import boot_pkg::*;
 
     // Pad index assignments
-    localparam int UART_RX_PAD = 0;
-    localparam int UART_TX_PAD = 1;
-    localparam int KWS_DONE_PAD = 2;
+    localparam int UART_RX_PAD    = 0;
+    localparam int UART_TX_PAD    = 1;
+    localparam int KWS_DONE_PAD   = 2;
     localparam int KWS_CLASS0_PAD = 3;
     localparam int KWS_CLASS1_PAD = 4;
     localparam int KWS_CLASS2_PAD = 5;
+    // PDM mic input pads (input_in bus)
+    //   input_in[0] = PDM_DATA  : 1-bit bitstream from mic (1 = positive, 0 = negative)
+    //   input_in[1] = PDM_VALID : strobe — one pulse per PDM bit
+    // TODO: add a bidir pad for CLK output to the mic once we choose DLL/ring oscillator
 
-    // 25 MHz / (115200 * 8) = 27
+    // 25 MHz / (115200 * 8) = 27  (8 cycles/bit in sim for speed)
+`ifdef SIM
+    localparam logic [15:0] UART_PRESCALE = 16'd1;
+`else
     localparam logic [15:0] UART_PRESCALE = 16'd27;
+`endif
 
     assign input_pu = '0;
     assign input_pd = '0;
@@ -90,9 +98,9 @@ module chip_core #(
         bidir_out_r[KWS_CLASS2_PAD] = kws_class_out[2];
     end
 
-    // Tie off unused bidir inputs (non-UART) so lint stays clean
+    // Tie off unused inputs so lint stays clean
     logic _unused;
-    assign _unused = &{bidir_in, 1'b0};
+    assign _unused = &{bidir_in, input_in[NUM_INPUT_PADS-1:2], 1'b0};
 
     // ---- Boot subsystem ----
 
@@ -202,6 +210,25 @@ module chip_core #(
     // Hold pipeline and kws in reset until boot completes
     wire inference_reset = reset | ~boot_done;
 
+    // ---- PDM microphone wiring ----
+    // Sign-extend 1-bit PDM data to ±full-scale 16-bit for the CIC.
+    // The test (and real mic) drive input_in[1] as a strobe (one pulse per PDM bit)
+    // and input_in[0] as the data bit — identical to how test_full_pipeline_top.py
+    // drives valid_i / data_i directly on the sub-module.
+    wire [15:0] pdm_word  = input_in[0] ? 16'h7FFF : 16'h8000;
+    wire        pdm_valid = input_in[1];
+
+    // Auto-start KWS inference one cycle after spect_done fires.
+    // spect_ready inside the FSM is registered (set 1 cycle after spect_done),
+    // so we delay start by one cycle to guarantee both flags are true together.
+    logic kws_start;
+    always_ff @(posedge clk) begin
+        if (inference_reset)
+            kws_start <= 1'b0;
+        else
+            kws_start <= spect_done;
+    end
+
     // ---- Pipeline + KWS ----
 
     // Spectrogram signals
@@ -234,8 +261,8 @@ module chip_core #(
     ) pipeline_inst (
         .clk_i              (clk),
         .reset_i            (inference_reset),
-        .data_i             ({{4{1'b0}}, input_in[11:0]}),  // connect to input pads
-        .valid_i            (input_in[0]),                    // connect to input pad
+        .data_i             (pdm_word),
+        .valid_i            (pdm_valid),
         .ready_o            (pipeline_ready),
         .sp_a_we            (sp_a_we),
         .sp_a_waddr         (sp_a_waddr),
@@ -262,7 +289,7 @@ module chip_core #(
     kws_top kws_inst (
         .clk(clk),
         .reset(inference_reset),
-        .start(1'b0),               // TODO: connect to SERV or pad
+        .start(kws_start),
         .done(kws_done),
         .class_out(kws_class_out),
         // Layer config write port

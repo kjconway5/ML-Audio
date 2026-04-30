@@ -74,9 +74,13 @@ librelane-padring: ## Only create the padring
 	PDK_ROOT=${PDK_ROOT} PDK=${PDK} python3 scripts/padring.py librelane/slots/slot_${SLOT}.yaml librelane/config.yaml
 .PHONY: librelane-padring
 
-sim: ## Run RTL simulation with cocotb
+sim: ## Run RTL simulation with cocotb (chip_top wrapper)
 	cd cocotb; PDK_ROOT=${PDK_ROOT} PDK=${PDK} SLOT=${SLOT} python3 chip_top_tb.py
 .PHONY: sim
+
+sim-core: ## Run chip_core end-to-end cocotb test (boot + PDM audio + KWS)
+	$(MAKE) -C cocotb sim-core SLOT=${SLOT}
+.PHONY: sim-core
 
 sim-gl: ## Run gate-level simulation with cocotb (after copy-final)
 	cd cocotb; GL=1 PDK_ROOT=${PDK_ROOT} PDK=${PDK} SLOT=${SLOT} python3 chip_top_tb.py
