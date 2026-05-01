@@ -231,6 +231,19 @@ def update_bias_sv(arch: Arch, bias_path: Path, dry_run: bool) -> bool:
     body = "\n".join(lines)
 
     text = BIAS_SV.read_text()
+    text = re.sub(
+        r"parameter DEPTH\s*=\s*\d+\s*,\s*//.*",
+        f"parameter DEPTH  = {arch.bias_count},   // 9x{arch.filters} channels + 7 classifier = {arch.bias_count} ({arch.filters}-filter model)",
+        text,
+        count=1,
+    )
+    text = re.sub(
+        r"parameter ADDR_W\s*=\s*\d+\s*//.*",
+        f"parameter ADDR_W = 9      // 9-bit: supports bias offsets up to {arch.layers[-1].bias_off}",
+        text,
+        count=1,
+    )
+
     new_text, n = re.subn(
         r"(always @\(\*\) begin\s*\n\s*case \(addr\)\s*\n).*?(\n\s*endcase)",
         r"\1" + body + r"\2",
@@ -249,15 +262,15 @@ def update_bias_sv(arch: Arch, bias_path: Path, dry_run: bool) -> bool:
 
 def update_feature_sram(arch: Arch, dry_run: bool) -> bool:
     text = FEATURE_SRAM_SV.read_text()
-    text = re.sub(r"// Ping-pong  feature-map buffer: 2 banks × [\d,]+ × 8-bit INT8",
+    text = re.sub(r"// Ping-pong  feature-map buffer: 2 banks [x×] [\d,]+ [x×] 8-bit INT8",
                   f"// Ping-pong  feature-map buffer: 2 banks x {arch.feature_depth:,} x 8-bit INT8", text)
-    text = re.sub(r"// Each bank implemented as \d+× cascaded sram1024x8 macros",
+    text = re.sub(r"// Each bank implemented as \d+[x×] cascaded sram1024x8 macros",
                   f"// Each bank implemented as {arch.feature_banks}x cascaded sram1024x8 macros", text)
-    text = re.sub(r"// \(\d+ × 1024 = [\d,]+ capacity; valid range 0–[\d,]+\)",
+    text = re.sub(r"// \(\d+ [x×] 1024 = [\d,]+ capacity; valid range 0[-–][\d,]+\)",
                   f"// ({arch.feature_banks} x 1024 = {arch.feature_banks * SRAM_BANK_DEPTH:,} capacity; valid range 0-{arch.feature_depth - 1:,})", text)
     text = re.sub(r"parameter DEPTH\s*=\s*\d+",
                   f"parameter DEPTH  = {arch.feature_depth}", text)
-    text = re.sub(r"parameter ADDR_W\s*=\s*\d+\s*// covers 0–\d+; valid range 0–[\d,]+",
+    text = re.sub(r"parameter ADDR_W\s*=\s*\d+\s*// covers 0[-–]\d+; valid range 0[-–][\d,]+",
                   f"parameter ADDR_W = {arch.feature_addr_w}   // covers 0-{(1 << arch.feature_addr_w) - 1}; valid range 0-{arch.feature_depth - 1}", text)
     text = re.sub(r"// \d+ x 1024 = [\d,]+",
                   f"// {arch.feature_banks} x 1024 = {arch.feature_banks * SRAM_BANK_DEPTH:,}", text)
@@ -271,15 +284,15 @@ def update_feature_sram(arch: Arch, dry_run: bool) -> bool:
 
 def update_weight_sram(arch: Arch, dry_run: bool) -> bool:
     text = WEIGHT_SRAM_SV.read_text()
-    text = re.sub(r"// Weight storage with write port for Subservient and read port for FSM: [\d,]+ × 8-bit INT8 values",
+    text = re.sub(r"// Weight storage with write port for Subservient and read port for FSM: [\d,]+ [x×] 8-bit INT8 values",
                   f"// Weight storage with write port for Subservient and read port for FSM: {arch.weight_count:,} x 8-bit INT8 values", text)
-    text = re.sub(r"// Implemented as \d+× cascaded gf180mcu_ocd_ip_sram__sram1024x8m8wm1 macros",
+    text = re.sub(r"// Implemented as \d+[x×] cascaded gf180mcu_ocd_ip_sram__sram1024x8m8wm1 macros",
                   f"// Implemented as {arch.weight_banks}x cascaded gf180mcu_ocd_ip_sram__sram1024x8m8wm1 macros", text)
-    text = re.sub(r"// \(\d+ × 1024 = \d+\)",
+    text = re.sub(r"// \(\d+ [x×] 1024 = \d+\)",
                   f"// ({arch.weight_banks} x 1024 = {arch.weight_banks * SRAM_BANK_DEPTH})", text)
     text = re.sub(r"parameter DEPTH\s*=\s*\d+",
                   f"parameter DEPTH  = {arch.weight_count}", text)
-    text = re.sub(r"parameter ADDR_W\s*=\s*\d+\s*// covers 0–\d+; valid range 0–\d+",
+    text = re.sub(r"parameter ADDR_W\s*=\s*\d+\s*// covers 0[-–]\d+; valid range 0[-–]\d+",
                   f"parameter ADDR_W = {arch.weight_addr_w}   // covers 0-{(1 << arch.weight_addr_w) - 1}; valid range 0-{arch.weight_count - 1}", text)
     text = re.sub(r"localparam NUM_BANKS = \d+;",
                   f"localparam NUM_BANKS = {arch.weight_banks};", text)

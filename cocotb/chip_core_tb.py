@@ -82,7 +82,7 @@ _ML        = _SRC / "ml"
 _RTL       = _SRC / "rtl"
 _KWS_DIR   = _RTL / "dscnn/kws_top"
 _LOGMEL    = _RTL / "Log-Mel/data"
-_MODEL_DIR = _ML / "models/dscnn-32full-v1"
+_MODEL_DIR = _ML / "models/dscnn-24full-v1"
 
 LOG_LUT_HEX   = _LOGMEL    / "log2_lut.hex"
 MEL_COEFF_HEX = _LOGMEL    / "mel_coeffs_sparse.hex"
@@ -91,7 +91,7 @@ WEIGHTS_HEX   = _MODEL_DIR / "weights.hex"
 SCALES_TXT    = _MODEL_DIR / "scales.txt"
 MANIFEST_JSON = _KWS_DIR   / "test_vectors.json"
 SPECT_DIR     = _KWS_DIR   / "spectrograms"
-MODEL_FILTERS = 32
+MODEL_FILTERS = 24
 
 
 def _manifest_json_path():
@@ -288,7 +288,7 @@ async def _boot_chip(dut, mini=False):
         mel_words    = _load_hex(MEL_COEFF_HEX,  signed=False, width=16)
         meta_bytes   = _load_hex(MEL_INDEX_HEX,  signed=False, width=8)
         weight_bytes = _load_hex(WEIGHTS_HEX,    signed=True,  width=8)
-        layer_cfgs   = load_layer_cfgs(SCALES_TXT, n_filters=32)
+        layer_cfgs   = load_layer_cfgs(SCALES_TXT, n_filters=24)
         cfg_fields, cfg_mults = _pack_layer_cfgs(layer_cfgs)
 
     # Log LUT — 16-bit words packed lo/hi
