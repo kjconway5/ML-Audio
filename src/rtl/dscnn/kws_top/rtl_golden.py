@@ -18,7 +18,22 @@ from pathlib import Path
 # Format: (layer, in_ch, out_ch, kH, kW, sh, sw, ph, pw, dw, w_off, relu, ofmap_h, ofmap_w, bias_off)
 # 'shift' (field 11 in full LAYER_CFGS) is omitted here and filled in by load_layer_cfgs().
 
-# 24-filter model (v1–v8): 4296 weights total, 223 biases total
+# 16-filter model: 2352 weights total, 151 biases total
+LAYER_CFGS_ARCH_16 = [
+    #  layer  in  out  kH  kW  sh sw ph pw  dw   w_off  relu  oh  ow bias_off
+    (   0,    1,  16, 10,  4,  2, 2, 4, 1,  0,     0,    1,  25, 20,   0),
+    (   1,    1,  16,  3,  3,  1, 1, 1, 1,  1,   640,    1,  25, 20,  16),
+    (   2,   16,  16,  1,  1,  1, 1, 0, 0,  0,   784,    1,  25, 20,  32),
+    (   3,    1,  16,  3,  3,  1, 1, 1, 1,  1,  1040,    1,  25, 20,  48),
+    (   4,   16,  16,  1,  1,  1, 1, 0, 0,  0,  1184,    1,  25, 20,  64),
+    (   5,    1,  16,  3,  3,  1, 1, 1, 1,  1,  1440,    1,  25, 20,  80),
+    (   6,   16,  16,  1,  1,  1, 1, 0, 0,  0,  1584,    1,  25, 20,  96),
+    (   7,    1,  16,  3,  3,  1, 1, 1, 1,  1,  1840,    1,  25, 20, 112),
+    (   8,   16,  16,  1,  1,  1, 1, 0, 0,  0,  1984,    1,  25, 20, 128),
+    (   9,   16,   7,  1,  1,  1, 1, 0, 0,  0,  2240,    0,  25, 20, 144),
+]
+
+# 24-filter model (v1-v8): 4296 weights total, 223 biases total
 LAYER_CFGS_ARCH_24 = [
     #  layer  in  out  kH  kW  sh sw ph pw  dw   w_off  relu  oh  ow bias_off
     (   0,    1,  24, 10,  4,  2, 2, 4, 1,  0,     0,    1,  25, 20,   0),
@@ -51,7 +66,7 @@ LAYER_CFGS_ARCH_32 = [
 # Default (current RTL target); backward-compat alias
 LAYER_CFGS_ARCH = LAYER_CFGS_ARCH_32
 
-_ARCH_BY_FILTERS = {24: LAYER_CFGS_ARCH_24, 32: LAYER_CFGS_ARCH_32}
+_ARCH_BY_FILTERS = {16: LAYER_CFGS_ARCH_16, 24: LAYER_CFGS_ARCH_24, 32: LAYER_CFGS_ARCH_32}
 
 LAYER_NAMES = [
     "first_conv",
@@ -122,7 +137,7 @@ def load_layer_cfgs(scales_path: Path, n_filters: int = 32) -> list:
 
     Args:
         scales_path : path to scales.txt produced by export.py
-        n_filters   : number of DS-block filters (24 or 32)
+        n_filters   : number of DS-block filters (16, 24, or 32)
     """
     arch = _ARCH_BY_FILTERS.get(n_filters)
     if arch is None:

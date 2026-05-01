@@ -1,0 +1,67 @@
+QAT Training started at 2026-04-30 17:01:56.799577
+
+Epoch  1 | Train Loss: 1.8589 | Train Acc: 15.57%
+Epoch  2 | Train Loss: 1.8178 | Train Acc: 18.03%
+Epoch  3 | Train Loss: 1.8017 | Train Acc: 19.18%
+Epoch  4 | Train Loss: 1.7758 | Train Acc: 21.68%
+Epoch  5 | Train Loss: 1.6945 | Train Acc: 29.19% | Val Loss: 6.4332 | Val Acc: 19.03% | no=0%  off=0%  on=0%  silence=0%  unknown=0%  wow=0%  yes=100%
+Epoch  6 | Train Loss: 1.5504 | Train Acc: 37.36%
+Epoch  7 | Train Loss: 1.4486 | Train Acc: 42.59%
+Epoch  8 | Train Loss: 1.3685 | Train Acc: 45.60%
+Epoch  9 | Train Loss: 1.3244 | Train Acc: 46.40%
+Epoch 10 | Train Loss: 1.2318 | Train Acc: 50.34% | Val Loss: 18.2726 | Val Acc: 20.04% | no=0%  off=11%  on=0%  silence=0%  unknown=0%  wow=0%  yes=95%
+Epoch 11 | Train Loss: 1.1838 | Train Acc: 52.05%
+Epoch 12 | Train Loss: 1.1340 | Train Acc: 54.16%
+Epoch 13 | Train Loss: 1.0991 | Train Acc: 56.33%
+Epoch 14 | Train Loss: 1.0882 | Train Acc: 56.39%
+Epoch 15 | Train Loss: 1.0403 | Train Acc: 59.82% | Val Loss: 3.4175 | Val Acc: 25.70% | no=0%  off=99%  on=13%  silence=0%  unknown=0%  wow=0%  yes=30%
+Epoch 16 | Train Loss: 1.0416 | Train Acc: 59.86%
+Epoch 17 | Train Loss: 0.9969 | Train Acc: 62.12%
+Epoch 18 | Train Loss: 0.9477 | Train Acc: 64.67%
+Epoch 19 | Train Loss: 0.9307 | Train Acc: 65.28%
+Epoch 20 | Train Loss: 0.9208 | Train Acc: 65.65% | Val Loss: 0.9894 | Val Acc: 63.61% | no=40%  off=60%  on=91%  silence=57%  unknown=57%  wow=61%  yes=73%
+Epoch 21 | Train Loss: 0.9072 | Train Acc: 66.43%
+Epoch 22 | Train Loss: 0.9258 | Train Acc: 65.63%
+Epoch 23 | Train Loss: 0.8742 | Train Acc: 67.64%
+Epoch 24 | Train Loss: 0.8511 | Train Acc: 69.30%
+Epoch 25 | Train Loss: 0.8557 | Train Acc: 69.05% | Val Loss: 1.1010 | Val Acc: 59.44% | no=37%  off=95%  on=25%  silence=80%  unknown=43%  wow=45%  yes=97%
+Epoch 26 | Train Loss: 0.8212 | Train Acc: 70.38%
+Epoch 27 | Train Loss: 0.8345 | Train Acc: 69.69%
+Epoch 28 | Train Loss: 0.8011 | Train Acc: 71.21%
+Epoch 29 | Train Loss: 0.8338 | Train Acc: 69.95%
+Epoch 30 | Train Loss: 0.7826 | Train Acc: 72.49% | Val Loss: 0.6824 | Val Acc: 75.17% | no=73%  off=61%  on=91%  silence=87%  unknown=56%  wow=93%  yes=81%
+Epoch 31 | Train Loss: 0.7664 | Train Acc: 72.52%
+Epoch 32 | Train Loss: 0.7735 | Train Acc: 72.49%
+Epoch 33 | Train Loss: 0.7603 | Train Acc: 73.16%
+Epoch 34 | Train Loss: 0.7529 | Train Acc: 73.50%
+Epoch 35 | Train Loss: 0.7451 | Train Acc: 73.99% | Val Loss: 0.5550 | Val Acc: 80.44% | no=77%  off=88%  on=82%  silence=83%  unknown=53%  wow=80%  yes=96%
+Epoch 36 | Train Loss: 0.7385 | Train Acc: 73.90%
+Epoch 37 | Train Loss: 0.7334 | Train Acc: 74.07%
+Epoch 38 | Train Loss: 0.7196 | Train Acc: 74.78%
+Epoch 39 | Train Loss: 0.7268 | Train Acc: 74.58%
+Epoch 40 | Train Loss: 0.7287 | Train Acc: 74.29% | Val Loss: 0.4520 | Val Acc: 85.52% | no=87%  off=89%  on=94%  silence=87%  unknown=60%  wow=84%  yes=93%
+Epoch 41 | Train Loss: 0.7225 | Train Acc: 74.86%
+Epoch 42 | Train Loss: 0.7170 | Train Acc: 74.73%
+Epoch 43 | Train Loss: 0.7160 | Train Acc: 75.38%
+Epoch 44 | Train Loss: 0.7105 | Train Acc: 75.04%
+Epoch 45 | Train Loss: 0.7028 | Train Acc: 74.99% | Val Loss: 0.4544 | Val Acc: 85.43% | no=89%  off=83%  on=91%  silence=87%  unknown=66%  wow=84%  yes=93%
+Epoch 46 | Train Loss: 0.6986 | Train Acc: 75.39%
+Epoch 47 | Train Loss: 0.6914 | Train Acc: 75.73%
+Epoch 48 | Train Loss: 0.6950 | Train Acc: 75.57%
+Epoch 49 | Train Loss: 0.6975 | Train Acc: 75.20%
+Epoch 50 | Train Loss: 0.6953 | Train Acc: 75.41% | Val Loss: 0.4516 | Val Acc: 84.85% | no=83%  off=87%  on=92%  silence=87%  unknown=66%  wow=82%  yes=93%
+
+======================================================================
+Training completed at 2026-04-30 17:36:42.035781
+Best float val accuracy   : 85.52%
+Best QAT val accuracy     : 85.43%
+Final INT8 test accuracy  : 79.39%
+Final INT8 test loss      : 0.5817
+Per-class test accuracy   :
+  no          : 98.0%
+  off         : 89.8%
+  on          : 85.9%
+  silence     : 67.4%
+  unknown     : 40.0%
+  wow         : 63.1%
+  yes         : 82.8%

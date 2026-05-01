@@ -3,7 +3,7 @@
 update_rtl.py - Retarget DS-CNN RTL artifacts to an exported model.
 
 This script is intentionally the handoff point between training/export and RTL.
-It supports the current 24-filter and 32-filter DS-CNN variants:
+It supports the current 16-, 24-, and 32-filter DS-CNN variants:
 
   - copies weights.hex into rtl/dscnn/weight_sram/
   - regenerates bias_dff/bias_DFFs.sv from bias.hex
@@ -11,6 +11,7 @@ It supports the current 24-filter and 32-filter DS-CNN variants:
   - retargets KWS/chip-core testbenches to the selected model directory
 
 Usage:
+    python3 update_rtl.py --ckpt ../models/dscnn-16full-v1
     python3 update_rtl.py --ckpt ../models/dscnn-24full-v1
     python3 update_rtl.py --ckpt ../models/dscnn-32requant-v11 --dry-run
 
@@ -37,7 +38,7 @@ WEIGHT_SRAM_DIR = REPO_ROOT / "src/rtl/dscnn/weight_sram"
 KWS_TEST_PY = REPO_ROOT / "src/rtl/dscnn/kws_top/test_kws_top.py"
 CHIP_CORE_TB_PY = REPO_ROOT / "cocotb/chip_core_tb.py"
 
-SUPPORTED_FILTERS = (24, 32)
+SUPPORTED_FILTERS = (16, 24, 32)
 N_CLASSES = 7
 N_DS_BLOCKS = 4
 FIRST_KH = 10
@@ -131,9 +132,9 @@ def build_arch(filters: int) -> Arch:
         bias_count=bias_off,
         feature_depth=feature_depth,
         feature_banks=feature_banks,
-        feature_addr_w=addr_width(feature_banks * SRAM_BANK_DEPTH),
+        feature_addr_w=max(14, addr_width(feature_banks * SRAM_BANK_DEPTH)),
         weight_banks=weight_banks,
-        weight_addr_w=addr_width(weight_banks * SRAM_BANK_DEPTH),
+        weight_addr_w=max(13, addr_width(weight_banks * SRAM_BANK_DEPTH)),
     )
 
 
@@ -141,11 +142,11 @@ def resolve_model_dir(arg: Path | None, allow_missing: bool = False) -> Path:
     if arg is None:
         candidates = []
         for d in MODELS_DIR.iterdir():
-            m = re.fullmatch(r"dscnn-(24|32).*-v(\d+)", d.name)
+            m = re.fullmatch(r"dscnn-(16|24|32).*-v(\d+)", d.name)
             if d.is_dir() and m:
                 candidates.append((int(m.group(2)), d.stat().st_mtime, d))
         if not candidates:
-            raise FileNotFoundError(f"No dscnn-24/32 model directories found in {MODELS_DIR}")
+            raise FileNotFoundError(f"No dscnn-16/24/32 model directories found in {MODELS_DIR}")
         return max(candidates)[2]
 
     if arg.suffix == ".pt":
@@ -171,7 +172,7 @@ def infer_filters(model_dir: Path, override: int | None) -> int:
     if override is not None:
         return override
 
-    m = re.search(r"dscnn-(24|32)", model_dir.name)
+    m = re.search(r"dscnn-(16|24|32)", model_dir.name)
     if m:
         return int(m.group(1))
 
@@ -183,7 +184,7 @@ def infer_filters(model_dir: Path, override: int | None) -> int:
             return int(m.group(1))
 
     raise ValueError(
-        f"could not infer filter count from {model_dir}; pass --filters 24 or --filters 32"
+        f"could not infer filter count from {model_dir}; pass --filters 16, 24, or 32"
     )
 
 
