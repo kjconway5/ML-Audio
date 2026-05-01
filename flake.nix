@@ -36,6 +36,15 @@
                 version = "8.3.581";
                 sha256 = "sha256-mv6ekJsaFx6m828NenIRa4ryZsR7YHB1vWKI+axgx8U=";
               };
+              python3 = prev.python3.override (old: {
+                packageOverrides = lib.composeExtensions
+                  (old.packageOverrides or (_: _: {}))
+                  (pyfinal: pyprev: {
+                    librelane = pyprev.librelane.overridePythonAttrs (_: {
+                      doCheck = false;
+                    });
+                  });
+              });
             })
           ];
         }

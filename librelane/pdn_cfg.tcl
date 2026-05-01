@@ -205,10 +205,9 @@ add_pdn_connect \
 # This connects SRAMs to Metal2/Metal3 and also Metal2/Metal3→Metal4
 # for better power delivery to the large macro blocks.
 
+define_pdn_grid \
     -macro \
-    -instances "i_chip_core.pipeline_inst.u_logmel.*" \
-               "i_chip_core.pipeline_inst.u_stfft.*" \
-               "i_chip_core.kws_inst.*" \
+    -instances {i_chip_core.pipeline_inst.u_logmel.* i_chip_core.pipeline_inst.u_stfft.* i_chip_core.kws_inst.*} \
     -name sram_grid \
     -starts_with POWER \
     -halo "$::env(PDN_HORIZONTAL_HALO) $::env(PDN_VERTICAL_HALO)"
