@@ -27,21 +27,17 @@ Tests
                              and verifies the KWS class output on the bidir pads
 """
 
-import json, sys, time
+import json, os, sys, time
 import cocotb
 from cocotb.clock    import Clock
 from cocotb.triggers import RisingEdge, ClockCycles, First, Timer
 from pathlib         import Path
 
-# ---------------------------------------------------------------------------
 # Slot parameters (1×1)
-# ---------------------------------------------------------------------------
 NUM_INPUT_PADS = 12
 NUM_BIDIR_PADS = 40
 
-# ---------------------------------------------------------------------------
 # Pad indices — must match chip_core.sv localparam
-# ---------------------------------------------------------------------------
 UART_RX_PAD    = 0
 UART_TX_PAD    = 1
 KWS_DONE_PAD   = 2
@@ -50,19 +46,15 @@ KWS_CLASS_BASE = 3   # class[0]=pad3, class[1]=pad4, class[2]=pad5
 PDM_DATA_PAD   = 0   # input_in[0]
 PDM_VALID_PAD  = 1   # input_in[1]
 
-# ---------------------------------------------------------------------------
 # Clock / UART timing
 #   Chip clock  = 25 MHz  → CLK_PERIOD_NS = 40 ns
 #   RTL uses prescale=1 under `ifdef SIM → 8 cycles/bit (27× faster than real)
 #   Real UART prescale=27 → 216 cycles/bit at 115200 baud
-# ---------------------------------------------------------------------------
 CLK_PERIOD_NS = 40
 UART_PRESCALE = 1    # matches `ifdef SIM in chip_core.sv
 BIT_CYCLES    = UART_PRESCALE * 8   # 8 cycles/bit in sim
 
-# ---------------------------------------------------------------------------
 # Boot protocol constants — must match boot_pkg.sv
-# ---------------------------------------------------------------------------
 SYNC_0    = 0xAA
 SYNC_1    = 0x55
 ACK_BYTE  = 0x06
@@ -84,15 +76,13 @@ CTRL_BOOT_DONE = 0x0
 def _make_target(mod, sub):
     return ((mod & 0xF) << 4) | (sub & 0xF)
 
-# ---------------------------------------------------------------------------
-# File paths
-# ---------------------------------------------------------------------------
+
 _SRC       = Path(__file__).resolve().parent.parent / "src"
 _ML        = _SRC / "ml"
 _RTL       = _SRC / "rtl"
 _KWS_DIR   = _RTL / "dscnn/kws_top"
 _LOGMEL    = _RTL / "Log-Mel/data"
-_MODEL_DIR = _ML / "models/dscnn-32requant-v11"
+_MODEL_DIR = _ML / "models/dscnn-32full-v1"
 
 LOG_LUT_HEX   = _LOGMEL    / "log2_lut.hex"
 MEL_COEFF_HEX = _LOGMEL    / "mel_coeffs_sparse.hex"
@@ -101,10 +91,25 @@ WEIGHTS_HEX   = _MODEL_DIR / "weights.hex"
 SCALES_TXT    = _MODEL_DIR / "scales.txt"
 MANIFEST_JSON = _KWS_DIR   / "test_vectors.json"
 SPECT_DIR     = _KWS_DIR   / "spectrograms"
+MODEL_FILTERS = 32
 
-# ---------------------------------------------------------------------------
+
+def _manifest_json_path():
+    manifest_env = os.getenv("KWS_MANIFEST_JSON")
+    if not manifest_env:
+        return MANIFEST_JSON
+
+    path = Path(manifest_env)
+    if path.is_absolute():
+        return path
+
+    repo_root = Path(__file__).resolve().parent.parent
+    for candidate in (Path.cwd() / path, repo_root / path, _KWS_DIR / path):
+        if candidate.exists():
+            return candidate
+    return repo_root / path
+
 # Hex file loader
-# ---------------------------------------------------------------------------
 
 def _load_hex(path, signed=False, width=8):
     vals = []
@@ -119,11 +124,9 @@ def _load_hex(path, signed=False, width=8):
             vals.append(v)
     return vals
 
-# ---------------------------------------------------------------------------
 # Layer-config packing
 #   Replicates program_layers() from test_kws_top.py but produces flat byte
 #   arrays suitable for UART packet payloads.
-# ---------------------------------------------------------------------------
 
 sys.path.insert(0, str(_KWS_DIR))
 from rtl_golden import load_layer_cfgs   # noqa: E402  (import after path insert)
@@ -161,9 +164,7 @@ def _pack_layer_cfgs(layer_cfgs):
 
     return buf[0x00:0xA0], buf[0xA0:0xC8]
 
-# ---------------------------------------------------------------------------
 # UART helpers
-# ---------------------------------------------------------------------------
 
 async def _uart_tx_byte(dut, byte_val, log=None, label=""):
     """Drive one UART byte on bidir_in[UART_RX_PAD] (start + 8 data + stop)."""
@@ -266,9 +267,7 @@ async def _send_packet(dut, target, addr, payload):
         f"got 0x{resp:02X}"
     log.info(f"  [PKT] ACK received OK")
 
-# ---------------------------------------------------------------------------
 # Boot sequence
-# ---------------------------------------------------------------------------
 
 async def _boot_chip(dut, mini=False):
     """
@@ -289,7 +288,7 @@ async def _boot_chip(dut, mini=False):
         mel_words    = _load_hex(MEL_COEFF_HEX,  signed=False, width=16)
         meta_bytes   = _load_hex(MEL_INDEX_HEX,  signed=False, width=8)
         weight_bytes = _load_hex(WEIGHTS_HEX,    signed=True,  width=8)
-        layer_cfgs   = load_layer_cfgs(SCALES_TXT)
+        layer_cfgs   = load_layer_cfgs(SCALES_TXT, n_filters=32)
         cfg_fields, cfg_mults = _pack_layer_cfgs(layer_cfgs)
 
     # Log LUT — 16-bit words packed lo/hi
@@ -329,9 +328,7 @@ async def _boot_chip(dut, mini=False):
 
     await ClockCycles(dut.clk, 10)
 
-# ---------------------------------------------------------------------------
 # Reset
-# ---------------------------------------------------------------------------
 
 async def _do_reset(dut):
     dut.rst_n.value    = 0
@@ -341,9 +338,7 @@ async def _do_reset(dut):
     dut.rst_n.value = 1
     await ClockCycles(dut.clk, 10)
 
-# ---------------------------------------------------------------------------
 # PDM audio helpers  (mirrors pcm_to_pdm / drive_pdm in test_full_pipeline_top.py)
-# ---------------------------------------------------------------------------
 
 def _pcm_to_pdm(pcm, decim=63):
     """Software sigma-delta modulator: PCM samples → PDM bitstream."""
@@ -408,9 +403,74 @@ def _load_wav_pcm(wav_path, target_samples=7_520):
     import numpy as np
     return np.concatenate([pcm, np.zeros(target_samples - len(pcm), dtype="int32")])
 
-# ---------------------------------------------------------------------------
+
+def _select_manifest_sample(samples):
+    """
+    Pick the WAV sample for the full-chip test.
+
+    Environment controls:
+      KWS_SAMPLE_INDEX=<n>     Select manifest sample index n.
+      KWS_SAMPLE_MATCH=<text>  Select first sample whose wav path or GT name contains text.
+      KWS_KEYWORD=<label>      Restrict selection to a ground-truth label.
+
+    If neither is set, preserves the historical behavior: samples[0].
+    """
+    if not samples:
+        raise AssertionError("test_vectors.json contains no samples")
+
+    sample_keyword = os.getenv("KWS_KEYWORD")
+    sample_index = os.getenv("KWS_SAMPLE_INDEX")
+    sample_match = os.getenv("KWS_SAMPLE_MATCH")
+
+    filtered = list(enumerate(samples))
+    if sample_keyword:
+        keyword = sample_keyword.lower()
+        filtered = [
+            (idx, sample)
+            for idx, sample in filtered
+            if str(sample.get("ground_truth_name", "")).lower() == keyword
+        ]
+        if not filtered:
+            available = sorted({str(s.get("ground_truth_name", "?")) for s in samples})
+            raise AssertionError(
+                f"KWS_KEYWORD={sample_keyword!r} did not match this manifest. "
+                f"Available ground_truth_name values: {available}. "
+                f"Regenerate test vectors with generate_spect_full.py --keyword {sample_keyword} "
+                f"or point KWS_MANIFEST_JSON at the right test_vectors.json."
+            )
+
+    if sample_index is not None:
+        try:
+            idx = int(sample_index, 0)
+        except ValueError as exc:
+            raise AssertionError(f"KWS_SAMPLE_INDEX must be an integer, got {sample_index!r}") from exc
+        if idx < 0 or idx >= len(samples):
+            raise AssertionError(
+                f"KWS_SAMPLE_INDEX={idx} is out of range; manifest has "
+                f"indices 0..{len(samples)-1}"
+            )
+        if sample_keyword and (idx, samples[idx]) not in filtered:
+            raise AssertionError(
+                f"KWS_SAMPLE_INDEX={idx} exists, but its ground_truth_name is "
+                f"{samples[idx].get('ground_truth_name')!r}, not KWS_KEYWORD={sample_keyword!r}"
+            )
+        return idx, samples[idx]
+
+    if sample_match:
+        needle = sample_match.lower()
+        for idx, sample in filtered:
+            wav = str(sample.get("wav", "")).lower()
+            gt = str(sample.get("ground_truth_name", "")).lower()
+            if needle in wav or needle in gt:
+                return idx, sample
+        raise AssertionError(
+            f"KWS_SAMPLE_MATCH={sample_match!r} did not match any wav path or "
+            f"ground_truth_name in the selected manifest samples"
+        )
+
+    return filtered[0]
+
 # KWS output reader
-# ---------------------------------------------------------------------------
 
 def _read_kws_pads(dut):
     def _safe(idx):
@@ -420,9 +480,7 @@ def _read_kws_pads(dut):
     kws_class = (_safe(KWS_CLASS_BASE+2) << 2) | (_safe(KWS_CLASS_BASE+1) << 1) | _safe(KWS_CLASS_BASE)
     return kws_done, kws_class
 
-# ---------------------------------------------------------------------------
 # Internal-signal probe for debugging
-# ---------------------------------------------------------------------------
 
 def _probe(dut):
     """
@@ -448,10 +506,38 @@ def _probe(dut):
         'kws_start':        _get('kws_start'),
         'kws_done':         _get('kws_done'),
         'pdm_valid':        _get('pdm_valid'),
-        # KWS FSM state (best-effort: hierarchy depends on kws_top internals)
-        'fsm_state':        _get('kws_inst.u_fsm.state'),
+        # KWS FSM state/progress (kws_top instantiates FSM as inst_ctrl)
+        'fsm_state':        _get('kws_inst.inst_ctrl.state'),
+        'kws_layer':        _get('kws_inst.inst_ctrl.layer'),
+        'kws_oh':           _get('kws_inst.inst_ctrl.oh'),
+        'kws_ow':           _get('kws_inst.inst_ctrl.ow'),
+        'kws_oc':           _get('kws_inst.inst_ctrl.oc'),
+        'kws_ic':           _get('kws_inst.inst_ctrl.ic'),
+        'kws_kh':           _get('kws_inst.inst_ctrl.kh'),
+        'kws_kw':           _get('kws_inst.inst_ctrl.kw'),
+        'cfg_load_done':    _get('kws_inst.inst_ctrl.cfg_load_done'),
+        'spect_ready':      _get('kws_inst.inst_ctrl.spect_ready'),
+        'bias_addr':        _get('kws_inst.bias_addr'),
+        'w_raddr':          _get('kws_inst.w_raddr'),
+        'mac_en':           _get('kws_inst.mac_en'),
+        'mac_clear':        _get('kws_inst.mac_clear'),
+        'mac_acc':          _get('kws_inst.mac_acc'),
+        'rq_out':           _get('kws_inst.rq_out'),
         # spect_buffer write-select (tells us which spectrogram bank is active)
         'spect_write_sel':  _get('spect_write_sel'),
+        # Pipeline progress probes. These identify where the front-end stalls
+        # before KWS can ever see a complete spectrogram.
+        'cic_valid':        _get('pipeline_inst.cic_valid'),
+        'fir_valid':        _get('pipeline_inst.fir_valid_o'),
+        'fft_sync':         _get('pipeline_inst.u_stfft.o_fft_sync'),
+        'fft_sync_aligned': _get('pipeline_inst.fft_sync_aligned'),
+        'fft_valid':        _get('pipeline_inst.fft_valid'),
+        'power_valid':      _get('pipeline_inst.u_logmel.power_valid'),
+        'filterbank_done':  _get('pipeline_inst.u_logmel.filterbank_done'),
+        'log_done':         _get('pipeline_inst.u_logmel.log_done'),
+        'mel_valid':        _get('pipeline_inst.mel_valid'),
+        'mel_data':         _get('pipeline_inst.mel_compensated'),
+        'spect_wr_addr':    _get('pipeline_inst.u_spect_buf.wr_addr'),
     }
 
 
@@ -461,50 +547,266 @@ def _probe_str(dut):
         f"boot_done={p['boot_done']}  inf_rst={p['inference_reset']}  "
         f"pdm_valid={p['pdm_valid']}  spect_done={p['spect_done']}  "
         f"spect_sel={p['spect_write_sel']}  kws_start={p['kws_start']}  "
-        f"kws_done={p['kws_done']}  fsm={p['fsm_state']}"
+        f"kws_done={p['kws_done']}  fsm={p['fsm_state']}  "
+        f"cic={p['cic_valid']} fir={p['fir_valid']} "
+        f"fft_sync={p['fft_sync']}/{p['fft_sync_aligned']} fft_valid={p['fft_valid']} "
+        f"pwr={p['power_valid']} fb_done={p['filterbank_done']} "
+        f"log_done={p['log_done']} mel={p['mel_valid']} wr={p['spect_wr_addr']}"
     )
 
 
-# ---------------------------------------------------------------------------
-# Test 1 — boot protocol smoke-test
-# ---------------------------------------------------------------------------
-
-# @cocotb.test()
-# async def test_chip_core_boot(dut):
-#     """
-#     Mini UART boot with synthetic data.
-#     Checks:
-#       • every boot packet receives ACK (no NACK / timeout)
-#       • pad output-enable directions after reset:
-#           UART_RX  = input  (OE=0, IE=1)
-#           UART_TX  = output (OE=1, IE=0)
-#           KWS pads = output (OE=1)
-#     """
-#     cocotb.start_soon(Clock(dut.clk, CLK_PERIOD_NS, units="ns").start())
-#     await _do_reset(dut)
-
-#     # --- Pad direction checks ---
-#     oe = int(dut.bidir_oe.value)
-#     ie = int(dut.bidir_ie.value)
-
-#     assert not ((oe >> UART_RX_PAD) & 1),   "UART_RX_PAD OE must be 0 (input)"
-#     assert     ((ie >> UART_RX_PAD) & 1),   "UART_RX_PAD IE must be 1"
-#     assert     ((oe >> UART_TX_PAD) & 1),   "UART_TX_PAD OE must be 1 (output)"
-#     assert not ((ie >> UART_TX_PAD) & 1),   "UART_TX_PAD IE must be 0"
-#     for pad in (KWS_DONE_PAD, KWS_CLASS_BASE, KWS_CLASS_BASE+1, KWS_CLASS_BASE+2):
-#         assert (oe >> pad) & 1, f"KWS pad {pad} OE must be 1 (output)"
-
-#     dut._log.info("Pad directions OK")
-
-#     # --- Mini boot ---
-#     dut._log.info("Starting mini boot sequence...")
-#     await _boot_chip(dut, mini=True)
-#     dut._log.info("test_chip_core_boot PASSED")
+def _kws_probe_str(dut):
+    p = _probe(dut)
+    return (
+        f"fsm={p['fsm_state']} layer={p['kws_layer']} "
+        f"oh={p['kws_oh']} ow={p['kws_ow']} oc={p['kws_oc']} "
+        f"ic={p['kws_ic']} kh={p['kws_kh']} kw={p['kws_kw']} "
+        f"cfg_done={p['cfg_load_done']} spect_ready={p['spect_ready']} "
+        f"bias_addr={p['bias_addr']} waddr={p['w_raddr']} "
+        f"mac_en={p['mac_en']} mac_clear={p['mac_clear']} "
+        f"mac_acc={p['mac_acc']} rq_out={p['rq_out']}"
+    )
 
 
-# ---------------------------------------------------------------------------
+def _resolve_probe_handles(dut):
+    paths = {
+        'cic_valid':        'pipeline_inst.cic_valid',
+        'fir_valid':        'pipeline_inst.fir_valid_o',
+        'fft_sync':         'pipeline_inst.u_stfft.o_fft_sync',
+        'fft_sync_aligned': 'pipeline_inst.fft_sync_aligned',
+        'fft_valid':        'pipeline_inst.fft_valid',
+        'power_valid':      'pipeline_inst.u_logmel.power_valid',
+        'filterbank_done':  'pipeline_inst.u_logmel.filterbank_done',
+        'log_done':         'pipeline_inst.u_logmel.log_done',
+        'mel_valid':        'pipeline_inst.mel_valid',
+        'spect_done':       'spect_done',
+        'kws_start':        'kws_start',
+        'kws_done':         'kws_done',
+        'mel_data':         'pipeline_inst.mel_compensated',
+        'spect_wr_addr':    'pipeline_inst.u_spect_buf.wr_addr',
+    }
+    handles = {}
+    for name, path in paths.items():
+        try:
+            obj = dut
+            for part in path.split('.'):
+                obj = getattr(obj, part)
+            handles[name] = obj
+        except Exception:
+            handles[name] = None
+    return handles
+
+
+def _handle_int(handle, default='?'):
+    if handle is None:
+        return default
+    try:
+        value = handle.value
+        if hasattr(value, 'is_resolvable') and not value.is_resolvable:
+            return 'X'
+        return int(value)
+    except Exception:
+        return default
+
+
+def _handle_is_one(handle):
+    if handle is None:
+        return False
+    try:
+        value = handle.value
+        if hasattr(value, 'is_resolvable') and not value.is_resolvable:
+            return False
+        return int(value) == 1
+    except Exception:
+        return False
+
+
+def _handle_bits(handle, default='?'):
+    if handle is None:
+        return default
+    try:
+        return str(handle.value)
+    except Exception:
+        return default
+
+
+def _handle_has_x(handle):
+    bits = _handle_bits(handle, default='')
+    return 'x' in bits.lower() or 'z' in bits.lower()
+
+
+def _missing_milestone(milestones):
+    for name, seen in milestones.items():
+        if not seen:
+            return name
+    return None
+
+
+async def _monitor_kws_progress(dut, start_cyc, done_handle, log_every_cycles):
+    elapsed = 0
+    while True:
+        await ClockCycles(dut.clk, log_every_cycles)
+        elapsed += log_every_cycles
+        dut._log.info(
+            f"  [KWS progress] since_start={elapsed:,} "
+            f"approx_cyc={start_cyc + elapsed:,} {_kws_probe_str(dut)}"
+        )
+        if _handle_is_one(done_handle):
+            return
+
+
+def _resolve_kws_x_handles(dut):
+    paths = {
+        'state':          'kws_inst.inst_ctrl.state',
+        'layer':          'kws_inst.inst_ctrl.layer',
+        'oh':             'kws_inst.inst_ctrl.oh',
+        'ow':             'kws_inst.inst_ctrl.ow',
+        'oc':             'kws_inst.inst_ctrl.oc',
+        'ic':             'kws_inst.inst_ctrl.ic',
+        'kh':             'kws_inst.inst_ctrl.kh',
+        'kw':             'kws_inst.inst_ctrl.kw',
+        'buf_sel':        'kws_inst.inst_ctrl.buf_sel',
+        'spect_read_sel': 'kws_inst.inst_ctrl.spect_read_sel',
+        'comb_in_bounds': 'kws_inst.inst_ctrl.comb_in_bounds',
+        'comb_sp_raddr':  'kws_inst.inst_ctrl.comb_sp_raddr',
+        'comb_feat_addr': 'kws_inst.inst_ctrl.comb_feat_addr',
+        'comb_w_addr':    'kws_inst.inst_ctrl.comb_w_addr',
+        'sp_raddr':       'kws_inst.ss_a_raddr',
+        'sp_a_rdata':     'kws_inst.ss_a_rdata',
+        'sp_b_rdata':     'kws_inst.ss_b_rdata',
+        'fs_a_we':        'kws_inst.fs_a_we',
+        'fs_b_we':        'kws_inst.fs_b_we',
+        'fs_a_waddr':     'kws_inst.fs_a_waddr',
+        'fs_b_waddr':     'kws_inst.fs_b_waddr',
+        'fs_a_wdata':     'kws_inst.fs_a_wdata',
+        'fs_b_wdata':     'kws_inst.fs_b_wdata',
+        'fs_a_raddr':     'kws_inst.fs_a_raddr',
+        'fs_b_raddr':     'kws_inst.fs_b_raddr',
+        'fs_a_rdata':     'kws_inst.fs_a_rdata',
+        'fs_b_rdata':     'kws_inst.fs_b_rdata',
+        'w_raddr':        'kws_inst.w_raddr',
+        'w_rdata':        'kws_inst.w_rdata',
+        'bias_addr':      'kws_inst.bias_addr',
+        'bias_data':      'kws_inst.bias_data',
+        'mac_en':         'kws_inst.mac_en',
+        'mac_clear':      'kws_inst.mac_clear',
+        'mac_ifmap':      'kws_inst.mac_ifmap',
+        'mac_weight':     'kws_inst.mac_weight',
+        'mac_bias':       'kws_inst.mac_bias',
+        'mac_acc':        'kws_inst.mac_acc',
+        'rq_out':         'kws_inst.rq_out',
+    }
+    handles = {}
+    for name, path in paths.items():
+        try:
+            obj = dut
+            for part in path.split('.'):
+                obj = getattr(obj, part)
+            handles[name] = obj
+        except Exception:
+            handles[name] = None
+    return handles
+
+
+def _kws_x_context(h):
+    return (
+        f"state={_handle_int(h['state'])} layer={_handle_int(h['layer'])} "
+        f"oh={_handle_int(h['oh'])} ow={_handle_int(h['ow'])} "
+        f"oc={_handle_int(h['oc'])} ic={_handle_int(h['ic'])} "
+        f"kh={_handle_int(h['kh'])} kw={_handle_int(h['kw'])} "
+        f"buf_sel={_handle_int(h['buf_sel'])} spect_read_sel={_handle_int(h['spect_read_sel'])} "
+        f"in_bounds={_handle_int(h['comb_in_bounds'])} "
+        f"sp_addr={_handle_int(h['comb_sp_raddr'])}/{_handle_int(h['sp_raddr'])} "
+        f"feat_addr={_handle_int(h['comb_feat_addr'])} "
+        f"waddr={_handle_int(h['comb_w_addr'])}/{_handle_int(h['w_raddr'])} "
+        f"bias_addr={_handle_int(h['bias_addr'])}"
+    )
+
+
+def _kws_x_values(h):
+    return (
+        f"sp_a={_handle_bits(h['sp_a_rdata'])} sp_b={_handle_bits(h['sp_b_rdata'])} "
+        f"fs_a_raddr={_handle_int(h['fs_a_raddr'])} fs_a={_handle_bits(h['fs_a_rdata'])} "
+        f"fs_b_raddr={_handle_int(h['fs_b_raddr'])} fs_b={_handle_bits(h['fs_b_rdata'])} "
+        f"w={_handle_bits(h['w_rdata'])} bias={_handle_bits(h['bias_data'])} "
+        f"mac_ifmap={_handle_bits(h['mac_ifmap'])} "
+        f"mac_weight={_handle_bits(h['mac_weight'])} mac_bias={_handle_bits(h['mac_bias'])} "
+        f"mac_acc={_handle_bits(h['mac_acc'])} rq_out={_handle_bits(h['rq_out'])}"
+    )
+
+
+async def _monitor_kws_x_sources(dut, done_handle, log_limit=24, fail_fast=False):
+    h = _resolve_kws_x_handles(dut)
+    log_count = 0
+    suppressed = False
+
+    def _report(tag, cyc, names):
+        nonlocal log_count, suppressed
+        details = ", ".join(f"{name}={_handle_bits(h[name])}" for name in names)
+        if log_count < log_limit:
+            dut._log.warning(
+                f"  [KWS X SOURCE] {tag} cyc_since_monitor={cyc:,} "
+                f"{details}; {_kws_x_context(h)}; {_kws_x_values(h)}"
+            )
+            log_count += 1
+        elif not suppressed:
+            dut._log.warning(
+                f"  [KWS X SOURCE] suppressing further X-source logs after "
+                f"{log_limit} events; latest context: {_kws_x_context(h)}"
+            )
+            suppressed = True
+        if fail_fast:
+            raise AssertionError(
+                f"KWS X detected at {tag}: {details}; {_kws_x_context(h)}"
+            )
+
+    cyc = 0
+    while True:
+        await RisingEdge(dut.clk)
+        cyc += 1
+
+        if _handle_is_one(h['mac_en']):
+            mac_inputs = ['mac_ifmap', 'mac_weight', 'mac_bias']
+            bad = [name for name in mac_inputs if _handle_has_x(h[name])]
+            if bad:
+                _report("MAC input", cyc, bad)
+
+            source_names = ['w_rdata']
+            if _handle_int(h['layer'], default=0) == 0:
+                if _handle_int(h['spect_read_sel'], default=0) == 0:
+                    source_names.append('sp_a_rdata')
+                else:
+                    source_names.append('sp_b_rdata')
+            else:
+                if _handle_int(h['buf_sel'], default=0) == 0:
+                    source_names.append('fs_a_rdata')
+                else:
+                    source_names.append('fs_b_rdata')
+            bad = [name for name in source_names if _handle_has_x(h[name])]
+            if bad:
+                _report("MAC source read", cyc, bad)
+
+        if _handle_int(h['state']) == 2 or _handle_is_one(h['mac_clear']):
+            bad = [name for name in ['bias_data', 'mac_bias'] if _handle_has_x(h[name])]
+            if bad:
+                _report("bias load", cyc, bad)
+
+        if _handle_int(h['state']) == 6 or _handle_is_one(h['fs_a_we']) or _handle_is_one(h['fs_b_we']):
+            writeback = ['rq_out']
+            if _handle_is_one(h['fs_a_we']):
+                writeback.append('fs_a_wdata')
+            if _handle_is_one(h['fs_b_we']):
+                writeback.append('fs_b_wdata')
+            bad = [name for name in writeback if _handle_has_x(h[name])]
+            if bad:
+                _report("feature writeback", cyc, bad)
+
+        if _handle_is_one(done_handle):
+            return
+
+
+
 # Test 2 — full end-to-end KWS
-# ---------------------------------------------------------------------------
 
 @cocotb.test()
 async def test_chip_core_e2e(dut):
@@ -519,21 +821,25 @@ async def test_chip_core_e2e(dut):
       pcm_to_pdm() in Python → one bit per chip clock → valid=input_in[1], data=input_in[0]
     """
     # Check data files
+    manifest_path = _manifest_json_path()
     for p in [LOG_LUT_HEX, MEL_COEFF_HEX, MEL_INDEX_HEX,
-              WEIGHTS_HEX, SCALES_TXT, MANIFEST_JSON]:
+              WEIGHTS_HEX, SCALES_TXT, manifest_path]:
         if not Path(p).exists():
             raise FileNotFoundError(
                 f"Missing: {p}\n"
                 "Run src/ml/Pipeline/export.py then generate_spect_full.py first."
             )
 
-    with open(MANIFEST_JSON) as f:
+    with open(manifest_path) as f:
         manifest = json.load(f)
 
     keyword     = manifest["keyword"]
     class_names = manifest["class_names"]
     samples     = manifest["samples"]
-    dut._log.info(f"Keyword: '{keyword}'  ({len(samples)} samples in manifest)")
+    dut._log.info(
+        f"Manifest: {manifest_path}  keyword='{keyword}'  "
+        f"({len(samples)} samples)"
+    )
 
     cocotb.start_soon(Clock(dut.clk, CLK_PERIOD_NS, units="ns").start())
     await _do_reset(dut)
@@ -542,22 +848,28 @@ async def test_chip_core_e2e(dut):
     dut._log.info("=== UART boot phase ===")
     await _boot_chip(dut, mini=False)
 
-    # Use first sample (keep sim time reasonable; module-level tests cover full sets)
-    s        = samples[0]
+    # Use one manifest sample for the full-chip run. Override with
+    # KWS_SAMPLE_INDEX or KWS_SAMPLE_MATCH when you want a different WAV.
+    sample_idx, s = _select_manifest_sample(samples)
     gt_class = s["ground_truth_class"]
     gt_name  = s["ground_truth_name"]
     wav_path = s["wav"]
-    dut._log.info(f"=== Audio phase: {Path(wav_path).name}  GT={gt_name} ===")
+    dut._log.info(
+        f"=== Audio phase: sample[{sample_idx}] {Path(wav_path).name}  GT={gt_name} ==="
+    )
 
     # WAV → PCM → PDM
     pcm      = _load_wav_pcm(wav_path)
     pdm_bits = _pcm_to_pdm(pcm)
     dut._log.info(f"  {len(pcm)} PCM samples → {len(pdm_bits)} PDM bits")
 
-    # Drive PDM asynchronously while polling for kws_done
-    cocotb.start_soon(_drive_pdm(dut, pdm_bits))
+    # Snapshot state right before the audio phase. The main wait loop below
+    # drives PDM and monitors progress together to avoid two Python coroutines
+    # waking on every clock edge.
+    await RisingEdge(dut.clk)
+    dut._log.info(f"  [initial state] {_probe_str(dut)}")
 
-    # ---- Wait for kws_done ----
+    # ---- Drive audio until KWS starts, then wait for KWS done ----
     # Budget: PDM stream + maximum inference time + CIC/FFT/LogMel pipeline latency
     kws_timeout_cycles = len(pdm_bits) + 20_000_000
     dut._log.info(f"  Waiting up to {kws_timeout_cycles:,} cycles for kws_done...")
@@ -565,23 +877,192 @@ async def test_chip_core_e2e(dut):
     kws_done_seen = False
     rtl_class     = None
 
-    LOG_EVERY = 1_000_000   # print a heartbeat every N sim cycles
+    LOG_EVERY = 500_000   # print a heartbeat every N sim cycles (~115s real at current speed)
     t0_real   = time.time()
+    frontend_timeout_cycles = len(pdm_bits) + 200_000
+    stage_handles = _resolve_probe_handles(dut)
+    pulse_counts = {
+        'fft_sync':        0,
+        'filterbank_done': 0,
+        'log_done':        0,
+        'mel_valid':       0,
+        'spect_done':      0,
+        'kws_start':       0,
+    }
+    last_mel_cyc = None
+    last_wr_addr = None
+    last_wr_change_cyc = 0
+    next_frame_log = 1
+    MEL_STALL_WARN = 250_000
+    kws_started_cyc = None
+    KWS_LOG_EVERY = 100_000
+    KWS_X_DEBUG = os.getenv("KWS_X_DEBUG", "1") != "0"
+    KWS_X_FAIL = os.getenv("KWS_X_FAIL", "0") == "1"
+    frontend_cyc = None
+    milestones = {
+        'cic_valid':        False,
+        'fir_valid':        False,
+        'fft_sync':         False,
+        'fft_sync_aligned': False,
+        'fft_valid':        False,
+        'power_valid':      False,
+        'filterbank_done':  False,
+        'log_done':         False,
+        'mel_valid':        False,
+        'spect_done':       False,
+        'kws_start':        False,
+    }
 
-    for cyc in range(kws_timeout_cycles):
+    for cyc in range(frontend_timeout_cycles):
+        if cyc < len(pdm_bits):
+            dut.input_in.value = 0b10 | (pdm_bits[cyc] & 1)   # valid=1, data=bit
+        else:
+            dut.input_in.value = 0
+
         await RisingEdge(dut.clk)
+
+        # Count recurring pulses, not just first-time milestones.
+        for name in pulse_counts:
+            if _handle_is_one(stage_handles[name]):
+                pulse_counts[name] += 1
+
+        for name in milestones:
+            if not milestones[name] and _handle_is_one(stage_handles[name]):
+                milestones[name] = True
+                dut._log.info(f"  [milestone] {name} observed at cyc={cyc+1:,}")
+                if name == 'kws_start':
+                    kws_started_cyc = cyc + 1
+                    dut._log.info(f"  [KWS start state] {_kws_probe_str(dut)}")
+
+        if _handle_is_one(stage_handles['mel_valid']):
+            wr_addr = _handle_int(stage_handles['spect_wr_addr'])
+            mel_data = _handle_int(stage_handles['mel_data'])
+            if wr_addr not in ('?', 'X') and wr_addr != last_wr_addr:
+                last_wr_addr = wr_addr
+                last_wr_change_cyc = cyc + 1
+
+            last_mel_cyc = cyc + 1
+            mel_count = pulse_counts['mel_valid']
+            if mel_count <= 8:
+                dut._log.info(
+                    f"  [mel write] cyc={cyc+1:,} mel_count={mel_count} "
+                    f"wr_addr={wr_addr} data={mel_data}"
+                )
+            if mel_count % 40 == 0:
+                frame = mel_count // 40
+                if frame == next_frame_log or frame % 10 == 0:
+                    dut._log.info(
+                        f"  [spect frame] frame={frame}/50 "
+                        f"mel_count={mel_count}/2000 wr_addr={wr_addr}"
+                    )
+                    next_frame_log = frame + 1
+
+        if (
+            milestones['mel_valid']
+            and not milestones['spect_done']
+            and last_mel_cyc is not None
+            and (cyc + 1 - last_mel_cyc) == MEL_STALL_WARN
+        ):
+            wr_addr = _handle_int(stage_handles['spect_wr_addr'])
+            dut._log.warning(
+                f"  [stall?] no mel_valid for {MEL_STALL_WARN:,} cycles; "
+                f"counts={pulse_counts} wr_addr={wr_addr} "
+                f"last_wr_change_cyc={last_wr_change_cyc:,} probes={_probe_str(dut)}"
+            )
+
         done, cls = _read_kws_pads(dut)
         if done:
             rtl_class     = cls
             kws_done_seen = True
+            frontend_cyc  = cyc + 1
             break
+        if kws_started_cyc is not None:
+            frontend_cyc = cyc + 1
+            break
+
+        if cyc + 1 == frontend_timeout_cycles and not milestones['spect_done']:
+            missing = _missing_milestone(milestones)
+            raise AssertionError(
+                f"frontend never produced spect_done within {frontend_timeout_cycles:,} cycles; "
+                f"first missing milestone: {missing}; counts={pulse_counts}; "
+                f"last_wr_addr={last_wr_addr}; last_wr_change_cyc={last_wr_change_cyc:,}; "
+                f"probes: {_probe_str(dut)}"
+            )
         if cyc % LOG_EVERY == LOG_EVERY - 1:
             elapsed = time.time() - t0_real
             sim_ns  = (cyc + 1) * CLK_PERIOD_NS
+            pdm_status = 'done' if cyc + 1 >= len(pdm_bits) else f'in flight ({cyc+1}/{len(pdm_bits)})'
             dut._log.info(
-                f"  [KWS] {cyc+1:,} cycles ({sim_ns/1e6:.1f} ms sim)  "
-                f"real {elapsed:.0f}s  —  PDM stream {'done' if cyc+1 >= len(pdm_bits) else 'in flight'}"
+                f"  [KWS heartbeat] cyc={cyc+1:,}  sim={sim_ns/1e6:.1f}ms  "
+                f"real={elapsed:.0f}s  PDM={pdm_status}"
             )
+            dut._log.info(f"  [KWS internals] {_probe_str(dut)}")
+            dut._log.info(
+                f"  [frontend counts] {pulse_counts} "
+                f"last_mel_cyc={last_mel_cyc} last_wr_change_cyc={last_wr_change_cyc}"
+            )
+
+    if frontend_cyc is None:
+        frontend_cyc = frontend_timeout_cycles
+
+    if not kws_done_seen and kws_started_cyc is None:
+        missing = _missing_milestone(milestones)
+        raise AssertionError(
+            f"frontend never produced kws_start within {frontend_timeout_cycles:,} cycles; "
+            f"first missing milestone: {missing}; counts={pulse_counts}; "
+            f"last_wr_addr={last_wr_addr}; last_wr_change_cyc={last_wr_change_cyc:,}; "
+            f"probes: {_probe_str(dut)}"
+        )
+
+    if not kws_done_seen:
+        remaining_pdm = pdm_bits[frontend_cyc:]
+        if remaining_pdm:
+            cocotb.start_soon(_drive_pdm(dut, remaining_pdm))
+            dut._log.info(f"  Continuing remaining PDM in background ({len(remaining_pdm):,} bits)")
+        else:
+            dut.input_in.value = 0
+
+        done_handle = stage_handles['kws_done']
+        monitor_task = cocotb.start_soon(
+            _monitor_kws_progress(dut, kws_started_cyc, done_handle, KWS_LOG_EVERY)
+        )
+        x_monitor_task = None
+        if KWS_X_DEBUG:
+            x_monitor_task = cocotb.start_soon(
+                _monitor_kws_x_sources(
+                    dut,
+                    done_handle,
+                    log_limit=int(os.getenv("KWS_X_LOG_LIMIT", "24")),
+                    fail_fast=KWS_X_FAIL,
+                )
+            )
+            dut._log.info(
+                f"  KWS X-source monitor enabled "
+                f"(fail_fast={KWS_X_FAIL}, log_limit={os.getenv('KWS_X_LOG_LIMIT', '24')})"
+            )
+        remaining_timeout_cycles = max(1, kws_timeout_cycles - frontend_cyc)
+        dut._log.info(
+            f"  KWS started; waiting on done edge for up to "
+            f"{remaining_timeout_cycles:,} more cycles..."
+        )
+        result = await First(
+            RisingEdge(done_handle),
+            Timer(remaining_timeout_cycles * CLK_PERIOD_NS, units="ns"),
+        )
+        if hasattr(monitor_task, "kill"):
+            monitor_task.kill()
+        if x_monitor_task is not None and hasattr(x_monitor_task, "kill"):
+            x_monitor_task.kill()
+        if isinstance(result, Timer):
+            raise AssertionError(
+                f"kws_done never asserted within {kws_timeout_cycles:,} total cycles "
+                f"(frontend_cyc={frontend_cyc:,}; real time: {time.time()-t0_real:.0f}s); "
+                f"KWS: {_kws_probe_str(dut)}"
+            )
+        await Timer(1, units="step")
+        done, cls = _read_kws_pads(dut)
+        rtl_class = cls
+        kws_done_seen = bool(done)
 
     assert kws_done_seen, \
         f"kws_done never asserted within {kws_timeout_cycles:,} cycles  " \
@@ -598,4 +1079,3 @@ async def test_chip_core_e2e(dut):
         f"check chip_core wiring or re-run generate_spect_full.py"
 
     dut._log.info("test_chip_core_e2e PASSED")
-

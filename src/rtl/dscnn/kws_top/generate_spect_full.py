@@ -8,14 +8,14 @@ a model trained with process_full_data.py.
 
 Usage:
     python3 generate_spect_full.py [--keyword yes] [--dataset-dir /path/to/speech_commands]
-                                   [--out-dir spectrograms/] [--ckpt dscnn-32requant-v11/...]
+                                   [--out-dir spectrograms/] [--ckpt dscnn-32requant-v11/dscnn-32requant-v11.pt]
 
 Outputs (written to --out-dir):
     spectrogram_N.hex  — 2000 signed INT8 values, frame-major (frame*40 + mel)
     test_vectors.json  — manifest with class labels, input scale, per-sample results
     class_names.txt    — human-readable class names
 
-Audio is scaled to 14-bit signed range (±8191) matching the RTL ADC and process_full_data.py.
+Audio is scaled to 14-bit signed range (±8191) matching the RTL pdm mic adc and process_full_data.py.
 """
 
 import argparse

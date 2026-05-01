@@ -74,6 +74,51 @@ targets:
 
 ---
 
+#### Chip Core End-to-End Test
+
+The full-chip core test boots the RTL over UART, drives real audio through the
+PDM input path, waits for DS-CNN inference, and checks the class result:
+```bash
+make sim-core
+```
+
+`chip_core_tb.py` reads a `test_vectors.json` manifest to choose the WAV file,
+then converts that WAV to PDM and drives it through the actual RTL frontend. It
+does not directly drive the generated `spectrogram_*.hex` files; those files are
+used by the standalone KWS tests and as golden/reference artifacts from
+`generate_spect_full.py`.
+
+To test a specific keyword, first generate a manifest for that keyword:
+```bash
+cd src/rtl/dscnn/kws_top
+python3 generate_spect_full.py \
+  --keyword yes \
+  --n-samples 10 \
+  --ckpt dscnn-32requant-v11/dscnn-32requant-v11.pt \
+  --out-dir spectrograms
+```
+
+Then run the chip-core test from the repository root, pointing it at that
+manifest:
+```bash
+make sim-core \
+  KWS_KEYWORD=yes \
+  KWS_MANIFEST_JSON=src/rtl/dscnn/kws_top/spectrograms/test_vectors.json \
+  KWS_SAMPLE_INDEX=0
+```
+
+Useful selectors:
+- `KWS_KEYWORD=yes` restricts selection to manifest samples with that label.
+- `KWS_SAMPLE_INDEX=3` selects a specific manifest sample.
+- `KWS_SAMPLE_MATCH=0132a06d` selects the first sample whose WAV path or label
+  contains that text.
+- `KWS_MANIFEST_JSON=...` points the test at a specific generated manifest.
+
+With `make`, pass these as variables (`KWS_KEYWORD=yes`), not as command-line
+flags (`--keyword yes`).
+
+---
+
 #### FIR Filter
 The FIR filter uses the ZipCPU `fastfir` module from the
 [dspfilters](https://github.com/ZipCPU/dspfilters) repository.

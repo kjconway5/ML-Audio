@@ -278,7 +278,11 @@ logmel_top #(
     .flash_mel_index_data_i (flash_mel_index_data_i),
     .flash_log_lut_we_i     (flash_log_lut_we_i),
     .flash_log_lut_addr_i   (flash_log_lut_addr_i),
-    .flash_log_lut_data_i   (flash_log_lut_data_i)
+    .flash_log_lut_data_i   (flash_log_lut_data_i),
+    .test_mode_i            (1'b0),
+    .test_coeff_addr_i      (8'd0),
+    .test_index_addr_i      (8'd0),
+    .test_lut_addr_i        ({LUT_FRAC{1'b0}})
 );
 
 

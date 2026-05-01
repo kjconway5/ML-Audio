@@ -1,6 +1,6 @@
-// Ping-pong  feature-map buffer: 2 banks × 16,000 × 8-bit INT8
-// Each bank implemented as 16× cascaded sram1024x8 macros
-// (16 × 1024 = 16,384 capacity; valid range 0–15,999)
+// Ping-pong  feature-map buffer: 2 banks x 16,000 x 8-bit INT8
+// Each bank implemented as 16x cascaded sram1024x8 macros
+// (16 x 1024 = 16,384 capacity; valid range 0-15,999)
 
 
 // Read latency: 1 cycle 
@@ -9,7 +9,7 @@
 module feature_sram #(
     parameter DEPTH  = 16000,
     parameter DATA_W = 8,
-    parameter ADDR_W = 14   // covers 0–16383; valid range 0–15,999
+    parameter ADDR_W = 14   // covers 0-16383; valid range 0-15999
 )(
     input  wire              clk,
 

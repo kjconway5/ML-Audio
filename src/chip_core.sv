@@ -207,7 +207,10 @@ module chip_core #(
         .cfg_boot_wdata_o (flash_cfg_data)
     );
 
-    // Hold pipeline and kws in reset until boot completes
+    // Hold the feature pipeline in reset until boot completes so it cannot
+    // produce spectrograms from uninitialized LogMel memories.
+    // Keep KWS out of boot_done-gated reset so UART boot writes can program
+    // its weights/config before inference starts.
     wire inference_reset = reset | ~boot_done;
 
     // ---- PDM microphone wiring ----
@@ -288,7 +291,7 @@ module chip_core #(
 
     kws_top kws_inst (
         .clk(clk),
-        .reset(inference_reset),
+        .reset(reset),
         .start(kws_start),
         .done(kws_done),
         .class_out(kws_class_out),

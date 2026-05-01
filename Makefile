@@ -79,7 +79,7 @@ sim: ## Run RTL simulation with cocotb (chip_top wrapper)
 .PHONY: sim
 
 sim-core: ## Run chip_core end-to-end cocotb test (boot + PDM audio + KWS)
-	$(MAKE) -C cocotb sim-core SLOT=${SLOT}
+	$(MAKE) -C cocotb sim-core SLOT=${SLOT} KWS_KEYWORD="${KWS_KEYWORD}" KWS_SAMPLE_INDEX="${KWS_SAMPLE_INDEX}" KWS_SAMPLE_MATCH="${KWS_SAMPLE_MATCH}" KWS_MANIFEST_JSON="${KWS_MANIFEST_JSON}"
 .PHONY: sim-core
 
 sim-gl: ## Run gate-level simulation with cocotb (after copy-final)
