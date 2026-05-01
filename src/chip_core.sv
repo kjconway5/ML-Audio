@@ -221,17 +221,6 @@ module chip_core #(
     wire [15:0] pdm_word  = input_in[0] ? 16'h7FFF : 16'h8000;
     wire        pdm_valid = input_in[1];
 
-    // Auto-start KWS inference one cycle after spect_done fires.
-    // spect_ready inside the FSM is registered (set 1 cycle after spect_done),
-    // so we delay start by one cycle to guarantee both flags are true together.
-    logic kws_start;
-    always_ff @(posedge clk) begin
-        if (inference_reset)
-            kws_start <= 1'b0;
-        else
-            kws_start <= spect_done;
-    end
-
     // ---- Pipeline + KWS ----
 
     // Spectrogram signals
@@ -245,6 +234,17 @@ module chip_core #(
 
     wire            spect_done;
     wire            spect_write_sel;
+
+    // Auto-start KWS inference one cycle after spect_done fires.
+    // spect_ready inside the FSM is registered (set 1 cycle after spect_done),
+    // so we delay start by one cycle to guarantee both flags are true together.
+    logic kws_start;
+    always_ff @(posedge clk) begin
+        if (inference_reset)
+            kws_start <= 1'b0;
+        else
+            kws_start <= spect_done;
+    end
 
     // Dangling outputs for full_pipeline_top
     wire pipeline_ready;
