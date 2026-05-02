@@ -1,0 +1,97 @@
+QAT Training started at 2026-05-01 14:29:58.067616
+
+Epoch  1 | Train Loss: 1.8532 | Train Acc: 18.29%
+Epoch  2 | Train Loss: 1.8194 | Train Acc: 17.69%
+Epoch  3 | Train Loss: 1.8024 | Train Acc: 19.98%
+Epoch  4 | Train Loss: 1.7573 | Train Acc: 23.82%
+Epoch  5 | Train Loss: 1.6871 | Train Acc: 27.75% | Val Loss: 1.6843 | Val Acc: 30.20% | no=0%  off=6%  on=79%  silence=44%  unknown=22%  wow=30%  yes=44%
+Epoch  6 | Train Loss: 1.6308 | Train Acc: 30.77%
+Epoch  7 | Train Loss: 1.5540 | Train Acc: 35.28%
+Epoch  8 | Train Loss: 1.4440 | Train Acc: 41.42%
+Epoch  9 | Train Loss: 1.3234 | Train Acc: 47.92%
+Epoch 10 | Train Loss: 1.2463 | Train Acc: 51.48% | Val Loss: 1.4931 | Val Acc: 42.57% | no=30%  off=41%  on=12%  silence=61%  unknown=37%  wow=31%  yes=92%
+Epoch 11 | Train Loss: 1.1798 | Train Acc: 53.91%
+Epoch 12 | Train Loss: 1.1531 | Train Acc: 55.62%
+Epoch 13 | Train Loss: 1.1315 | Train Acc: 56.49%
+Epoch 14 | Train Loss: 1.0820 | Train Acc: 58.63%
+Epoch 15 | Train Loss: 1.0790 | Train Acc: 58.84% | Val Loss: 1.0903 | Val Acc: 62.03% | no=78%  off=60%  on=45%  silence=44%  unknown=30%  wow=57%  yes=92%
+Epoch 16 | Train Loss: 1.0531 | Train Acc: 59.82%
+Epoch 17 | Train Loss: 1.0250 | Train Acc: 60.85%
+Epoch 18 | Train Loss: 1.0073 | Train Acc: 61.89%
+Epoch 19 | Train Loss: 0.9880 | Train Acc: 62.47%
+Epoch 20 | Train Loss: 0.9697 | Train Acc: 63.18% | Val Loss: 1.5331 | Val Acc: 43.00% | no=12%  off=57%  on=56%  silence=0%  unknown=72%  wow=2%  yes=54%
+Epoch 21 | Train Loss: 0.9824 | Train Acc: 62.68%
+Epoch 22 | Train Loss: 0.9529 | Train Acc: 63.82%
+Epoch 23 | Train Loss: 0.9477 | Train Acc: 64.00%
+Epoch 24 | Train Loss: 0.9292 | Train Acc: 64.84%
+Epoch 25 | Train Loss: 0.9162 | Train Acc: 65.54% | Val Loss: 0.7083 | Val Acc: 74.26% | no=67%  off=84%  on=72%  silence=63%  unknown=55%  wow=73%  yes=92%
+Epoch 26 | Train Loss: 0.9142 | Train Acc: 66.09%
+Epoch 27 | Train Loss: 0.8994 | Train Acc: 65.92%
+Epoch 28 | Train Loss: 0.8989 | Train Acc: 65.76%
+Epoch 29 | Train Loss: 0.8902 | Train Acc: 66.96%
+Epoch 30 | Train Loss: 0.8812 | Train Acc: 66.64% | Val Loss: 0.6335 | Val Acc: 77.04% | no=82%  off=79%  on=80%  silence=80%  unknown=50%  wow=79%  yes=86%
+Epoch 31 | Train Loss: 0.8825 | Train Acc: 66.67%
+Epoch 32 | Train Loss: 0.8713 | Train Acc: 67.20%
+Epoch 33 | Train Loss: 0.8654 | Train Acc: 67.29%
+Epoch 34 | Train Loss: 0.8593 | Train Acc: 67.68%
+Epoch 35 | Train Loss: 0.8500 | Train Acc: 68.14% | Val Loss: 0.6388 | Val Acc: 76.08% | no=82%  off=75%  on=73%  silence=87%  unknown=61%  wow=73%  yes=86%
+Epoch 36 | Train Loss: 0.8505 | Train Acc: 68.49%
+Epoch 37 | Train Loss: 0.8548 | Train Acc: 68.30%
+Epoch 38 | Train Loss: 0.8348 | Train Acc: 68.91%
+Epoch 39 | Train Loss: 0.8316 | Train Acc: 69.05%
+Epoch 40 | Train Loss: 0.8221 | Train Acc: 69.30% | Val Loss: 0.5992 | Val Acc: 77.71% | no=82%  off=74%  on=83%  silence=93%  unknown=61%  wow=80%  yes=81%
+Epoch 41 | Train Loss: 0.8175 | Train Acc: 69.80%
+Epoch 42 | Train Loss: 0.8130 | Train Acc: 69.88%
+Epoch 43 | Train Loss: 0.8081 | Train Acc: 69.88%
+Epoch 44 | Train Loss: 0.8104 | Train Acc: 69.84%
+Epoch 45 | Train Loss: 0.7994 | Train Acc: 70.33% | Val Loss: 0.5752 | Val Acc: 78.67% | no=79%  off=76%  on=80%  silence=78%  unknown=65%  wow=79%  yes=90%
+Epoch 46 | Train Loss: 0.7949 | Train Acc: 70.39%
+Epoch 47 | Train Loss: 0.7912 | Train Acc: 70.44%
+Epoch 48 | Train Loss: 0.7921 | Train Acc: 70.65%
+Epoch 49 | Train Loss: 0.7856 | Train Acc: 70.64%
+Epoch 50 | Train Loss: 0.7873 | Train Acc: 70.46% | Val Loss: 0.5829 | Val Acc: 78.43% | no=77%  off=75%  on=83%  silence=93%  unknown=70%  wow=80%  yes=83%
+Epoch 51 | Train Loss: 0.7807 | Train Acc: 71.13%
+Epoch 52 | Train Loss: 0.7749 | Train Acc: 71.09%
+Epoch 53 | Train Loss: 0.7785 | Train Acc: 70.94%
+Epoch 54 | Train Loss: 0.7740 | Train Acc: 71.35%
+Epoch 55 | Train Loss: 0.7809 | Train Acc: 70.99% | Val Loss: 0.5659 | Val Acc: 77.85% | no=80%  off=73%  on=79%  silence=93%  unknown=63%  wow=81%  yes=87%
+Epoch 56 | Train Loss: 0.7665 | Train Acc: 71.72%
+Epoch 57 | Train Loss: 0.7689 | Train Acc: 71.33%
+Epoch 58 | Train Loss: 0.7667 | Train Acc: 71.70%
+Epoch 59 | Train Loss: 0.7669 | Train Acc: 71.47%
+Epoch 60 | Train Loss: 0.7528 | Train Acc: 72.03% | Val Loss: 0.5603 | Val Acc: 78.81% | no=79%  off=77%  on=81%  silence=80%  unknown=66%  wow=79%  yes=87%
+Epoch 61 | Train Loss: 0.7502 | Train Acc: 71.92%
+Epoch 62 | Train Loss: 0.7530 | Train Acc: 72.32%
+Epoch 63 | Train Loss: 0.7529 | Train Acc: 71.90%
+Epoch 64 | Train Loss: 0.7561 | Train Acc: 71.76%
+Epoch 65 | Train Loss: 0.7474 | Train Acc: 72.25% | Val Loss: 0.5672 | Val Acc: 78.43% | no=80%  off=77%  on=82%  silence=76%  unknown=62%  wow=79%  yes=87%
+Epoch 66 | Train Loss: 0.7453 | Train Acc: 72.16%
+Epoch 67 | Train Loss: 0.7422 | Train Acc: 72.40%
+Epoch 68 | Train Loss: 0.7522 | Train Acc: 72.15%
+Epoch 69 | Train Loss: 0.7455 | Train Acc: 72.28%
+Epoch 70 | Train Loss: 0.7486 | Train Acc: 72.19% | Val Loss: 0.5613 | Val Acc: 79.24% | no=80%  off=78%  on=80%  silence=80%  unknown=68%  wow=79%  yes=88%
+Epoch 71 | Train Loss: 0.7437 | Train Acc: 72.33%
+Epoch 72 | Train Loss: 0.7490 | Train Acc: 72.19%
+Epoch 73 | Train Loss: 0.7447 | Train Acc: 72.16%
+Epoch 74 | Train Loss: 0.7462 | Train Acc: 72.40%
+Epoch 75 | Train Loss: 0.7525 | Train Acc: 72.23% | Val Loss: 0.5585 | Val Acc: 78.91% | no=79%  off=77%  on=80%  silence=80%  unknown=67%  wow=80%  yes=88%
+Epoch 76 | Train Loss: 0.7538 | Train Acc: 72.32%
+Epoch 77 | Train Loss: 0.7498 | Train Acc: 72.07%
+Epoch 78 | Train Loss: 0.7502 | Train Acc: 72.34%
+Epoch 79 | Train Loss: 0.7464 | Train Acc: 72.43%
+Epoch 80 | Train Loss: 0.7506 | Train Acc: 72.44% | Val Loss: 0.5587 | Val Acc: 78.91% | no=79%  off=77%  on=79%  silence=80%  unknown=67%  wow=80%  yes=88%
+
+======================================================================
+Training completed at 2026-05-01 15:34:50.473953
+Best float val accuracy   : 78.67%
+Best QAT val accuracy     : 79.24%
+Final INT8 test accuracy  : 79.16%
+Final INT8 test loss      : 0.5877
+Per-class test accuracy   :
+  no          : 87.2%
+  off         : 79.1%
+  on          : 78.8%
+  silence     : 78.3%
+  unknown     : 61.3%
+  wow         : 76.7%
+  yes         : 85.9%
