@@ -221,8 +221,12 @@ def load_input_quant(model_dir: Path, scales_path: Path) -> tuple[float, int, in
     """
     Compute spect_buffer_ctrl input quantizer constants from the QuantStub input scale.
 
-    input_quant.txt is preferred. If it does not exist, fall back to the first
-    row's in_scale from scales.txt so older exported checkpoints still work.
+    scales.txt rows are:
+      layer mean_w_scale in_scale out_scale mult shift
+
+    The first row's in_scale is the model QuantStub scale. RTL receives Q6.10 log-mel
+    values and applies either the legacy SPECT_SHIFT approximation or the preferred
+    fixed-point input requantizer.
     """
     input_quant_path = model_dir / "input_quant.txt"
     if input_quant_path.exists():
@@ -414,7 +418,6 @@ def update_input_quant(spect_shift: int, input_mult: int, input_shift: int, dry_
             print(f"  {label}: input quant shift={spect_shift}, mult={input_mult}, input_shift={input_shift} ({'would update' if dry_run and changed else 'updated' if changed else 'already current'})")
 
     return ok
-
 
 def copy_weights(weights_src: Path, dry_run: bool) -> bool:
     weights_dest = WEIGHT_SRAM_DIR / "weights.hex"

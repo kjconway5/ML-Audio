@@ -250,8 +250,8 @@ def process_and_save():
     # Verify frame count for 1-second audio
     test_audio = np.zeros(SAMPLE_RATE, dtype=np.int16)
     test_feats = _tmp.extract_float(test_audio)
-    expected_frames = test_feats.shape[1]
-    print(f"Expected n_frames for 1-second audio: {expected_frames}")
+    raw_frames = test_feats.shape[1]
+    print(f"Raw frontend frames for 1-second audio: {raw_frames}")
     print(f"Training/inference frames after RTL crop/pad: {N_FRAMES}")
     print(f"RTL spectrogram start frame: {START_FRAME}")
 
@@ -321,8 +321,9 @@ def process_and_save():
         "include_silence": INCLUDE_SILENCE,
         "feature_extractor": "FullPipelineGoldenExtractor",
         "audio_scaling": f"float32 [-1,1] -> int14 [±{SAMPLE_MAX}]",
-        "n_frames": N_FRAMES,
+        "frame_window": "fixed_start",
         "start_frame": START_FRAME,
+        "n_frames": N_FRAMES,
         "pipeline": _tmp._stfft.get_config(),
     }
     with open(OUTPUT_DIR / "config.json", "w") as f:

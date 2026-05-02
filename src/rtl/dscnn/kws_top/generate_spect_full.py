@@ -51,8 +51,8 @@ SAMPLE_RATE = 16000
 N_MELS      = 40
 N_FRAMES    = 50
 SPECT_DEPTH = N_FRAMES * N_MELS   # 2000
-TARGET_SAMPLES = 16_000
-START_FRAME = 37
+TARGET_SAMPLES = 16_000           # one-second Speech Commands clip
+START_FRAME = 37                  # matches spect_buffer_ctrl.START_FRAME
 
 # 14-bit ADC range — matches RTL hardware and process_full_data.py
 SAMPLE_W   = 14

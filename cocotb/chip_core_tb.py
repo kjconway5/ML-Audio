@@ -188,7 +188,8 @@ def _compare_spectrogram_sram(dut, sample, manifest_path: Path) -> None:
         dut._log.warning("  Spectrogram compare skipped: spect_write_sel unavailable")
         return
 
-    # spect_write_sel points at the next write bank after spect_done.
+    # spect_write_sel toggles on the same edge as spect_done, so after the edge
+    # it points at the NEXT write bank. The completed bank is the opposite one.
     written_bank = 0 if int(sel) else 1
     actual = _read_spectrogram_bank(dut, written_bank, depth=depth)
 

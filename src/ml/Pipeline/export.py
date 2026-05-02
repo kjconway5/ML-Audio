@@ -66,7 +66,8 @@ def compute_input_quant(scale: float, q_frac: int = 10, shift: int = 31) -> tupl
         raise ValueError(f"input scale must be positive, got {scale}")
     factor = 1.0 / ((1 << q_frac) * scale)
     mult = round(factor * (1 << shift))
-    return min(max(mult, 0), (1 << 32) - 1), shift
+    mult = min(max(mult, 0), (1 << 32) - 1)
+    return mult, shift
 
 
 def _int8_sym_qconfig():

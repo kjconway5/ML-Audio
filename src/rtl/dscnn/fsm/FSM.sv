@@ -166,8 +166,8 @@ module FSM #(
             spect_ready    <= 1'b0;
             spect_read_sel <= 1'b0;
         end else if (spect_done) begin
-            // spect_write_sel has already advanced to the next write bank by
-            // the time this registered spect_done is observed here.
+            // spect_buffer_ctrl flips spect_write_sel for the next window when
+            // spect_done is raised, so the completed bank is the opposite one.
             spect_read_sel <= ~spect_write_sel;
             spect_ready    <= 1'b1;
         end
