@@ -28,7 +28,11 @@ module pipeline_top #(
 
     parameter int BFP_Q_FRAC = 10,
 
-    parameter int SPECT_SHIFT = 4,
+    parameter int SPECT_SHIFT = 9,
+    parameter int USE_INPUT_REQUANT = 1,
+    parameter int INPUT_QUANT_MULT  = 5817845,
+    parameter int INPUT_QUANT_SHIFT = 31,
+    parameter int START_FRAME = 37,
     parameter int N_FRAMES    = 50,
     parameter int ADDR_W      = 11
 ) (
@@ -250,11 +254,15 @@ assign mel_compensated_valid_o = mel_valid;
 // ==========================================================================
 
 spect_buffer_ctrl #(
-    .SPECT_SHIFT(SPECT_SHIFT),
-    .N_MELS     (N_MELS),
-    .N_FRAMES   (N_FRAMES),
-    .IN_W       (OUT_W),
-    .ADDR_W     (ADDR_W)
+    .SPECT_SHIFT      (SPECT_SHIFT),
+    .USE_INPUT_REQUANT(USE_INPUT_REQUANT),
+    .INPUT_QUANT_MULT (INPUT_QUANT_MULT),
+    .INPUT_QUANT_SHIFT(INPUT_QUANT_SHIFT),
+    .START_FRAME      (START_FRAME),
+    .N_MELS           (N_MELS),
+    .N_FRAMES         (N_FRAMES),
+    .IN_W             (OUT_W),
+    .ADDR_W           (ADDR_W)
 ) u_spect_buf (
     .clk            (clk_i),
     .reset          (reset_i),

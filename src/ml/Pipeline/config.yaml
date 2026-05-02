@@ -77,7 +77,7 @@ training:
   # 20 QAT epochs gives the fbgemm per-channel scales time to settle with multiply-shift.
   qat_start_epoch: 60
   qat_start_lr: 0.001
-  freeze_bn_epoch: 77
+  freeze_bn_epoch: 72
 
   lr_schedule:
     eta_min_float: 0.0001
@@ -90,5 +90,5 @@ vad:
   default_energy_threshold: 0.0001
 
 output:
-  model_save_path: "../models/dscnn-32requant-v0/dscnn-32full-v1.pt"
-  log_file: "../models/dscnn-32requant-v0/training_log_32full-v1.txt"
+  model_save_path: "../models/dscnn-32center-v1/dscnn-32center-v1.pt"
+  log_file: "../models/dscnn-32center-v1/training_log_32center-v1.txt"

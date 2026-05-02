@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>KWS Sim-Core Results</title>
+  <style>
+    body {
+      font-family: Arial, Helvetica, sans-serif;
+      margin: 32px;
+      color: #1f2933;
+      background: #ffffff;
+    }
+
+    h1 {
+      font-size: 24px;
+      margin: 0 0 8px;
+    }
+
+    p {
+      margin: 0 0 18px;
+      line-height: 1.45;
+    }
+
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      max-width: 1100px;
+      font-size: 14px;
+    }
+
+    th,
+    td {
+      border: 1px solid #c9d2dc;
+      padding: 9px 12px;
+      text-align: left;
+      white-space: nowrap;
+    }
+
+    th {
+      background: #eef2f6;
+      font-weight: 700;
+    }
+
+    tr:nth-child(even) td {
+      background: #f8fafc;
+    }
+
+    .note {
+      max-width: 900px;
+      margin-top: 16px;
+      padding: 12px 14px;
+      border-left: 4px solid #64748b;
+      background: #f8fafc;
+    }
+
+    code {
+      font-family: Consolas, Monaco, monospace;
+      font-size: 0.95em;
+    }
+  </style>
+</head>
+<body>
+  <h1>KWS Sim-Core Verification Results</h1>
+  <p>End-to-end chip-core simulation results for the <code>dscnn-32center-v1</code> model.</p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Keyword</th>
+        <th>Sample Index</th>
+        <th>WAV</th>
+        <th>RTL Class</th>
+        <th>Top GAP</th>
+        <th>Next GAP</th>
+        <th>Margin</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>off</td>
+        <td>likely 15</td>
+        <td>d5356b9a_nohash_0.wav</td>
+        <td>off</td>
+        <td>145</td>
+        <td>115 (yes)</td>
+        <td>30</td>
+      </tr>
+      <tr>
+        <td>wow</td>
+        <td>3</td>
+        <td>0ac15fe9_nohash_3.wav</td>
+        <td>wow</td>
+        <td>3611</td>
+        <td>-236 (no)</td>
+        <td>3847</td>
+      </tr>
+      <tr>
+        <td>on</td>
+        <td>2</td>
+        <td>063d48cf_nohash_1.wav</td>
+        <td>on</td>
+        <td>3842</td>
+        <td>1251 (unknown)</td>
+        <td>2591</td>
+      </tr>
+      <tr>
+        <td>no</td>
+        <td>7</td>
+        <td>2039b9c1_nohash_1.wav</td>
+        <td>no</td>
+        <td>4995</td>
+        <td>1422 (unknown)</td>
+        <td>3573</td>
+      </tr>
+      <tr>
+        <td>no</td>
+        <td>17</td>
+        <td>f2e59fea_nohash_3.wav</td>
+        <td>no</td>
+        <td>1471</td>
+        <td>1317 (wow)</td>
+        <td>154</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p class="note">
+    <strong>Note:</strong> Retest <code>off</code> after the <code>$readmemh</code> fix;
+    the listed <code>off</code> pass was from the earlier bad frontend setup.
+  </p>
+</body>
+</html>

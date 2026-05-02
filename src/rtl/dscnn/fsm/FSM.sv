@@ -27,6 +27,13 @@ module FSM #(
     input  wire                     start,   // ignored unless cfg_load_done & spect_ready
     output reg                      done,
     output reg  [2:0]               class_out,
+    output wire signed [ACC_W-1:0]  debug_gap0,
+    output wire signed [ACC_W-1:0]  debug_gap1,
+    output wire signed [ACC_W-1:0]  debug_gap2,
+    output wire signed [ACC_W-1:0]  debug_gap3,
+    output wire signed [ACC_W-1:0]  debug_gap4,
+    output wire signed [ACC_W-1:0]  debug_gap5,
+    output wire signed [ACC_W-1:0]  debug_gap6,
 
     // Weight SRAM signals
     output wire [12:0]              w_addr,   
@@ -159,7 +166,9 @@ module FSM #(
             spect_ready    <= 1'b0;
             spect_read_sel <= 1'b0;
         end else if (spect_done) begin
-            spect_read_sel <= spect_write_sel;  // read from bank that just finished writing
+            // spect_buffer_ctrl flips spect_write_sel for the next window when
+            // spect_done is raised, so the completed bank is the opposite one.
+            spect_read_sel <= ~spect_write_sel;
             spect_ready    <= 1'b1;
         end
     end
@@ -194,6 +203,14 @@ module FSM #(
     // Global average pool accumulators 
     reg signed [ACC_W-1:0] global_pool_acc [0:6];
     reg [2:0]              global_pool_idx;
+
+    assign debug_gap0 = global_pool_acc[0];
+    assign debug_gap1 = global_pool_acc[1];
+    assign debug_gap2 = global_pool_acc[2];
+    assign debug_gap3 = global_pool_acc[3];
+    assign debug_gap4 = global_pool_acc[4];
+    assign debug_gap5 = global_pool_acc[5];
+    assign debug_gap6 = global_pool_acc[6];
 
     reg signed [DATA_W-1:0] ifmap_val;  
 

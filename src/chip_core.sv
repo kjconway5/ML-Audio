@@ -258,7 +258,11 @@ module chip_core #(
         .N_MELS     (40),
         .N_BINS     (129),
         .N_FRAMES   (50),
-        .SPECT_SHIFT(4),
+        .START_FRAME(37),
+        .SPECT_SHIFT(9),
+        .USE_INPUT_REQUANT(1),
+        .INPUT_QUANT_MULT (5817845),
+        .INPUT_QUANT_SHIFT(31),
         .ADDR_W     (11),
         .LUT_FRAC   (6)
     ) pipeline_inst (

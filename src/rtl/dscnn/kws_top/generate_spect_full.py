@@ -16,6 +16,9 @@ Outputs (written to --out-dir):
     class_names.txt    — human-readable class names
 
 Audio is scaled to 14-bit signed range (±8191) matching the RTL pdm mic adc and process_full_data.py.
+By default, generated vectors match the chip-core path: the WAV is padded/trimmed
+to one second, frames 37..86 are used, and features are quantized with the same
+fixed-point input requantizer as spect_buffer_ctrl.sv.
 """
 
 import argparse
@@ -48,6 +51,8 @@ SAMPLE_RATE = 16000
 N_MELS      = 40
 N_FRAMES    = 50
 SPECT_DEPTH = N_FRAMES * N_MELS   # 2000
+TARGET_SAMPLES = 16_000           # one-second Speech Commands clip
+START_FRAME = 37                  # matches spect_buffer_ctrl.START_FRAME
 
 # 14-bit ADC range — matches RTL hardware and process_full_data.py
 SAMPLE_W   = 14
@@ -62,39 +67,74 @@ DEFAULT_DATASET = ML_DIR / "Pipeline" / "speech_commands_v0.02"
 
 # ── Audio loading ─────────────────────────────────────────────────────────────
 
-def load_wav(path: Path) -> np.ndarray:
+def load_wav(path: Path, target_samples: int | None = TARGET_SAMPLES) -> np.ndarray:
     """Load WAV, return 14-bit signed int16 mono at 16 kHz."""
     audio, sr = sf.read(str(path), dtype="float32")
     if audio.ndim > 1:
         audio = audio.mean(axis=1)
     if sr != SAMPLE_RATE:
         raise ValueError(f"Expected {SAMPLE_RATE} Hz, got {sr} Hz: {path}")
+    if target_samples is not None:
+        if len(audio) >= target_samples:
+            audio = audio[:target_samples]
+        else:
+            audio = np.pad(audio, (0, target_samples - len(audio)), mode="constant")
     return np.clip(audio * SAMPLE_MAX, -SAMPLE_MAX - 1, SAMPLE_MAX).astype(np.int16)
 
 
 # ── Spectrogram extraction ────────────────────────────────────────────────────
 
 def extract_spectrogram(audio_i14: np.ndarray,
-                        extractor: FullPipelineGoldenExtractor) -> tuple[np.ndarray, np.ndarray]:
+                        extractor: FullPipelineGoldenExtractor,
+                        window: str,
+                        quantization: str,
+                        spect_shift: int,
+                        input_mult: int,
+                        input_shift: int) -> tuple[np.ndarray, np.ndarray]:
     """
     Run the full PDM -> CIC -> compFIR -> STFFT pipeline.
     Returns (spect_float, spect_int8), each shape (N_FRAMES, N_MELS), frame-major.
     """
-    mel_float = extractor.extract_float(audio_i14).T   # (n_frames, N_MELS)
+    mel_fixed = extractor.extract(audio_i14).T         # (n_frames, N_MELS), Q6.10
+    mel_float = mel_fixed.astype(np.float32) / (1 << 10)
 
     n = mel_float.shape[0]
-    if n >= N_FRAMES:
-        start = (n - N_FRAMES) // 2
+    if n > 0:
+        if window == "first":
+            start = 0
+        elif window == "center":
+            start = max(0, (n - N_FRAMES) // 2)
+        else:
+            start = START_FRAME
         mel_float = mel_float[start:start + N_FRAMES, :]
+        mel_fixed = mel_fixed[start:start + N_FRAMES, :]
     else:
-        pad = N_FRAMES - n
-        mel_float = np.pad(mel_float, ((0, pad), (0, 0)), mode="constant")
+        mel_float = mel_float[:0, :]
+        mel_fixed = mel_fixed[:0, :]
 
-    mel_int8 = np.round(mel_float / INPUT_SCALE).clip(-128, 127).astype(np.int8)
+    if mel_float.shape[0] < N_FRAMES:
+        pad = N_FRAMES - mel_float.shape[0]
+        mel_float = np.pad(mel_float, ((0, pad), (0, 0)), mode="constant")
+        mel_fixed = np.pad(mel_fixed, ((0, pad), (0, 0)), mode="constant")
+
+    if quantization == "rtl-shift":
+        mel_int8 = (mel_fixed.astype(np.int32) >> spect_shift).clip(-128, 127).astype(np.int8)
+    elif quantization == "rtl-input-requant":
+        product = mel_fixed.astype(np.int64) * int(input_mult)
+        if input_shift > 0:
+            product = product + (1 << (input_shift - 1))
+        mel_int8 = (product >> input_shift).clip(-128, 127).astype(np.int8)
+    else:
+        mel_int8 = np.round(mel_float / INPUT_SCALE).clip(-128, 127).astype(np.int8)
     return mel_float, mel_int8
 
 
 # ── Model loading / inference ─────────────────────────────────────────────────
+
+def compute_input_quant(scale: float, q_frac: int = 10, shift: int = 31) -> tuple[int, int]:
+    factor = 1.0 / ((1 << q_frac) * scale)
+    mult = round(factor * (1 << shift))
+    return min(max(mult, 0), (1 << 32) - 1), shift
 
 def _int8_sym_qconfig():
     obs = torch.quantization.observer.MinMaxObserver.with_args(
@@ -165,6 +205,13 @@ def main():
                         help="Checkpoint relative to src/ml/models/ or absolute path")
     parser.add_argument("--wav-file",    type=Path, default=None)
     parser.add_argument("--seed",        type=int,  default=None)
+    parser.add_argument("--target-samples", type=int, default=TARGET_SAMPLES,
+                        help="Pad/trim WAVs to this many 16 kHz PCM samples; use 0 for full WAV")
+    parser.add_argument("--window", choices=("fixed", "first", "center"), default="fixed",
+                        help="Which 50-frame window to emit when the frontend produces more than 50 frames")
+    parser.add_argument("--quantization", choices=("rtl-input-requant", "rtl-shift", "exact-scale"),
+                        default="rtl-input-requant",
+                        help="Use current RTL input requantizer, legacy SPECT_SHIFT, or exact QuantStub-scale quantization")
     args = parser.parse_args()
 
     if not args.ckpt.is_absolute():
@@ -198,8 +245,18 @@ def main():
     Q_FRAC_LOG  = 10
     spect_shift = Q_FRAC_LOG - round(-math.log2(INPUT_SCALE))
     spect_shift = max(0, min(15, spect_shift))
+    input_mult, input_shift = compute_input_quant(INPUT_SCALE, q_frac=Q_FRAC_LOG)
     print(f"QuantStub scale    : {INPUT_SCALE:.8f}  (SPECT_SHIFT={spect_shift})")
     print(f"Audio scaling      : float32 [-1,1] -> int14 [±{SAMPLE_MAX}]")
+    target_samples = None if args.target_samples == 0 else args.target_samples
+    if args.quantization == "rtl-shift":
+        quant_desc = f"rtl-shift SPECT_SHIFT={spect_shift}"
+    elif args.quantization == "rtl-input-requant":
+        quant_desc = f"rtl-input-requant mult={input_mult} shift={input_shift} input_scale={INPUT_SCALE:.8f}"
+    else:
+        quant_desc = f"exact-scale input_scale={INPUT_SCALE:.8f} (SPECT_SHIFT reference={spect_shift})"
+    print(f"Input window       : target_samples={target_samples or 'full'}  "
+          f"window={args.window}  quantization={quant_desc}")
 
     print("Building FullPipelineGoldenExtractor (PDM -> CIC -> compFIR -> STFFT)...")
     extractor = FullPipelineGoldenExtractor()
@@ -255,13 +312,18 @@ def main():
     out_lines = []
     out_lines.append(f"\nGenerating {len(wav_list)} test vector(s) for keyword '{args.keyword}'  "
                      f"[full pipeline: PDM->CIC->FIR->STFFT]")
+    out_lines.append(f"Input config: target_samples={target_samples or 'full'}  "
+                     f"window={args.window}  quantization={quant_desc}")
     out_lines.append(f"{'#':<4}  {'wav':<35}  {'nz':>5}  {'pytorch':>8}  {'arith':>8}  {'match':>6}")
     out_lines.append("-" * 80)
 
     samples = []
     for i, wav_path in enumerate(wav_list):
-        audio_i14 = load_wav(wav_path)
-        spect_float, spect_int8 = extract_spectrogram(audio_i14, extractor)
+        audio_i14 = load_wav(wav_path, target_samples=target_samples)
+        spect_float, spect_int8 = extract_spectrogram(
+            audio_i14, extractor, args.window, args.quantization,
+            spect_shift, input_mult, input_shift
+        )
 
         hex_filename = f"spectrogram_{i}.hex"
         write_spectrogram_hex(spect_int8, args.out_dir / hex_filename)
@@ -312,8 +374,13 @@ def main():
         "class_names":        CLASS_NAMES,
         "input_scale":        INPUT_SCALE,
         "spect_shift":        spect_shift,
+        "input_quant_mult":   input_mult,
+        "input_quant_shift":  input_shift,
         "pipeline":           "full",
         "audio_scaling":      f"int14 [±{SAMPLE_MAX}]",
+        "target_samples":     target_samples,
+        "window":             args.window,
+        "quantization":       args.quantization,
         "seed":               args.seed,
         "samples":            samples,
     }
@@ -337,7 +404,8 @@ def main():
     seed_str = str(args.seed) if args.seed is not None else "random"
     with open(results_path, "a") as rf:
         rf.write(f"=== {args.keyword}  ({datetime.now().strftime('%Y-%m-%d %H:%M:%S')})  "
-                 f"seed={seed_str}  pipeline=full ===\n")
+                 f"seed={seed_str}  pipeline=full  target_samples={target_samples or 'full'}  "
+                 f"window={args.window}  quantization={quant_desc} ===\n")
         rf.write(output + "\n\n")
 
 

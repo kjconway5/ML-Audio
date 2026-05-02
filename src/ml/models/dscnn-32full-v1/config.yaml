@@ -51,14 +51,14 @@ model:
   
   # First convolution layer
   first_conv:
-    filters: 32
+    filters: 24
     kernel_size: [10, 4]
     stride: [2, 2]
 
   # Depthwise Separable blocks
   ds_blocks:
     n_blocks: 4
-    filters: 32
+    filters: 24
     kernel_size: [3, 3]
     stride: [1, 1]
 
@@ -90,5 +90,5 @@ vad:
   default_energy_threshold: 0.0001
 
 output:
-  model_save_path: "../models/dscnn-32full-v1/dscnn-32full-v1.pt"
-  log_file: "../models/dscnn-32full-v1/training_log_32full-v1.txt"
+  model_save_path: "../models/dscnn-24full-v1/dscnn-24full-v1.pt"
+  log_file: "../models/dscnn-24full-v1/training_log_24full-v1.txt"
