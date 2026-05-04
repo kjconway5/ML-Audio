@@ -13,7 +13,7 @@ for p in (_ML_DIR, _PIPE_DIR):
     if p not in sys.path:
         sys.path.insert(0, p)
 
-from golden_model import GoldenExtractor, SAMPLE_RATE, SAMPLE_W, N_MELS, N_FFT, Q_FRAC
+from golden_model import FullPipelineGoldenExtractor, SAMPLE_RATE, SAMPLE_W, N_MELS, N_FFT, Q_FRAC
 from features import LogMelExtractor
 
 SAMPLE_MAX   = (1 << (SAMPLE_W - 1)) - 1
@@ -59,8 +59,8 @@ def main():
     # Default matches pipeline_top's mel_compensated_o (the new probe point of
     # test_pipeline_top.py).  Pass bfp_compensate=False for the raw pre-comp
     # output (equivalent to u_logmel.cnn_data_ol).
-    golden = GoldenExtractor()
-    golden_q10 = golden.extract(samples)                         # (N_MELS, n_frames) uint16
+    golden = FullPipelineGoldenExtractor()
+    golden_q10 = golden.extract(chirp)                         # (N_MELS, n_frames) uint16
     golden_float = golden_q10.astype(np.float32) / (1 << Q_FRAC)
     print(f"Golden model: {golden_float.shape}  ({golden_float.shape[1]} frames)")
 
