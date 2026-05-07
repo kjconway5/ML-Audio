@@ -348,5 +348,11 @@ module stfft #(
     end
 
     assign o_bfpexp = a_dmaact ? a_bfpexp_r : b_bfpexp_r;
+    wire [2:0] debug_a_status = a_status_w;
+    wire [2:0] debug_b_status = b_status_w;
+    wire debug_a_in_stream = a_in_stream;
+    wire debug_b_in_stream = b_in_stream;
+    wire [8:0] debug_a_fifo_cnt = a_fifo_cnt;
+    wire [8:0] debug_b_fifo_cnt = b_fifo_cnt;
 
 endmodule

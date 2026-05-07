@@ -132,7 +132,7 @@ link-hex:
 test-pipeline: link-hex
 	SIM=verilator TOPLEVEL_LANG=verilog TOPLEVEL=$(TOP_PIPELINE) MODULE=$(COCOTB_MODULE_A) \
 		VERILOG_SOURCES="$(abspath $(SOURCES))" \
-		EXTRA_ARGS="--trace-fst -Wno-fatal" \
+		EXTRA_ARGS="--trace-fst -Wno-fatal -DSIM" \
 		$(MAKE) -f $(COCOTB_MAKEFILES)/Makefile.sim
 .PHONY: test-pipeline
 

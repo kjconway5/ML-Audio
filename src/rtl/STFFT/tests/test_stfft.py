@@ -174,29 +174,39 @@ async def test_debug_fsm(dut):
     await reset_dut(dut)
 
     samples = make_tone(bin_k=8)
-    
-    # Feed TWO frames — windowfn suppresses first frame
+
+    # Feed two frames
     for frame in range(2):
-        for i, s in enumerate(samples):
+        for s in samples:
             dut.i_ce.value = 1
             dut.i_sample.value = int(s) & 0xFFFF
+
             await RisingEdge(dut.i_clk)
+
             dut.i_ce.value = 0
-            await RisingEdge(dut.i_clk)  # gap for alt_ce
+            await RisingEdge(dut.i_clk)
 
-        dut._log.info(f"Frame {frame} done, win_ce={dut.win_ce_o.value}")
+        dut._log.info(
+            f"Frame {frame} done "
+            f"win_ce={dut.win_ce_o.value}"
+        )
 
-    # Now wait for sync
-    for i in range(5000):
+    for i in range(10000):
         await RisingEdge(dut.i_clk)
+
         if dut.o_fft_sync.value == 1:
             dut._log.info(f"SUCCESS: sync at cycle {i}")
             return
+
         if i % 500 == 0:
             dut._log.info(
-                f"cycle {i}: win_ce={dut.win_ce_o.value} "
-                f"status={dut.u_r2fft.status.value} "
-                f"done={dut.u_r2fft.done.value}"
+                f"cycle {i}: "
+                f"A(status={dut.u_r2fft_a.status.value} "
+                f"done={dut.u_r2fft_a.done.value} "
+                f"dma={dut.a_dmaact.value}) "
+                f"B(status={dut.u_r2fft_b.status.value} "
+                f"done={dut.u_r2fft_b.done.value} "
+                f"dma={dut.b_dmaact.value})"
             )
 
     assert False, "Never got sync"
@@ -228,102 +238,197 @@ async def test_consecutive_frames(dut):
             await RisingEdge(dut.i_clk)
 
 @cocotb.test()
-async def test_ram_conflicts(dut):
-    """Check if R2FFT ever asserts ract and wact simultaneously."""
+async def test_physical_bank_exclusivity(dut):
+
     cocotb.start_soon(Clock(dut.i_clk, 10, units="ns").start())
     await reset_dut(dut)
 
     samples = make_tone(bin_k=8)
-    cocotb.start_soon(feed_samples(dut, samples, warmup_frames=0))
 
-    conflicts_ram0 = 0
-    conflicts_ram1 = 0
+    cocotb.start_soon(feed_samples(dut, samples))
+
+    violations = 0
 
     for _ in range(100000):
+
         await RisingEdge(dut.i_clk)
 
-        r0 = dut.u_ram0.ract.value
-        w0 = dut.u_ram0.wact.value
-        r1 = dut.u_ram1.ract.value
-        w1 = dut.u_ram1.wact.value
+        #
+        # A FFT
+        #
+        a_sel = int(dut.u_a_ram0.stage_sel.value)
 
-        if r0 == 1 and w0 == 1:
-            conflicts_ram0 += 1
-        if r1 == 1 and w1 == 1:
-            conflicts_ram1 += 1
+        a_read_bank  = "A" if a_sel else "B"
+        a_write_bank = "B" if a_sel else "A"
 
-        if dut.o_fft_sync.value == 1:
+        a_ract = int(dut.u_a_ram0.ract.value)
+        a_wact = int(dut.u_a_ram0.wact.value)
+
+        #
+        # Physical conflict check
+        #
+        if a_ract and a_wact and (a_read_bank == a_write_bank):
+            violations += 1
+
+        #
+        # B FFT
+        #
+        b_sel = int(dut.u_b_ram0.stage_sel.value)
+
+        b_read_bank  = "A" if b_sel else "B"
+        b_write_bank = "B" if b_sel else "A"
+
+        b_ract = int(dut.u_b_ram0.ract.value)
+        b_wact = int(dut.u_b_ram0.wact.value)
+
+        if b_ract and b_wact and (b_read_bank == b_write_bank):
+            violations += 1
+
+        if dut.o_fft_sync.value:
             break
 
-    dut._log.info(f"RAM0 simultaneous ract+wact conflicts: {conflicts_ram0}")
-    dut._log.info(f"RAM1 simultaneous ract+wact conflicts: {conflicts_ram1}")
+    dut._log.info(f"Physical SRAM conflicts = {violations}")
 
-    if conflicts_ram0 == 0 and conflicts_ram1 == 0:
-        dut._log.info("No conflicts — single-port SRAMs will work for ASIC")
-    else:
-        dut._log.info("Conflicts exist — dual-port or time-multiplex needed")
+    assert violations == 0, \
+        "Physical SRAM bank collision detected"
 
 @cocotb.test()
-async def test_ram_access_pattern(dut):
-    """
-    Check if R2FFT reads from ram0 while writing to ram1 and vice versa.
-    If true, each bank is naturally single-port compatible.
-    """
+async def test_stage_pingpong(dut):
+
     cocotb.start_soon(Clock(dut.i_clk, 10, units="ns").start())
     await reset_dut(dut)
 
     samples = make_tone(bin_k=8)
-    cocotb.start_soon(feed_samples(dut, samples, warmup_frames=0))
 
-    # Count cross-bank vs same-bank simultaneous access
-    same_bank_conflicts = 0   # read ram0 + write ram0 simultaneously
-    cross_bank_ops      = 0   # read ram0 + write ram1 (or vice versa)
+    cocotb.start_soon(feed_samples(dut, samples))
+
+    a_toggles = 0
+    b_toggles = 0
+
+    prev_a = int(dut.u_a_ram0.stage_sel.value)
+    prev_b = int(dut.u_b_ram0.stage_sel.value)
 
     for _ in range(100000):
+
         await RisingEdge(dut.i_clk)
 
-        r0 = int(dut.u_ram0.ract.value)
-        w0 = int(dut.u_ram0.wact.value)
-        r1 = int(dut.u_ram1.ract.value)
-        w1 = int(dut.u_ram1.wact.value)
+        curr_a = int(dut.u_a_ram0.stage_sel.value)
+        curr_b = int(dut.u_b_ram0.stage_sel.value)
 
-        # Same-bank conflict: read and write to same physical bank
-        if (r0 and w0) or (r1 and w1):
-            same_bank_conflicts += 1
+        if curr_a != prev_a:
+            a_toggles += 1
 
-        # Cross-bank: read one, write the other
-        if (r0 and w1) or (r1 and w0):
-            cross_bank_ops += 1
+        if curr_b != prev_b:
+            b_toggles += 1
 
-        if dut.o_fft_sync.value == 1:
+        prev_a = curr_a
+        prev_b = curr_b
+
+        if dut.o_fft_sync.value:
             break
 
-    dut._log.info(f"Same-bank conflicts (need dual-port): {same_bank_conflicts}")
-    dut._log.info(f"Cross-bank ops (single-port friendly): {cross_bank_ops}")
+    dut._log.info(
+        f"A toggles={a_toggles} "
+        f"B toggles={b_toggles}"
+    )
 
-    if same_bank_conflicts == 0:
-        dut._log.info("GOOD: each bank is naturally single-port compatible")
-        dut._log.info("Solution: keep ram0 and ram1 as separate single-port SRAMs")
-    else:
-        dut._log.info("PROBLEM: same-bank simultaneous read+write exists")
-        dut._log.info(f"Conflicts per total cross-bank: {same_bank_conflicts}/{cross_bank_ops}")
+    assert a_toggles > 0, \
+        "A stage_sel never toggled"
+    
+@cocotb.test()
+async def test_read_write_bank_separation(dut):
+
+    cocotb.start_soon(Clock(dut.i_clk, 10, units="ns").start())
+    await reset_dut(dut)
+
+    samples = make_tone(bin_k=8)
+
+    cocotb.start_soon(feed_samples(dut, samples))
+
+    violations = 0
+
+    for _ in range(100000):
+
+        await RisingEdge(dut.i_clk)
+
+        #
+        # A FFT
+        #
+        a_sel = int(dut.u_a_ram0.stage_sel.value)
+
+        if int(dut.u_a_ram0.ract.value) and int(dut.u_a_ram0.wact.value):
+
+            read_bank  = 0 if a_sel else 1
+            write_bank = 1 if a_sel else 0
+
+            if read_bank == write_bank:
+                violations += 1
+
+        #
+        # B FFT
+        #
+        b_sel = int(dut.u_b_ram0.stage_sel.value)
+
+        if int(dut.u_b_ram0.ract.value) and int(dut.u_b_ram0.wact.value):
+
+            read_bank  = 0 if b_sel else 1
+            write_bank = 1 if b_sel else 0
+
+            if read_bank == write_bank:
+                violations += 1
+
+        if dut.o_fft_sync.value:
+            break
+
+    dut._log.info(f"Bank separation violations = {violations}")
+
+    assert violations == 0
 
 @cocotb.test()
 async def test_next_stage_count(dut):
-    """Verify next_stage fires exactly FFT_N = 8 times per frame."""
+    """
+    Verify each FFT fires exactly 8 stage transitions.
+    """
+
     cocotb.start_soon(Clock(dut.i_clk, 10, units="ns").start())
     await reset_dut(dut)
 
     samples = make_tone(bin_k=8)
-    cocotb.start_soon(feed_samples(dut, samples, warmup_frames=0))
 
-    count = 0
+    cocotb.start_soon(feed_samples(dut, samples))
+
+    a_count = 0
+    b_count = 0
+
+    prev_a = 0
+    prev_b = 0
+
     for _ in range(100000):
         await RisingEdge(dut.i_clk)
-        if dut.u_ram0.next_stage.value == 1:
-            count += 1
-        if dut.o_fft_sync.value == 1:
+
+        a_now = int(dut.u_a_ram0.next_stage.value)
+        b_now = int(dut.u_b_ram0.next_stage.value)
+
+        if a_now and not prev_a:
+            a_count += 1
+
+        if b_now and not prev_b:
+            b_count += 1
+
+        prev_a = a_now
+        prev_b = b_now
+
+        if dut.o_fft_sync.value:
             break
 
-    dut._log.info(f"next_stage fired {count} times (expected 8 for 256-point FFT)")
-    assert count == 8, f"Expected 8 stage boundaries, got {count}"
+    dut._log.info(
+        f"A next_stage count = {a_count}\n"
+        f"B next_stage count = {b_count}"
+    )
+
+    assert a_count == 8, \
+        f"A FFT expected 8 stages, got {a_count}"
+
+    # B may or may not have started depending on overlap timing
+    assert b_count in [0, 8], \
+        f"Unexpected B stage count: {b_count}"

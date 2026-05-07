@@ -39,7 +39,7 @@ test-stfft:
 	TOPLEVEL=$(TOP) \
 	MODULE=test_$(TOP) \
 	COCOTB_TEST_MODULES=test_$(TOP) \
-	EXTRA_ARGS="-Wno-WIDTHEXPAND -Wno-WIDTHTRUNC -Wno-fatal $(SIM_ARGS)" \
+	EXTRA_ARGS="-Wno-WIDTHEXPAND -Wno-WIDTHTRUNC -DSIM -Wno-fatal $(SIM_ARGS)" \
 	VERILOG_SOURCES="$(SOURCES)" \
 	$(MAKE) -f $(COCOTB_MAKEFILES)/Makefile.sim
 
