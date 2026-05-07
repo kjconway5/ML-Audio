@@ -14,7 +14,12 @@ module frame_control #(
     output logic log_en_o, // high during LOG_COMPRESS state
     
     // outputs to output_buffer
-    output logic output_valid_o // high during OUTPUT state when buffer has valid data
+    output logic output_valid_o, // high during OUTPUT state when buffer has valid data
+
+    input logic test_mode_audio,
+    output logic [$clog2(MEL_BINS)-1:0] mel_idx_test,
+    output logic [1:0] frame_control_state
+
 );
 
 
@@ -81,6 +86,20 @@ module frame_control #(
                 end
             end 
         endcase
+    end
+
+    // test mode to observe at io pins
+    always_ff @(posedge clk) begin
+        if (reset) begin
+            frame_control_state <= IDLE;
+            mel_idx_test <= '0;
+        end else if (test_mode_audio) begin
+            frame_control_state <= curr_state_q;
+            mel_idx_test <= mel_idx_o;
+        end else begin
+            frame_control_state <= IDLE;
+            mel_idx_test <= '0;
+        end
     end
 
     // output assignments

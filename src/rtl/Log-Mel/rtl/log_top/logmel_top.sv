@@ -120,7 +120,10 @@ module logmel_top #(
         .frame_sent_i      (frame_sent),
         .mel_idx_o         (mel_idx),
         .log_en_o          (log_en),
-        .output_valid_o    (output_valid)
+        .output_valid_o    (output_valid),
+        .test_mode_audio   (),
+        .mel_idx_test      (),
+        .frame_control_state ()
     );
 
     // log_lut
