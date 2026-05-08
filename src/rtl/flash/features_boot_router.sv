@@ -11,6 +11,9 @@
 module features_boot_router
     import boot_pkg::*;
 (
+    input logic                 clk_i,
+    input logic                 reset_i,
+
     // Boot bus input
     input  boot_bus_t           boot_i,
 
@@ -27,8 +30,19 @@ module features_boot_router
     // Mel start/end/offset metadata boot write port (8-bit)
     output logic                meta_boot_we_o,
     output logic [7:0]          meta_boot_addr_o,    // 256 entries
-    output logic [7:0]          meta_boot_wdata_o
+    output logic [7:0]          meta_boot_wdata_o,
+
+    // VAD threshold (32-bit registered output)
+    output logic [31:0]         vad_threshold_o
 );
+
+    // VAD threshold register latches on boot write, resets to 0 (VAD disabled)
+    always_ff @(posedge clk_i) begin
+        if (reset_i)
+            vad_threshold_o <= 32'd0;
+        else if (boot_i.valid && boot_i.subtarget == FEAT_VAD_THRESH)
+            vad_threshold_o <= {16'd0, boot_i.data};  // boot_i.data is 16-bit, threshold uses lower 16
+    end
 
     always_comb begin
         // Defaults: all write-enables deasserted

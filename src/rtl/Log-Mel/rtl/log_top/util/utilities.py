@@ -23,7 +23,7 @@ def get_sources(root, json_path):
 
 
 def runner(simulator, timescale, tbpath, jsonpath,
-           pymodule, testname=None, root=None):
+           pymodule, testname=None, root=None, defines=None):
 
     if root is None:
         root = get_repo_root()
@@ -33,6 +33,11 @@ def runner(simulator, timescale, tbpath, jsonpath,
 
     work_dir = os.path.join(tbpath, "run")
 
+    extra_args = []
+    if defines:
+        for d in defines:
+            extra_args.append(f"-D{d}")
+
     run(
         verilog_sources=sources,
         toplevel=top,
@@ -41,5 +46,6 @@ def runner(simulator, timescale, tbpath, jsonpath,
         timescale=timescale,
         sim_build=work_dir,
         waves=True,
-        testcase=testname
+        testcase=testname,
+        compile_args=extra_args
     )

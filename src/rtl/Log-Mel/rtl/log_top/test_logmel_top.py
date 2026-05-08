@@ -47,7 +47,8 @@ LOG_TOLERANCE = 2
 
 class LogMelRef:
 
-    def __init__(self):
+    def __init__(self, vad_threshold=0):
+        self.vad_threshold = vad_threshold
         self._build_filterbank()
 
     def _build_filterbank(self):
@@ -95,12 +96,24 @@ class LogMelRef:
         result = (log2_int << Q_FRAC) + LOG2_LUT[addr]
         return result & ((1 << LOG_OUT_W) - 1)
 
-    def compute(self, re: np.ndarray, im: np.ndarray) -> np.ndarray:
-        pwr     = self._power(re, im)
+    def is_voiced(self, power: np.ndarray) -> bool:
+        energy = int(np.sum(power.astype(np.uint64)))
+        energy = min(energy, (1 << 32) - 1)
+        return energy > self.vad_threshold
+
+    def compute(self, re: np.ndarray, im: np.ndarray):
+        """Returns (log_mel_or_None, voiced_bool)."""
+        pwr = self._power(re, im)
+        energy = int(np.sum(pwr.astype(np.uint64)))
+        energy = min(energy, (1 << 32) - 1)
+        cocotb.log.info(f"  Frame spectral energy: {energy}")
+        voiced = self.is_voiced(pwr)
+        if not voiced:
+            return None, False
         mel     = self._filterbank(pwr)
         log_mel = np.array([self._log_one(int(mel[m])) for m in range(N_MELS)],
                            dtype=np.uint64)
-        return log_mel
+        return log_mel, True
 
 
 # ----------------------------------------------------------------
@@ -177,6 +190,7 @@ class LogMelDriver:
         dut.fft_valid_il.value   = 0
         dut.fft_sync_il.value    = 0
         dut.cnn_ready_il.value   = 0
+        dut.vad_threshold_il.value = 0   # NEW — VAD disabled by default
         dut.flash_mel_coeff_we_i.value = 0
         dut.flash_mel_coeff_addr_i.value = 0
         dut.flash_mel_coeff_data_i.value = 0
@@ -193,6 +207,10 @@ class LogMelDriver:
         await ClockCycles(dut.clk_i, cycles)
         dut.reset_i.value = 0
         await ClockCycles(dut.clk_i, 2)
+
+    async def set_vad_threshold(self, threshold: int):
+        self.dut.vad_threshold_il.value = threshold
+        await RisingEdge(self.dut.clk_i)
 
     async def drive_frame(self, re: np.ndarray, im: np.ndarray):
         dut = self.dut
@@ -280,8 +298,17 @@ async def test_zero_input(dut):
 
     re  = np.zeros(N_BINS, dtype=np.uint64)
     im  = np.zeros(N_BINS, dtype=np.uint64)
-    exp = ref.compute(re, im)
-
+    exp, voiced = ref.compute(re, im)
+    # threshold=0, zero input has zero energy, 0 > 0 is false so not voiced
+    # but this matches old behavior where zero input produced zero output
+    # set threshold to max to guarantee pass-through for this test
+    if not voiced:
+        # zero energy doesn't exceed threshold=0, so no output expected
+        await driver.drive_frame(re, im)
+        got = await checker.collect_frame(timeout=500)
+        assert len(got) == 0, "Zero input should produce no output with threshold=0"
+        cocotb.log.info("test_zero_input PASSED — zero energy correctly below threshold")
+        return
     await driver.drive_frame(re, im)
     got = await checker.collect_frame()
     checker.check(got, exp, tag="test_zero_input")
@@ -291,12 +318,11 @@ async def test_zero_input(dut):
 async def test_single_frame(dut):
     """Random FFT frame."""
     ref, driver, checker = await setup(dut)
-
     rng = np.random.default_rng(42)
     re  = rng.integers(0, 1 << IW, size=N_BINS, dtype=np.uint64)
     im  = rng.integers(0, 1 << IW, size=N_BINS, dtype=np.uint64)
-    exp = ref.compute(re, im)
-
+    exp, voiced = ref.compute(re, im)
+    assert voiced, "Random full-range input should exceed threshold=0"
     await driver.drive_frame(re, im)
     got = await checker.collect_frame()
     checker.check(got, exp, tag="test_single_frame")
@@ -306,16 +332,136 @@ async def test_single_frame(dut):
 async def test_two_frames(dut):
     """Two consecutive frames."""
     ref, driver, checker = await setup(dut)
-
     rng = np.random.default_rng(7)
     for frame_idx in range(2):
         re  = rng.integers(0, 1 << IW, size=N_BINS, dtype=np.uint64)
         im  = rng.integers(0, 1 << IW, size=N_BINS, dtype=np.uint64)
-        exp = ref.compute(re, im)
-
+        exp, voiced = ref.compute(re, im)
+        assert voiced
         await driver.drive_frame(re, im)
         got = await checker.collect_frame()
         checker.check(got, exp, tag=f"test_two_frames[{frame_idx}]")
-
         await ClockCycles(dut.clk_i, 5)
         cocotb.log.info(f"test_two_frames frame {frame_idx} PASSED")
+
+@cocotb.test()
+async def test_vad_silence_suppressed(dut):
+    """Near-zero input with high threshold — frame should be suppressed."""
+    ref, driver, checker = await setup(dut)
+
+    vad_thresh = 100_000
+    ref.vad_threshold = vad_thresh
+    await driver.set_vad_threshold(vad_thresh)
+
+    re = np.ones(N_BINS, dtype=np.uint64) * 2
+    im = np.ones(N_BINS, dtype=np.uint64) * 2
+    exp, voiced = ref.compute(re, im)
+    assert not voiced, "Low energy should not exceed threshold"
+
+    await driver.drive_frame(re, im)
+    got = await checker.collect_frame(timeout=500)
+    assert len(got) == 0, \
+        f"VAD should have suppressed frame but got {len(got)} outputs"
+
+    cocotb.log.info("test_vad_silence_suppressed PASSED")
+
+
+@cocotb.test()
+async def test_vad_speech_passes(dut):
+    """Full-range random input with threshold — should pass through."""
+    ref, driver, checker = await setup(dut)
+
+    vad_thresh = 100_000
+    ref.vad_threshold = vad_thresh
+    await driver.set_vad_threshold(vad_thresh)
+
+    rng = np.random.default_rng(42)
+    re  = rng.integers(0, 1 << IW, size=N_BINS, dtype=np.uint64)
+    im  = rng.integers(0, 1 << IW, size=N_BINS, dtype=np.uint64)
+    exp, voiced = ref.compute(re, im)
+    assert voiced, "Full-range input should exceed threshold"
+
+    await driver.drive_frame(re, im)
+    got = await checker.collect_frame()
+    checker.check(got, exp, tag="test_vad_speech_passes")
+
+    cocotb.log.info("test_vad_speech_passes PASSED")
+
+
+@cocotb.test()
+async def test_vad_silence_then_speech(dut):
+    """Two frames: silence (suppressed) then speech (passes)."""
+    ref, driver, checker = await setup(dut)
+
+    vad_thresh = 100_000
+    ref.vad_threshold = vad_thresh
+    await driver.set_vad_threshold(vad_thresh)
+
+    # Frame 1: silence
+    re_q = np.ones(N_BINS, dtype=np.uint64) * 2
+    im_q = np.ones(N_BINS, dtype=np.uint64) * 2
+    _, voiced = ref.compute(re_q, im_q)
+    assert not voiced
+
+    await driver.drive_frame(re_q, im_q)
+    got = await checker.collect_frame(timeout=500)
+    assert len(got) == 0, "Silent frame should produce no output"
+
+    # Frame 2: speech
+    rng = np.random.default_rng(99)
+    re_l = rng.integers(0, 1 << IW, size=N_BINS, dtype=np.uint64)
+    im_l = rng.integers(0, 1 << IW, size=N_BINS, dtype=np.uint64)
+    exp, voiced = ref.compute(re_l, im_l)
+    assert voiced
+
+    await driver.drive_frame(re_l, im_l)
+    got = await checker.collect_frame()
+    checker.check(got, exp, tag="test_vad_silence_then_speech[speech]")
+
+    cocotb.log.info("test_vad_silence_then_speech PASSED")
+
+
+@cocotb.test()
+async def test_vad_threshold_boundary(dut):
+    """Test VAD with energy near the threshold boundary."""
+    ref, driver, checker = await setup(dut)
+
+    # Use small FFT values that won't saturate
+    rng = np.random.default_rng(42)
+
+    # Frame with low energy — should be suppressed
+    re_low = rng.integers(0, 64, size=N_BINS, dtype=np.uint64)
+    im_low = rng.integers(0, 64, size=N_BINS, dtype=np.uint64)
+    pwr_low = ref._power(re_low, im_low)
+    energy_low = min(int(np.sum(pwr_low.astype(np.uint64))), (1 << 32) - 1)
+
+    # Frame with moderate energy — should pass
+    re_mid = rng.integers(0, 4096, size=N_BINS, dtype=np.uint64)
+    im_mid = rng.integers(0, 4096, size=N_BINS, dtype=np.uint64)
+    pwr_mid = ref._power(re_mid, im_mid)
+    energy_mid = min(int(np.sum(pwr_mid.astype(np.uint64))), (1 << 32) - 1)
+
+    # Set threshold between the two
+    threshold = (energy_low + energy_mid) // 2
+    cocotb.log.info(f"Energy low: {energy_low}  mid: {energy_mid}  threshold: {threshold}")
+
+    ref.vad_threshold = threshold
+    await driver.set_vad_threshold(threshold)
+
+    # Drive low energy frame — should be suppressed
+    _, voiced = ref.compute(re_low, im_low)
+    assert not voiced, f"Low energy {energy_low} should be below threshold {threshold}"
+    await driver.drive_frame(re_low, im_low)
+    got = await checker.collect_frame(timeout=500)
+    assert len(got) == 0, f"Low energy frame should be suppressed, got {len(got)} outputs"
+    cocotb.log.info("Low energy frame correctly suppressed")
+
+    # Drive moderate energy frame — should pass
+    exp, voiced = ref.compute(re_mid, im_mid)
+    assert voiced, f"Mid energy {energy_mid} should exceed threshold {threshold}"
+    await driver.drive_frame(re_mid, im_mid)
+    got = await checker.collect_frame()
+    checker.check(got, exp, tag="test_vad_threshold_boundary[mid]")
+    cocotb.log.info("Moderate energy frame correctly passed")
+
+    cocotb.log.info("test_vad_threshold_boundary PASSED")

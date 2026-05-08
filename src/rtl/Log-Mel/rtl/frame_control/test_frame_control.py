@@ -11,6 +11,7 @@ async def reset_dut(dut, cycles=5):
     dut.fft_sync_i.value = 0
     dut.frame_sent_i.value = 0
     dut.filterbank_done_i.value = 0
+    dut.vad_active_i.value = 1
     await ClockCycles(dut.clk, cycles)
     dut.reset.value = 0
     await ClockCycles(dut.clk, cycles)

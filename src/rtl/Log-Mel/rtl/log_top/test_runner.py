@@ -41,5 +41,6 @@ def test_logmel_top_cocotb():
         jsonpath=str(test_dir),
         pymodule="test_logmel_top",
         testname=None,
-        root=root
+        root=root,
+        defines=["SIM"]
     )

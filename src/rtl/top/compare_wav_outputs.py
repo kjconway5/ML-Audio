@@ -28,7 +28,7 @@ for p in (_ML_DIR, _PIPE_DIR):
     if p not in sys.path:
         sys.path.insert(0, p)
 
-from golden_model import (
+from golden_model_spectral_vad import (
     FullPipelineGoldenExtractor,
     SAMPLE_RATE, SAMPLE_W, N_MELS, N_FFT, Q_FRAC
 )
@@ -128,6 +128,8 @@ def parse_npy_name(fname: str):
     # depth 1 -- but keyword dirs are known so we match greedily.
     # Convention: testbench saves as  <keyword>_<stem>  where keyword has no _.
     # We split on the first _ to get keyword.
+    if base.startswith("vad_"):
+        base = base[len("vad_"):]
     parts = base.split("_", 1)
     if len(parts) == 2:
         return parts[0], parts[1]
@@ -336,6 +338,12 @@ def main():
         "--out_dir", default=None,
         help="Where to save plots  (default: same as --rtl_dir)"
     )
+
+    parser.add_argument(
+    "--vad_threshold", type=int, default=None,
+    help="VAD threshold (None=disabled, e.g. 11000000)"
+    )
+
     args = parser.parse_args()
 
     out_dir = args.out_dir or args.rtl_dir
@@ -357,7 +365,7 @@ def main():
 
     # Load golden model once
     print("Loading FullPipelineGoldenExtractor ...")
-    golden_model = FullPipelineGoldenExtractor(bfp_compensate=True)
+    golden_model = FullPipelineGoldenExtractor(bfp_compensate=True, vad_threshold=args.vad_threshold)
     print("Ready.")
     print()
 

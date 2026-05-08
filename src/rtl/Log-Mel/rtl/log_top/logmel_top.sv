@@ -44,7 +44,13 @@ module logmel_top #(
     input  logic                test_mode_i,
     input  logic [7:0]          test_coeff_addr_i,
     input  logic [7:0]          test_index_addr_i,
-    input  logic [LUT_FRAC-1:0] test_lut_addr_i
+    input  logic [LUT_FRAC-1:0] test_lut_addr_i,
+
+    // New port for VAD
+    input logic [31:0]          vad_threshold_il,
+
+    // VAD output to spect_buffer
+    output logic                vad_active_ol
 );
 
     // Internal Signals
@@ -79,6 +85,25 @@ module logmel_top #(
         .valid_ol (power_valid)
     );
 
+    // spectral_vad signals and instantiation
+    logic        vad_active;
+    logic        vad_done;
+
+    spectral_vad #(
+    .POWER_W  (POWER_W),
+    .N_BINS   (N_BINS),
+    .THRESH_W (32)
+    ) u_vad (
+    .clk_i           (clk_i),
+    .reset_i         (reset_i),
+    .power_il        (power),
+    .power_valid_il  (power_valid),
+    .fft_sync_il     (fft_sync_il),
+    .threshold_il    (vad_threshold_il),
+    .voice_active_ol (vad_active),
+    .vad_done_ol     (vad_done)
+    );
+
     // mel_filterbank
     // accumulates power*weight for all 40 filters across 129 bins
     // self-manages bin counter, pulses valid_ol when frame complete
@@ -107,6 +132,7 @@ module logmel_top #(
         .test_index_addr_i   (test_index_addr_i)
     );
 
+
     // frame_controller
     // FSM to sequence log compression and output stages
     // filterbank manages its own accumulation so FSM just waits for done
@@ -117,6 +143,7 @@ module logmel_top #(
         .reset             (reset_i),
         .fft_sync_i        (fft_sync_il),
         .filterbank_done_i (filterbank_done),
+        .vad_active_i      (vad_active),
         .frame_sent_i      (frame_sent),
         .mel_idx_o         (mel_idx),
         .log_en_o          (log_en),
@@ -164,5 +191,8 @@ module logmel_top #(
         .cnn_ready_i  (cnn_ready_il),
         .frame_sent_o (frame_sent)
     );
+
+
+    assign vad_active_ol = vad_active;
 
 endmodule

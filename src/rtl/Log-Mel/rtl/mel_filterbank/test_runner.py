@@ -41,5 +41,6 @@ def test_mel_filterbank_new_cocotb():
         jsonpath=str(test_dir),
         pymodule="test_mel_filterbank",
         testname=None,
-        root=root
+        root=root,
+        defines=["SIM"]
     )

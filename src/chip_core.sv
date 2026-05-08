@@ -175,6 +175,9 @@ module chip_core #(
     wire [7:0]  flash_mel_index_addr;
     wire [7:0]  flash_mel_index_data;
 
+    wire [31:0] vad_threshold;
+
+
     features_boot_router u_feat_router (
         .boot_i            (features_boot),
         .lut_boot_we_o     (flash_log_lut_we),
@@ -185,7 +188,8 @@ module chip_core #(
         .mel_boot_wdata_o  (flash_mel_coeff_data),
         .meta_boot_we_o    (flash_mel_index_we),
         .meta_boot_addr_o  (flash_mel_index_addr),
-        .meta_boot_wdata_o (flash_mel_index_data)
+        .meta_boot_wdata_o (flash_mel_index_data),
+        .vad_threshold_o   (vad_threshold)
     );
 
     // DS-CNN flash write ports
@@ -250,6 +254,8 @@ module chip_core #(
     wire pipeline_ready;
     wire [15:0] mel_compensated;
     wire mel_compensated_valid;
+    wire pipeline_vad_active;
+
 
     full_pipeline_top #(
         .IW_STFFT   (16),
@@ -281,6 +287,8 @@ module chip_core #(
         .spect_write_sel    (spect_write_sel),
         .mel_compensated_o       (mel_compensated),
         .mel_compensated_valid_o (mel_compensated_valid),
+        .vad_threshold_i    (vad_threshold),        // NEW
+        .vad_active_o       (pipeline_vad_active),  // NEW
         // Flash ports
         .flash_mel_coeff_we_i   (flash_mel_coeff_we),
         .flash_mel_coeff_addr_i (flash_mel_coeff_addr),

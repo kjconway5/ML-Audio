@@ -14,7 +14,10 @@ module frame_control #(
     output logic log_en_o, // high during LOG_COMPRESS state
     
     // outputs to output_buffer
-    output logic output_valid_o // high during OUTPUT state when buffer has valid data
+    output logic output_valid_o, // high during OUTPUT state when buffer has valid data
+
+    // vad
+    input logic vad_active_i
 );
 
 
@@ -58,10 +61,11 @@ module frame_control #(
             end
 
             ACCUMULATE: begin
-                if (filterbank_done_i) begin
+                if (filterbank_done_i && vad_active_i) begin
                     next_state_d = LOG_COMPRESS;
-                end else begin
-                    next_state_d = ACCUMULATE;
+                end else if (filterbank_done_i && !vad_active_i) begin
+                    // VAD rejected this frame — go back to IDLE, skip processing
+                    next_state_d = IDLE;
                 end
             end
 

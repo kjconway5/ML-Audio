@@ -25,6 +25,9 @@ kws_top/spectrograms/*.hex
 run/
 build/
 lint/
+src/rtl/top/original_spectrograms
+src/rtl/top/*.npy
+src/rtl/top/*.png
 *.vcd
 *.fst
 *.vvp
@@ -32,6 +35,7 @@ lint/
 *.log
 *.yslog
 *.nplog
+
 
 # Synthesis outputs
 *.svg

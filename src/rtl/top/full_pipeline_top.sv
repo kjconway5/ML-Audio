@@ -68,7 +68,13 @@ module full_pipeline_top #(
     output logic               spect_write_sel,
 
     output logic [OUT_W-1:0]   mel_compensated_o,
-    output logic               mel_compensated_valid_o,
+    output logic               mel_compensated_valid_o,,
+
+    // VAD threshold (from boot controller)
+    input  logic [31:0]        vad_threshold_i,
+
+    // VAD status (active high when speech detected)
+    output logic               vad_active_o,
 
     // Flash-load ports for LogMel SRAMs
     input  logic                 flash_mel_coeff_we_i,
@@ -246,7 +252,8 @@ always_ff @(posedge clk_i) begin
         bfpexp_for_mel <= bfpexp_raw;
 end
 
-// 5. LogMel
+// 5. LogMel (with new VAD port)
+logic vad_active;
 
 logic [OUT_W-1:0] mel_data;
 logic             mel_valid;
@@ -286,8 +293,13 @@ logmel_top #(
     .test_mode_i            (1'b0),
     .test_coeff_addr_i      (8'd0),
     .test_index_addr_i      (8'd0),
-    .test_lut_addr_i        ({LUT_FRAC{1'b0}})
+    .test_lut_addr_i        ({LUT_FRAC{1'b0}}),
+    .vad_threshold_il       (vad_threshold_i),
+    .vad_active_ol          (vad_active)
 );
+
+assign vad_active_o = vad_active;
+
 
 
 // 6. bfpexp compensation
