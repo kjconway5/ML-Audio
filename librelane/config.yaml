@@ -26,6 +26,7 @@ meta:
 
 DESIGN_NAME: chip_top
 VERILOG_FILES:
+- dir::../src/rtl/flash/boot_pkg.sv
 - dir::../src/chip_top.sv
 - dir::../src/chip_core.sv
 # Pipeline and DSCNN Top Levels
