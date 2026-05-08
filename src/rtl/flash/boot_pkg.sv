@@ -27,7 +27,8 @@ package boot_pkg;
     typedef enum logic [SUBTARGET_W-1:0] {
         FEAT_LOG_LUT   = 4'h0,   // 64  × 16-bit  → 2× sram256x8
         FEAT_MEL_COEFF = 4'h1,   // 256 × 16-bit  → 2× sram256x8 (sparse packing)
-        FEAT_MEL_META  = 4'h2    // 256 × 8-bit   → 1× sram256x8 (starts/ends/offsets)
+        FEAT_MEL_META  = 4'h2,    // 256 × 8-bit   → 1× sram256x8 (starts/ends/offsets)
+        FEAT_VAD_THRESH = 4'h3   // 1   × 16-bit  → register (spectral VAD threshold)
     } features_subtarget_e;
 
 
@@ -74,6 +75,7 @@ package boot_pkg;
                     FEAT_LOG_LUT:   return 1'b1;   // 64  × 16-bit
                     FEAT_MEL_COEFF: return 1'b1;   // 256 × 16-bit
                     FEAT_MEL_META:  return 1'b0;   // 256 × 8-bit
+                    FEAT_VAD_THRESH: return 1'b1;  // 1   × 16-bit
                     default:        return 1'b0;
                 endcase
             MOD_DSCNN:

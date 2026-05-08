@@ -56,7 +56,8 @@ LOGMEL_SOURCES := \
    $(RTL_DIR)/frame_control/frame_control.sv \
    $(RTL_DIR)/log_lut/log_lut.sv \
    $(RTL_DIR)/log_lut/log_lut_sram.sv \
-   $(RTL_DIR)/output_buffer/output_buffer.sv
+   $(RTL_DIR)/output_buffer/output_buffer.sv \
+   $(RTL_DIR)/spectral_vad/spectral_vad.sv
 
 
 IP_SOURCES := $(wildcard $(IP_DIR)/*.sv)
@@ -141,7 +142,7 @@ test-pipeline: link-hex
 test-full: link-hex
 	SIM=verilator TOPLEVEL_LANG=verilog TOPLEVEL=$(TOP_FULL) MODULE=$(COCOTB_MODULE_B) \
 		VERILOG_SOURCES="$(abspath $(SOURCES_FULL))" \
-		EXTRA_ARGS="--trace-fst -Wno-fatal" \
+		EXTRA_ARGS="--trace-fst -Wno-fatal +define+SIM" \
 		$(MAKE) -f $(COCOTB_MAKEFILES)/Makefile.sim
 .PHONY: test-full
 

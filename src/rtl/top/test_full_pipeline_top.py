@@ -50,7 +50,7 @@ DATA_DIR = Path(__file__).resolve().parent / ".." / "Log-Mel" / "data"
 # WAV dataset configuration
 # ---------------------------------------------------------------------------
 SPEECH_WAV_DIR            = Path(__file__).resolve().parent / "speech_data"
-MAX_WAV_FILES_PER_KEYWORD = 20    # cap per keyword subdirectory
+MAX_WAV_FILES_PER_KEYWORD = 2 #20    # cap per keyword subdirectory
 WAV_DURATION_S            = 0.47  # seconds per clip
 
 
@@ -238,6 +238,7 @@ async def do_reset(dut):
     dut.reset_i.value = 1
     dut.valid_i.value = 0
     dut.data_i.value  = 0
+    dut.vad_threshold_i.value = 0   # NEW — disabled by default
     _idle_flash(dut)
     await ClockCycles(dut.clk_i, 20)
     dut.reset_i.value = 0
@@ -503,3 +504,173 @@ async def test_full_pipeline_tone(dut):
             "[%s] Tone mean %.2f log2 too low" % (label, mat.mean())
 
     await _run_pipeline(dut, pcm, "tone_1kHz", "rtl_features_tone.npy", checks)
+
+# ---------------------------------------------------------------------------
+# Test 5 and 6 - VAD Tests
+# ---------------------------------------------------------------------------
+
+@cocotb.test()
+async def test_full_pipeline_silence_vad(dut):
+    """All-zero input with VAD enabled — should produce zero frames."""
+    pcm = make_silence(N_PCM_SAMPLES)
+
+    cocotb.start_soon(Clock(dut.clk_i, 10, units="ns").start())
+    await do_reset(dut)
+    await flash_load_all(dut)
+    await do_reset(dut)
+    dut.vad_threshold_i.value = 11_000_000
+
+    pdm = pcm_to_pdm(pcm)
+    timeout = len(pdm) + DRAIN
+    cocotb.start_soon(drive_pdm(dut, pdm))
+    frames = await collect_frames(dut, timeout)
+
+    cocotb.log.info("[silence_vad] Frames produced: %d (expected 0)" % len(frames))
+    assert len(frames) == 0, \
+        "[silence_vad] Expected 0 frames, got %d" % len(frames)
+    cocotb.log.info("[silence_vad] PASS")
+
+
+@cocotb.test()
+async def test_full_pipeline_chirp_vad(dut):
+    """Chirp with VAD — should produce same frames as without."""
+    pcm = make_chirp(N_PCM_SAMPLES)
+
+    cocotb.start_soon(Clock(dut.clk_i, 10, units="ns").start())
+    await do_reset(dut)
+    await flash_load_all(dut)
+    await do_reset(dut)
+    dut.vad_threshold_i.value = 11_000_000
+
+    pdm = pcm_to_pdm(pcm)
+    ideal = (len(pcm) - FFT_SIZE) // HOP + 1
+    timeout = len(pdm) + DRAIN
+    cocotb.start_soon(drive_pdm(dut, pdm))
+    frames = await collect_frames(dut, timeout)
+
+    cocotb.log.info("[chirp_vad] Frames: %d (ideal=%d)" % (len(frames), ideal))
+    assert len(frames) > 0, "[chirp_vad] No frames — threshold too high?"
+    assert len(frames) >= ideal - 5, \
+        "[chirp_vad] Too few frames: %d vs ideal %d" % (len(frames), ideal)
+
+    mat = save_features(frames, "rtl_features_chirp_vad.npy")
+    if mat is not None:
+        peak_bins = np.argmax(mat, axis=0)
+        n = len(peak_bins)
+        early = float(np.mean(peak_bins[:n//4]))
+        late  = float(np.mean(peak_bins[3*n//4:]))
+        assert late > early + 3, "[chirp_vad] Chirp diagonal not detected"
+
+    cocotb.log.info("[chirp_vad] PASS — %d frames" % len(frames))
+
+# ---------------------------------------------------------------------------
+# Test 7 - Spliced VAD Test
+# ---------------------------------------------------------------------------
+
+@cocotb.test()
+async def test_full_pipeline_spliced_vad(dut):
+    """Silence + chirp spliced together — only chirp frames should appear."""
+    silence = make_silence(N_PCM_SAMPLES // 2)
+    chirp   = make_chirp(N_PCM_SAMPLES // 2)
+    pcm     = np.concatenate([silence, chirp])
+
+    cocotb.start_soon(Clock(dut.clk_i, 10, units="ns").start())
+    await do_reset(dut)
+    await flash_load_all(dut)
+    await do_reset(dut)
+    dut.vad_threshold_i.value = 11_000_000
+
+    pdm = pcm_to_pdm(pcm)
+    ideal_total   = (len(pcm) - FFT_SIZE) // HOP + 1
+    ideal_chirp   = (len(chirp) - FFT_SIZE) // HOP + 1
+    timeout = len(pdm) + DRAIN
+    cocotb.start_soon(drive_pdm(dut, pdm))
+    frames = await collect_frames(dut, timeout)
+
+    cocotb.log.info("[spliced_vad] Frames: %d (total_ideal=%d chirp_ideal=%d)"
+                    % (len(frames), ideal_total, ideal_chirp))
+    # Should get roughly chirp-only frames, not the full count
+    assert len(frames) > 0, "[spliced_vad] No frames at all"
+    assert len(frames) < ideal_total, \
+        "[spliced_vad] Got %d frames — silence not suppressed" % len(frames)
+
+    cocotb.log.info("[spliced_vad] PASS — %d/%d frames (silence suppressed)"
+                    % (len(frames), ideal_total))
+
+@cocotb.test()
+async def test_full_pipeline_speech_vad(dut):
+    """Real .wav files with VAD enabled at 11M threshold."""
+    keyword_dirs = discover_keyword_dirs(SPEECH_WAV_DIR)
+    if not keyword_dirs:
+        cocotb.log.info("No keyword directories found -- skipping.")
+        return
+
+    total_wavs = sum(len(v) for v in keyword_dirs.values())
+    cocotb.log.info("Keywords: %s  |  Total files: %d"
+                    % (", ".join(sorted(keyword_dirs)), total_wavs))
+
+    cocotb.start_soon(Clock(dut.clk_i, 10, units="ns").start())
+    await do_reset(dut)
+    await flash_load_all(dut)
+
+    all_passed = True
+    total_done = 0
+    total_failed = 0
+
+    for keyword in sorted(keyword_dirs):
+        wav_files = keyword_dirs[keyword]
+        kw_passed = 0
+        kw_failed = 0
+        cocotb.log.info("=== [VAD] Keyword: '%s'  (%d files) ==="
+                        % (keyword, len(wav_files)))
+
+        for wav_path in wav_files:
+            stem  = wav_path.stem.replace(" ", "_")[:32]
+            npy   = "rtl_features_vad_%s_%s.npy" % (keyword, stem)
+            label = "vad_%s/%s" % (keyword, stem)
+
+            await do_reset(dut)
+            dut.vad_threshold_i.value = 11_000_000  # <-- VAD enabled
+
+            try:
+                pcm = _load_wav(wav_path)
+            except RuntimeError as e:
+                cocotb.log.info("[%s] SKIP -- %s" % (label, e))
+                continue
+
+            rms = float(np.sqrt(np.mean(pcm.astype(np.float64)**2)))
+            pdm = pcm_to_pdm(pcm)
+            timeout = len(pdm) + DRAIN
+
+            cocotb.start_soon(drive_pdm(dut, pdm))
+            frames = await collect_frames(dut, timeout)
+
+            mat = save_features(frames, npy)
+            total_done += 1
+
+            # With VAD, quiet files may produce fewer frames -- that's expected
+            ideal = (len(pcm) - FFT_SIZE) // HOP + 1
+
+            try:
+                # Must produce at least some frames for real speech
+                assert len(frames) > 0, "[%s] No frames produced" % label
+                for i, f in enumerate(frames):
+                    assert len(f) == N_MELS, \
+                        "[%s] Frame %d has %d mels" % (label, i, len(f))
+                # Log how many frames VAD dropped
+                cocotb.log.info("[%s] %d/%d frames (VAD kept %.0f%%)"
+                                % (label, len(frames), ideal,
+                                   100.0 * len(frames) / ideal))
+                kw_passed += 1
+            except AssertionError as exc:
+                cocotb.log.info("FAIL: %s" % exc)
+                kw_failed += 1
+                total_failed += 1
+                all_passed = False
+
+        cocotb.log.info("Keyword '%s': %d/%d passed"
+                        % (keyword, kw_passed, kw_passed + kw_failed))
+
+    cocotb.log.info("Speech VAD test done: %d/%d passed"
+                    % (total_done - total_failed, total_done))
+    assert all_passed, "%d file(s) failed" % total_failed

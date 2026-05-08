@@ -24,6 +24,7 @@
         "src/rtl/Log-Mel/rtl/log_lut/log_lut.sv",
         "src/rtl/Log-Mel/rtl/log_lut/log_lut_sram.sv",
         "src/rtl/Log-Mel/rtl/output_buffer/output_buffer.sv",
+        "src/rtl/Log-Mel/rtl/spectral_vad/spectral_vad.sv",
 
         "gf180mcu_ocd_ip_sram/cells/gf180mcu_ocd_ip_sram__sram256x8m8wm1/gf180mcu_ocd_ip_sram__sram256x8m8wm1.v",
         "gf180mcu_ocd_ip_sram/cells/gf180mcu_ocd_ip_sram__sram512x8m8wm1/gf180mcu_ocd_ip_sram__sram512x8m8wm1.v",
