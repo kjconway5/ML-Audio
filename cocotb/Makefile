@@ -1,6 +1,14 @@
 REPO_ROOT := $(abspath ..)
 SRC       := $(REPO_ROOT)/src
 RTL       := $(SRC)/rtl
+LOGMEL_DATA := $(RTL)/Log-Mel/data
+HANNING_HEX := $(RTL)/STFFT/ZipCPU/hanning.hex
+
+READMEMH_HEX_FILES := \
+	$(HANNING_HEX) \
+	$(LOGMEL_DATA)/mel_coeffs_sparse.hex \
+	$(LOGMEL_DATA)/mel_indices.hex \
+	$(LOGMEL_DATA)/log2_lut.hex
 
 TOP    := chip_core
 MODULE := chip_core_tb
@@ -77,7 +85,11 @@ SIM_SOURCES := \
 
 COCOTB_MAKEFILES := $(shell cocotb-config --makefiles)
 
-sim-core:
+link-hex:
+	@for f in $(READMEMH_HEX_FILES); do ln -sf $$f . 2>/dev/null || true; done
+.PHONY: link-hex
+
+sim-core: link-hex
 	KWS_KEYWORD="$(KWS_KEYWORD)" KWS_SAMPLE_INDEX="$(KWS_SAMPLE_INDEX)" KWS_SAMPLE_MATCH="$(KWS_SAMPLE_MATCH)" KWS_MANIFEST_JSON="$(KWS_MANIFEST_JSON)" \
 		SIM=icarus TOPLEVEL_LANG=verilog TOPLEVEL=$(TOP) MODULE=$(MODULE) \
 		VERILOG_SOURCES="$(abspath $(SIM_SOURCES))" \
@@ -86,5 +98,5 @@ sim-core:
 .PHONY: sim-core
 
 clean:
-	rm -rf sim_build __pycache__ results.xml *.vcd *.fst *.log
+	rm -rf sim_build __pycache__ results.xml *.vcd *.fst *.log hanning.hex mel_coeffs_sparse.hex mel_indices.hex log2_lut.hex
 .PHONY: clean

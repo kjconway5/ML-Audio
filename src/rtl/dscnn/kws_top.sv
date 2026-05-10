@@ -65,6 +65,10 @@ module kws_top (
     wire                 rq_relu_en;
     wire signed [7:0]    rq_out;
 
+    // Debug visibility for cocotb: final classifier GAP accumulators.
+    wire signed [31:0]   debug_gap0, debug_gap1, debug_gap2, debug_gap3;
+    wire signed [31:0]   debug_gap4, debug_gap5, debug_gap6;
+
     // Bias signals
     wire [8:0]           bias_addr;   // 9-bit for 32-filter model (up to 295 bias entries)
     wire signed [31:0]   bias_data;
@@ -117,6 +121,10 @@ module kws_top (
     FSM inst_ctrl (
         .clk(clk), .reset(reset), .start(start),
         .done(done), .class_out(class_out),
+        .debug_gap0(debug_gap0), .debug_gap1(debug_gap1),
+        .debug_gap2(debug_gap2), .debug_gap3(debug_gap3),
+        .debug_gap4(debug_gap4), .debug_gap5(debug_gap5),
+        .debug_gap6(debug_gap6),
         .cfg_we(cfg_we), .cfg_addr(cfg_addr), .cfg_wdata(cfg_wdata),
         .spect_done(spect_done), .spect_write_sel(spect_write_sel),
         .weights_ready(1'b1),

@@ -82,15 +82,15 @@ _ML        = _SRC / "ml"
 _RTL       = _SRC / "rtl"
 _KWS_DIR   = _RTL / "dscnn/kws_top"
 _LOGMEL    = _RTL / "Log-Mel/data"
-_MODEL_DIR = _ML / "models/dscnn-16full-v1"
+_MODEL_DIR = _ML / "models/dscnn-16center-v1"
 
 LOG_LUT_HEX   = _LOGMEL    / "log2_lut.hex"
 MEL_COEFF_HEX = _LOGMEL    / "mel_coeffs_sparse.hex"
 MEL_INDEX_HEX = _LOGMEL    / "mel_indices.hex"
 WEIGHTS_HEX   = _MODEL_DIR / "weights.hex"
 SCALES_TXT    = _MODEL_DIR / "scales.txt"
-MANIFEST_JSON = _KWS_DIR   / "test_vectors.json"
 SPECT_DIR     = _KWS_DIR   / "spectrograms"
+MANIFEST_JSON = SPECT_DIR  / "test_vectors.json"
 MODEL_FILTERS = 16
 
 
@@ -123,6 +123,102 @@ def _load_hex(path, signed=False, width=8):
                 v -= (1 << width)
             vals.append(v)
     return vals
+
+
+def _resolve_manifest_hex(sample, manifest_path: Path) -> Path | None:
+    hex_file = sample.get("hex_file")
+    if not hex_file:
+        return None
+
+    path = Path(hex_file)
+    if path.is_absolute():
+        return path
+
+    candidates = [
+        manifest_path.parent / path,
+        _KWS_DIR / path,
+        Path(__file__).resolve().parent.parent / path,
+    ]
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return candidates[0]
+
+
+def _read_spectrogram_bank(dut, bank: int, depth: int = 2000) -> list[int]:
+    mem_name = "mem_a" if bank == 0 else "mem_b"
+    try:
+        mem = getattr(dut.kws_inst.inst_specram, mem_name)
+    except Exception as exc:
+        raise RuntimeError(f"could not access spectrogram SRAM {mem_name}") from exc
+
+    values = []
+    for addr in range(depth):
+        try:
+            raw = int(mem[addr].value)
+        except Exception as exc:
+            raise RuntimeError(f"could not read {mem_name}[{addr}]") from exc
+        if raw >= 0x80:
+            raw -= 0x100
+        values.append(raw)
+    return values
+
+
+def _compare_spectrogram_sram(dut, sample, manifest_path: Path) -> None:
+    if os.getenv("KWS_SPECT_COMPARE", "1") == "0":
+        return
+
+    hex_path = _resolve_manifest_hex(sample, manifest_path)
+    if hex_path is None:
+        dut._log.warning("  Spectrogram compare skipped: manifest sample has no hex_file")
+        return
+    if not hex_path.exists():
+        dut._log.warning(f"  Spectrogram compare skipped: hex file not found: {hex_path}")
+        return
+
+    expected = _load_hex(hex_path, signed=True, width=8)
+    depth = min(2000, len(expected))
+    if len(expected) < 2000:
+        dut._log.warning(
+            f"  Spectrogram compare: expected hex has only {len(expected)} values"
+        )
+
+    sel = _handle_int(getattr(dut, "spect_write_sel", None))
+    if sel in ("?", "X"):
+        dut._log.warning("  Spectrogram compare skipped: spect_write_sel unavailable")
+        return
+
+    # spect_write_sel points at the next write bank after spect_done.
+    written_bank = 0 if int(sel) else 1
+    actual = _read_spectrogram_bank(dut, written_bank, depth=depth)
+
+    diffs = [a - e for a, e in zip(actual, expected[:depth])]
+    abs_diffs = [abs(d) for d in diffs]
+    mismatches = [idx for idx, d in enumerate(diffs) if d != 0]
+    max_abs = max(abs_diffs) if abs_diffs else 0
+    mean_abs = sum(abs_diffs) / len(abs_diffs) if abs_diffs else 0.0
+    exact = len(mismatches) == 0 and len(expected) == 2000
+
+    dut._log.info(
+        f"  Spectrogram SRAM compare: bank={'A' if written_bank == 0 else 'B'} "
+        f"expected={hex_path.name} exact={exact} "
+        f"mismatch={len(mismatches)}/{depth} max_abs={max_abs} mean_abs={mean_abs:.3f}"
+    )
+    if mismatches:
+        preview = []
+        for idx in mismatches[:12]:
+            preview.append(f"{idx}:rtl={actual[idx]} exp={expected[idx]} d={diffs[idx]}")
+        dut._log.warning("  Spectrogram first mismatches: " + "; ".join(preview))
+
+    tol = int(os.getenv("KWS_SPECT_TOL", "0"))
+    fail_on_mismatch = os.getenv("KWS_SPECT_FAIL", "0") == "1"
+    over_tol = sum(1 for d in abs_diffs if d > tol)
+    if fail_on_mismatch and (over_tol > 0 or len(expected) != 2000):
+        raise AssertionError(
+            f"spectrogram SRAM mismatch against {hex_path}: "
+            f"{len(mismatches)}/{depth} values differ, over_tol={over_tol}, "
+            f"max_abs={max_abs}, tol={tol}"
+        )
 
 # Layer-config packing
 #   Replicates program_layers() from test_kws_top.py but produces flat byte
@@ -369,38 +465,53 @@ async def _drive_pdm(dut, pdm_bits):
     dut.input_in.value = 0   # deassert valid
 
 
-def _load_wav_pcm(wav_path, target_samples=7_520):
-    """Load a WAV file and return int32 PCM trimmed / zero-padded to target_samples."""
+def _load_wav_pcm(wav_path, target_samples=16_000):
+    """
+    Load a WAV file and return int32 PCM trimmed / zero-padded to target_samples.
+    The default is one second so spect_buffer_ctrl can skip to its center window.
+
+    The RTL datapath is 16-bit after the PDM bit is expanded in chip_core, but
+    full-pipeline training/golden data scales the source WAV to an int14 range
+    before sigma-delta PDM generation. Match that stimulus here.
+    """
     import numpy as np
+    sample_max = (1 << 13) - 1
+
     try:
         from scipy.io import wavfile
         rate, data = wavfile.read(str(wav_path))
     except Exception:
         import soundfile as sf
         data, rate = sf.read(str(wav_path))
-        data = (data * 32767).astype("int16")
 
     data = np.asarray(data)
     if data.ndim == 2:
-        data = data[:, 0]
-    if data.dtype == "int16":
-        pcm = data.astype("int32")
-    elif data.dtype == "float32" or data.dtype == "float64":
-        pcm = (data * 32767).astype("int32")
+        data = data.mean(axis=1)
+
+    if np.issubdtype(data.dtype, np.floating):
+        audio = data.astype("float32")
+    elif np.issubdtype(data.dtype, np.signedinteger):
+        info = np.iinfo(data.dtype)
+        audio = data.astype("float32") / float(abs(info.min))
+    elif np.issubdtype(data.dtype, np.unsignedinteger):
+        info = np.iinfo(data.dtype)
+        midpoint = (info.max + 1) / 2.0
+        audio = (data.astype("float32") - midpoint) / midpoint
     else:
-        pcm = data.astype("int32")
+        audio = data.astype("float32")
 
     # Resample if needed
     if rate != 16_000:
         from scipy.signal import resample_poly
         from math import gcd
         g   = gcd(16_000, int(rate))
-        pcm = resample_poly(pcm, 16_000 // g, rate // g).astype("int32")
+        audio = resample_poly(audio, 16_000 // g, rate // g).astype("float32")
+
+    pcm = (np.clip(audio, -1.0, 1.0) * sample_max).astype("int32")
 
     # Trim / pad
     if len(pcm) >= target_samples:
         return pcm[:target_samples]
-    import numpy as np
     return np.concatenate([pcm, np.zeros(target_samples - len(pcm), dtype="int32")])
 
 
@@ -418,9 +529,9 @@ def _select_manifest_sample(samples):
     if not samples:
         raise AssertionError("test_vectors.json contains no samples")
 
-    sample_keyword = os.getenv("KWS_KEYWORD")
-    sample_index = os.getenv("KWS_SAMPLE_INDEX")
-    sample_match = os.getenv("KWS_SAMPLE_MATCH")
+    sample_keyword = os.getenv("KWS_KEYWORD") or None
+    sample_index = os.getenv("KWS_SAMPLE_INDEX") or None
+    sample_match = os.getenv("KWS_SAMPLE_MATCH") or None
 
     filtered = list(enumerate(samples))
     if sample_keyword:
@@ -635,6 +746,75 @@ def _handle_has_x(handle):
     return 'x' in bits.lower() or 'z' in bits.lower()
 
 
+def _handle_signed_int(handle, width=32, default='?'):
+    if handle is None:
+        return default
+    try:
+        value = handle.value
+        if hasattr(value, 'is_resolvable') and not value.is_resolvable:
+            return 'X'
+        raw = int(value)
+        if raw >= (1 << (width - 1)):
+            raw -= (1 << width)
+        return raw
+    except Exception:
+        return default
+
+
+def _read_kws_scores(dut, class_names):
+    debug_scores = []
+    debug_missing = False
+    for idx, name in enumerate(class_names[:7]):
+        try:
+            handle = getattr(dut.kws_inst, f"debug_gap{idx}")
+        except Exception:
+            debug_missing = True
+            break
+        debug_scores.append((idx, name, _handle_signed_int(handle, width=32)))
+
+    if not debug_missing:
+        if any(score in ('?', 'X') for _, _, score in debug_scores):
+            return debug_scores, "one or more debug_gap scores are X/unavailable"
+        return debug_scores, None
+
+    try:
+        acc = dut.kws_inst.inst_ctrl.global_pool_acc
+    except Exception:
+        return None, "debug_gap wires and global_pool_acc hierarchy are not available"
+
+    scores = []
+    for idx, name in enumerate(class_names):
+        if idx >= 7:
+            break
+        try:
+            score = _handle_signed_int(acc[idx], width=32)
+        except Exception:
+            return None, f"global_pool_acc[{idx}] not available"
+        scores.append((idx, name, score))
+
+    if any(score in ('?', 'X') for _, _, score in scores):
+        return scores, "one or more scores are X/unavailable"
+    return scores, None
+
+
+def _format_kws_scores(scores):
+    if not scores:
+        return "scores unavailable"
+    parts = []
+    for idx, name, score in scores:
+        parts.append(f"{name}({idx})={score}")
+    return "  ".join(parts)
+
+
+def _format_kws_score_ranking(scores):
+    if not scores or any(score in ('?', 'X') for _, _, score in scores):
+        return "ranking unavailable"
+    ranked = sorted(scores, key=lambda item: item[2], reverse=True)
+    margin = ranked[0][2] - ranked[1][2] if len(ranked) > 1 else 0
+    ranked_str = " > ".join(f"{name}({idx})={score}" for idx, name, score in ranked)
+    return f"{ranked_str}  margin={margin}"
+
+
 def _missing_milestone(milestones):
     for name, seen in milestones.items():
         if not seen:
@@ -786,10 +966,18 @@ async def _monitor_kws_x_sources(dut, done_handle, log_limit=24, fail_fast=False
             if bad:
                 _report("MAC source read", cyc, bad)
 
-        if _handle_int(h['state']) == 2 or _handle_is_one(h['mac_clear']):
-            bad = [name for name in ['bias_data', 'mac_bias'] if _handle_has_x(h[name])]
+        if _handle_int(h['state']) == 2:
+            # CLEAR_ACC prepares mac_bias from the combinational bias ROM.
+            # mac_clear is consumed by mac_array on the following edge, so the
+            # old mac_bias value may still be X in this setup cycle.
+            bad = [name for name in ['bias_data'] if _handle_has_x(h[name])]
             if bad:
-                _report("bias load", cyc, bad)
+                _report("bias setup", cyc, bad)
+
+        if _handle_is_one(h['mac_clear']):
+            bad = [name for name in ['mac_bias'] if _handle_has_x(h[name])]
+            if bad:
+                _report("bias clear", cyc, bad)
 
         if _handle_int(h['state']) == 6 or _handle_is_one(h['fs_a_we']) or _handle_is_one(h['fs_b_we']):
             writeback = ['rq_out']
@@ -853,9 +1041,15 @@ async def test_chip_core_e2e(dut):
     sample_idx, s = _select_manifest_sample(samples)
     gt_class = s["ground_truth_class"]
     gt_name  = s["ground_truth_name"]
+    arith_class = s.get("arith_class")
+    arith_name  = s.get("arith_name")
+    pytorch_class = s.get("pytorch_class")
+    pytorch_name  = s.get("pytorch_name")
     wav_path = s["wav"]
+    hex_file = s.get("hex_file", "?")
     dut._log.info(
-        f"=== Audio phase: sample[{sample_idx}] {Path(wav_path).name}  GT={gt_name} ==="
+        f"=== Audio phase: sample[{sample_idx}] {Path(wav_path).name}  "
+        f"hex={hex_file}  GT={gt_name} arith={arith_name} pytorch={pytorch_name} ==="
     )
 
     # WAV → PCM → PDM
@@ -933,6 +1127,9 @@ async def test_chip_core_e2e(dut):
                 if name == 'kws_start':
                     kws_started_cyc = cyc + 1
                     dut._log.info(f"  [KWS start state] {_kws_probe_str(dut)}")
+                elif name == 'spect_done':
+                    await Timer(1, units="step")
+                    _compare_spectrogram_sram(dut, s, manifest_path)
 
         if _handle_is_one(stage_handles['mel_valid']):
             wr_addr = _handle_int(stage_handles['spect_wr_addr'])
@@ -1069,13 +1266,41 @@ async def test_chip_core_e2e(dut):
         f"(real time: {time.time()-t0_real:.0f}s)"
 
     rtl_name = class_names[rtl_class] if rtl_class < len(class_names) else f"cls{rtl_class}"
-    passed   = (rtl_class == gt_class)
+    expected_class = arith_class if arith_class is not None else gt_class
+    expected_name = (
+        arith_name if arith_class is not None
+        else gt_name
+    )
+    expected_source = "manifest arithmetic" if arith_class is not None else "dataset label"
+    passed = (rtl_class == expected_class)
+    label_match = (rtl_class == gt_class)
+    scores, score_warning = _read_kws_scores(dut, class_names)
 
-    dut._log.info(f"  RTL class = {rtl_name} ({rtl_class})  |  GT = {gt_name} ({gt_class})")
+    dut._log.info(
+        f"  Selected sample[{sample_idx}] {Path(wav_path).name}  hex={hex_file}"
+    )
+    dut._log.info(
+        f"  Dataset label = {gt_name} ({gt_class})  |  "
+        f"manifest arithmetic = {arith_name} ({arith_class})  |  "
+        f"manifest PyTorch = {pytorch_name} ({pytorch_class})"
+    )
+    dut._log.info(
+        f"  RTL class = {rtl_name} ({rtl_class})  |  "
+        f"expected[{expected_source}] = {expected_name} ({expected_class})"
+    )
+    if scores is not None:
+        dut._log.info(f"  RTL GAP scores: {_format_kws_scores(scores)}")
+        dut._log.info(f"  RTL GAP ranking: {_format_kws_score_ranking(scores)}")
+    if score_warning:
+        dut._log.warning(f"  RTL GAP score warning: {score_warning}")
+    if not label_match:
+        dut._log.warning(
+            f"  RTL does not match dataset label: label={gt_name} rtl={rtl_name}"
+        )
     dut._log.info(f"  {'PASS' if passed else 'FAIL'}")
 
     assert passed, \
-        f"KWS misclassified '{gt_name}' as '{rtl_name}' — " \
+        f"KWS RTL produced '{rtl_name}', expected '{expected_name}' from {expected_source} — " \
         f"check chip_core wiring or re-run generate_spect_full.py"
 
     dut._log.info("test_chip_core_e2e PASSED")

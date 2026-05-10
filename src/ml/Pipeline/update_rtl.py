@@ -11,7 +11,7 @@ It supports the current 16-, 24-, and 32-filter DS-CNN variants:
   - retargets KWS/chip-core testbenches to the selected model directory
 
 Usage:
-    python3 update_rtl.py --ckpt ../models/dscnn-16full-v1
+    python3 update_rtl.py --ckpt ../models/dscnn-16center-v1
     python3 update_rtl.py --ckpt ../models/dscnn-24full-v1
     python3 update_rtl.py --ckpt ../models/dscnn-32requant-v11 --dry-run
 
@@ -21,6 +21,7 @@ a real non-dry-run update.
 """
 
 import argparse
+import math
 import re
 import shutil
 import sys
@@ -37,6 +38,9 @@ WEIGHT_SRAM_SV = REPO_ROOT / "src/rtl/dscnn/weight_sram/weight_sram.sv"
 WEIGHT_SRAM_DIR = REPO_ROOT / "src/rtl/dscnn/weight_sram"
 KWS_TEST_PY = REPO_ROOT / "src/rtl/dscnn/kws_top/test_kws_top.py"
 CHIP_CORE_TB_PY = REPO_ROOT / "cocotb/chip_core_tb.py"
+CHIP_CORE_SV = REPO_ROOT / "src/chip_core.sv"
+FULL_PIPELINE_TOP_SV = REPO_ROOT / "src/rtl/top/full_pipeline_top.sv"
+PIPELINE_TOP_SV = REPO_ROOT / "src/rtl/top/pipeline_top.sv"
 
 SUPPORTED_FILTERS = (16, 24, 32)
 N_CLASSES = 7
@@ -207,6 +211,53 @@ def count_data_lines(path: Path) -> int:
         return sum(1 for line in f if line.strip() and not line.lstrip().startswith("//"))
 
 
+def compute_input_quant(input_scale: float, q_frac: int = 10, shift: int = 31) -> tuple[int, int]:
+    factor = 1.0 / ((1 << q_frac) * input_scale)
+    mult = round(factor * (1 << shift))
+    return min(max(mult, 0), (1 << 32) - 1), shift
+
+
+def load_input_quant(model_dir: Path, scales_path: Path) -> tuple[float, int, int, int]:
+    """
+    Compute spect_buffer_ctrl input quantizer constants from the QuantStub input scale.
+
+    input_quant.txt is preferred. If it does not exist, fall back to the first
+    row's in_scale from scales.txt so older exported checkpoints still work.
+    """
+    input_quant_path = model_dir / "input_quant.txt"
+    if input_quant_path.exists():
+        vals = {}
+        with open(input_quant_path) as f:
+            for line in f:
+                parts = line.strip().split()
+                if len(parts) == 2:
+                    vals[parts[0]] = parts[1]
+        try:
+            return (
+                float(vals["input_scale"]),
+                int(vals["spect_shift"]),
+                int(vals["input_quant_mult"]),
+                int(vals["input_quant_shift"]),
+            )
+        except KeyError as e:
+            raise ValueError(f"{input_quant_path} is missing field {e}") from e
+
+    with open(scales_path) as f:
+        for line in f:
+            s = line.strip()
+            if not s or s.startswith("layer") or s.startswith("-"):
+                continue
+            parts = s.split()
+            if len(parts) < 6:
+                raise ValueError(f"scales.txt row has old/invalid format: {s}")
+            input_scale = float(parts[2])
+            spect_shift = 10 - round(-math.log2(input_scale))
+            spect_shift = max(0, min(15, spect_shift))
+            input_mult, input_shift = compute_input_quant(input_scale)
+            return input_scale, spect_shift, input_mult, input_shift
+    raise ValueError(f"no layer rows found in {scales_path}")
+
+
 def replace_text(path: Path, new_text: str, dry_run: bool) -> bool:
     old_text = path.read_text()
     changed = old_text != new_text
@@ -325,6 +376,46 @@ def update_kws_test(arch: Arch, model_dir: Path, dry_run: bool) -> bool:
     return True
 
 
+def update_input_quant(spect_shift: int, input_mult: int, input_shift: int, dry_run: bool) -> bool:
+    ok = True
+
+    chip_text = CHIP_CORE_SV.read_text()
+    replacements = [
+        (r"\.SPECT_SHIFT\(\d+\)", f".SPECT_SHIFT({spect_shift})", "SPECT_SHIFT override"),
+        (r"\.INPUT_QUANT_MULT\s*\(\d+\)", f".INPUT_QUANT_MULT ({input_mult})", "INPUT_QUANT_MULT override"),
+        (r"\.INPUT_QUANT_SHIFT\(\d+\)", f".INPUT_QUANT_SHIFT({input_shift})", "INPUT_QUANT_SHIFT override"),
+    ]
+    for pattern, repl, desc in replacements:
+        chip_text, n_chip = re.subn(pattern, repl, chip_text, count=1)
+        if n_chip != 1:
+            print(f"ERROR: could not update {desc} in {CHIP_CORE_SV}")
+            ok = False
+    if ok:
+        changed = replace_text(CHIP_CORE_SV, chip_text, dry_run)
+        print(f"  chip_core.sv: input quant shift={spect_shift}, mult={input_mult}, input_shift={input_shift} ({'would update' if dry_run and changed else 'updated' if changed else 'already current'})")
+
+    for path, label in ((FULL_PIPELINE_TOP_SV, "full_pipeline_top.sv"),
+                        (PIPELINE_TOP_SV, "pipeline_top.sv")):
+        pipe_text = path.read_text()
+        pipe_replacements = [
+            (r"parameter int SPECT_SHIFT = \d+", f"parameter int SPECT_SHIFT = {spect_shift}", "SPECT_SHIFT default"),
+            (r"parameter int INPUT_QUANT_MULT\s*=\s*\d+", f"parameter int INPUT_QUANT_MULT  = {input_mult}", "INPUT_QUANT_MULT default"),
+            (r"parameter int INPUT_QUANT_SHIFT\s*=\s*\d+", f"parameter int INPUT_QUANT_SHIFT = {input_shift}", "INPUT_QUANT_SHIFT default"),
+        ]
+        path_ok = True
+        for pattern, repl, desc in pipe_replacements:
+            pipe_text, n_pipe = re.subn(pattern, repl, pipe_text, count=1)
+            if n_pipe != 1:
+                print(f"ERROR: could not update {desc} in {path}")
+                ok = False
+                path_ok = False
+        if path_ok:
+            changed = replace_text(path, pipe_text, dry_run)
+            print(f"  {label}: input quant shift={spect_shift}, mult={input_mult}, input_shift={input_shift} ({'would update' if dry_run and changed else 'updated' if changed else 'already current'})")
+
+    return ok
+
+
 def copy_weights(weights_src: Path, dry_run: bool) -> bool:
     weights_dest = WEIGHT_SRAM_DIR / "weights.hex"
     if not dry_run:
@@ -399,7 +490,10 @@ def main():
         print("(dry run - no files written)\n")
 
     scales_path, bias_path, weights_path, files_ok = validate_export_files(arch, model_dir)
-    required_sources = [BIAS_SV, FEATURE_SRAM_SV, WEIGHT_SRAM_SV, KWS_TEST_PY, CHIP_CORE_TB_PY]
+    required_sources = [
+        BIAS_SV, FEATURE_SRAM_SV, WEIGHT_SRAM_SV, KWS_TEST_PY,
+        CHIP_CORE_TB_PY, CHIP_CORE_SV, FULL_PIPELINE_TOP_SV, PIPELINE_TOP_SV,
+    ]
     missing_sources = [p for p in required_sources if not p.exists()]
     if missing_sources:
         for p in missing_sources:
@@ -414,8 +508,15 @@ def main():
     ok = True
     print("Applying RTL/testbench updates:")
     if files_ok:
+        try:
+            input_scale, spect_shift, input_mult, input_shift = load_input_quant(model_dir, scales_path)
+        except Exception as e:
+            print(f"ERROR: could not compute input quantizer from {scales_path}: {e}")
+            sys.exit(1)
         ok &= copy_weights(weights_path, args.dry_run)
         ok &= update_bias_sv(arch, bias_path, args.dry_run)
+        print(f"  QuantStub input scale={input_scale:.8f}")
+        ok &= update_input_quant(spect_shift, input_mult, input_shift, args.dry_run)
     else:
         print("  skipping weights/bias updates because exported files are not present")
     ok &= update_feature_sram(arch, args.dry_run)

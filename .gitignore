@@ -18,6 +18,9 @@ venv/
 # Librelane Outputs
 librelane/runs/
 
+# kws_top spectrograms 
+kws_top/spectrograms/*.hex
+
 # Simulation outputs
 run/
 build/
@@ -43,8 +46,25 @@ lint/
 # dataset
 src/ml/Pipeline/speech_commands_v0.02/
 
+# hex lookup tables
+cocotb/hanning.hex
+cocotb/log2_lut.hex
+cocotb/mel_coeffs_sparse.hex
+cocotb/mel_indices.hex
+
+# Large data files
+src/ml/Pipeline/speech_commands_v0.02.tar.gz
+
+# old requant model directories
+# Model output directories
+src/ml/models/dscnn-32requant*/
+
 # outputs
 src/ml/output/
+
+# Keys
+src/ml/models/key
+src/ml/models/key.pub
 
 # caches
 src/ml/__pycache__/

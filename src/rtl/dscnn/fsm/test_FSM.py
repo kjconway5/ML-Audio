@@ -18,7 +18,7 @@ async def reset_dut(dut):
     dut.cfg_addr.value = 0
     dut.cfg_wdata.value = 0
     dut.spect_done.value = 0
-    dut.spect_write_sel.value = 0
+    dut.spect_write_sel.value = 1
     dut.start.value = 0
     dut.weights_ready.value = 1
 
@@ -75,7 +75,7 @@ async def test_leaves_idle_correct(dut):
     await write_cfg(dut, 0xFF, 1)
 
     # make spectrogram ready
-    dut.spect_write_sel.value = 0
+    dut.spect_write_sel.value = 1
     dut.spect_done.value = 1
     await RisingEdge(dut.clk)
     dut.spect_done.value = 0
