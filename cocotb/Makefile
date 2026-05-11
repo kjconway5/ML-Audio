@@ -41,6 +41,7 @@ SIM_SOURCES := \
 	$(RTL)/Log-Mel/rtl/mel_filterbank/mel_filterbank.sv \
 	$(RTL)/Log-Mel/rtl/output_buffer/output_buffer.sv \
 	$(RTL)/Log-Mel/rtl/power_calc/power_calc.sv \
+	$(RTL)/Log-Mel/rtl/spectral_vad/spectral_vad.sv \
 	$(RTL)/Log-Mel/ip/Add.sv \
 	$(RTL)/Log-Mel/ip/AddMopCsv.sv \
 	$(RTL)/Log-Mel/ip/Cpr.sv \

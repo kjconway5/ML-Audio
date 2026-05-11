@@ -50,7 +50,11 @@ module logmel_top #(
     input logic [31:0]          vad_threshold_il,
 
     // VAD output to spect_buffer
-    output logic                vad_active_ol
+    output logic                vad_active_ol,
+
+    // DFT / debug
+    input  logic                dft_vad_obs_en_i,
+    output logic                vad_frame_drop_ol
 );
 
     // Internal Signals
@@ -89,19 +93,21 @@ module logmel_top #(
     logic        vad_active;
     logic        vad_done;
 
-    spectral_vad #(
+spectral_vad #(
     .POWER_W  (POWER_W),
     .N_BINS   (N_BINS),
     .THRESH_W (32)
     ) u_vad (
-    .clk_i           (clk_i),
-    .reset_i         (reset_i),
-    .power_il        (power),
-    .power_valid_il  (power_valid),
-    .fft_sync_il     (fft_sync_il),
-    .threshold_il    (vad_threshold_il),
-    .voice_active_ol (vad_active),
-    .vad_done_ol     (vad_done)
+    .clk_i              (clk_i),
+    .reset_i            (reset_i),
+    .power_il           (power),
+    .power_valid_il     (power_valid),
+    .fft_sync_il        (fft_sync_il),
+    .threshold_il       (vad_threshold_il),
+    .dft_vad_obs_en_i   (dft_vad_obs_en_i), 
+    .vad_frame_drop_ol  (vad_frame_drop_ol),
+    .voice_active_ol    (vad_active),
+    .vad_done_ol        (vad_done)
     );
 
     // mel_filterbank
