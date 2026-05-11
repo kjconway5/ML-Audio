@@ -4,9 +4,9 @@
 `default_nettype none
 
 module chip_core #(
-    parameter NUM_INPUT_PADS,
-    parameter NUM_BIDIR_PADS,
-    parameter NUM_ANALOG_PADS
+    parameter int NUM_INPUT_PADS = 12,
+    parameter int NUM_BIDIR_PADS = 40,
+    parameter int NUM_ANALOG_PADS = 2
     )(
     `ifdef USE_POWER_PINS
     inout  wire VDD,
@@ -41,6 +41,7 @@ module chip_core #(
     localparam int KWS_CLASS0_PAD = 3;
     localparam int KWS_CLASS1_PAD = 4;
     localparam int KWS_CLASS2_PAD = 5;
+    localparam int VAD_DROP_PAD   = 6;
     // PDM mic input pads (input_in bus)
     //   input_in[0] = PDM_DATA  : 1-bit bitstream from mic (1 = positive, 0 = negative)
     //   input_in[1] = PDM_VALID : strobe — one pulse per PDM bit
@@ -96,11 +97,13 @@ module chip_core #(
         bidir_out_r[KWS_CLASS0_PAD] = kws_class_out[0];
         bidir_out_r[KWS_CLASS1_PAD] = kws_class_out[1];
         bidir_out_r[KWS_CLASS2_PAD] = kws_class_out[2];
+        // VAD DFT - High when a frame is dropped
+        bidir_out_r[VAD_DROP_PAD]   = pipeline_vad_frame_drop;
     end
 
     // Tie off unused inputs so lint stays clean
     logic _unused;
-    assign _unused = &{bidir_in, input_in[NUM_INPUT_PADS-1:2], 1'b0};
+    assign _unused = &{bidir_in, input_in[NUM_INPUT_PADS-1:3], 1'b0};
 
     // ---- Boot subsystem ----
 
@@ -255,6 +258,7 @@ module chip_core #(
     wire [15:0] mel_compensated;
     wire mel_compensated_valid;
     wire pipeline_vad_active;
+    wire pipeline_vad_frame_drop;
 
 
     full_pipeline_top #(
@@ -287,8 +291,9 @@ module chip_core #(
         .spect_write_sel    (spect_write_sel),
         .mel_compensated_o       (mel_compensated),
         .mel_compensated_valid_o (mel_compensated_valid),
-        .vad_threshold_i    (vad_threshold),        // NEW
-        .vad_active_o       (pipeline_vad_active),  // NEW
+        // VAD ports
+        .vad_threshold_i    (vad_threshold), 
+        .vad_active_o       (pipeline_vad_active), 
         // Flash ports
         .flash_mel_coeff_we_i   (flash_mel_coeff_we),
         .flash_mel_coeff_addr_i (flash_mel_coeff_addr),
@@ -298,7 +303,10 @@ module chip_core #(
         .flash_mel_index_data_i (flash_mel_index_data),
         .flash_log_lut_we_i     (flash_log_lut_we),
         .flash_log_lut_addr_i   (flash_log_lut_addr),
-        .flash_log_lut_data_i   (flash_log_lut_data)
+        .flash_log_lut_data_i   (flash_log_lut_data),
+        // VAD DFT Ports
+        .dft_vad_obs_en_i   (input_in[2]),
+        .vad_frame_drop_ol  (pipeline_vad_frame_drop)
     );
 
     kws_top kws_inst (

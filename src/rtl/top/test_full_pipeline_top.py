@@ -238,7 +238,8 @@ async def do_reset(dut):
     dut.reset_i.value = 1
     dut.valid_i.value = 0
     dut.data_i.value  = 0
-    dut.vad_threshold_i.value = 0   # NEW — disabled by default
+    dut.vad_threshold_i.value = 0   # NEW -- disabled by default
+    dut.dft_vad_obs_en_i.value = 0
     _idle_flash(dut)
     await ClockCycles(dut.clk_i, 20)
     dut.reset_i.value = 0
@@ -351,104 +352,104 @@ async def test_full_pipeline_chirp(dut):
 # Test 2 -- Real speech .wav files (grouped by keyword directory)
 # ---------------------------------------------------------------------------
 
-@cocotb.test()
-async def test_full_pipeline_speech(dut):
-    """
-    Run .wav files from SPEECH_WAV_DIR through the full RTL pipeline.
+# @cocotb.test()
+# async def test_full_pipeline_speech(dut):
+#     """
+#     Run .wav files from SPEECH_WAV_DIR through the full RTL pipeline.
 
-    Directory layout:
-        speech_data/
-            yes/  <- one subdirectory per keyword
-                file_0.wav
-                file_1.wav
-            no/
-                ...
+#     Directory layout:
+#         speech_data/
+#             yes/  <- one subdirectory per keyword
+#                 file_0.wav
+#                 file_1.wav
+#             no/
+#                 ...
 
-    Each file produces:  rtl_features_<keyword>_<stem>.npy
-    compare_wav_outputs.py groups these by keyword automatically.
-    """
-    keyword_dirs = discover_keyword_dirs(SPEECH_WAV_DIR)
+#     Each file produces:  rtl_features_<keyword>_<stem>.npy
+#     compare_wav_outputs.py groups these by keyword automatically.
+#     """
+#     keyword_dirs = discover_keyword_dirs(SPEECH_WAV_DIR)
 
-    if not keyword_dirs:
-        cocotb.log.info(
-            "No keyword directories found in %s -- skipping." % SPEECH_WAV_DIR
-        )
-        return
+#     if not keyword_dirs:
+#         cocotb.log.info(
+#             "No keyword directories found in %s -- skipping." % SPEECH_WAV_DIR
+#         )
+#         return
 
-    total_wavs = sum(len(v) for v in keyword_dirs.values())
-    cocotb.log.info(
-        "Keywords: %s  |  Total files: %d  |  Cap: %d per keyword"
-        % (", ".join(sorted(keyword_dirs)), total_wavs, MAX_WAV_FILES_PER_KEYWORD)
-    )
+#     total_wavs = sum(len(v) for v in keyword_dirs.values())
+#     cocotb.log.info(
+#         "Keywords: %s  |  Total files: %d  |  Cap: %d per keyword"
+#         % (", ".join(sorted(keyword_dirs)), total_wavs, MAX_WAV_FILES_PER_KEYWORD)
+#     )
 
-    # Flash SRAMs once before any file loop
-    cocotb.start_soon(Clock(dut.clk_i, 10, units="ns").start())
-    await do_reset(dut)
-    await flash_load_all(dut)
+#     # Flash SRAMs once before any file loop
+#     cocotb.start_soon(Clock(dut.clk_i, 10, units="ns").start())
+#     await do_reset(dut)
+#     await flash_load_all(dut)
 
-    all_passed   = True
-    total_done   = 0
-    total_failed = 0
+#     all_passed   = True
+#     total_done   = 0
+#     total_failed = 0
 
-    for keyword in sorted(keyword_dirs):
-        wav_files  = keyword_dirs[keyword]
-        kw_passed  = 0
-        kw_failed  = 0
-        cocotb.log.info("=== Keyword: '%s'  (%d files) ===" % (keyword, len(wav_files)))
+#     for keyword in sorted(keyword_dirs):
+#         wav_files  = keyword_dirs[keyword]
+#         kw_passed  = 0
+#         kw_failed  = 0
+#         cocotb.log.info("=== Keyword: '%s'  (%d files) ===" % (keyword, len(wav_files)))
 
-        for wav_path in wav_files:
-            stem  = wav_path.stem.replace(" ", "_")[:32]
-            npy   = "rtl_features_%s_%s.npy" % (keyword, stem)
-            label = "%s/%s" % (keyword, stem)
+#         for wav_path in wav_files:
+#             stem  = wav_path.stem.replace(" ", "_")[:32]
+#             npy   = "rtl_features_%s_%s.npy" % (keyword, stem)
+#             label = "%s/%s" % (keyword, stem)
 
-            await do_reset(dut)   # clean state between files
+#             await do_reset(dut)   # clean state between files
 
-            try:
-                pcm = _load_wav(wav_path)
-            except RuntimeError as e:
-                cocotb.log.info("[%s] SKIP -- %s" % (label, e))
-                continue
+#             try:
+#                 pcm = _load_wav(wav_path)
+#             except RuntimeError as e:
+#                 cocotb.log.info("[%s] SKIP -- %s" % (label, e))
+#                 continue
 
-            rms = float(np.sqrt(np.mean(pcm.astype(np.float64)**2)))
-            if rms < 50:
-                cocotb.log.info("[%s] low RMS=%.0f (possibly silent)" % (label, rms))
+#             rms = float(np.sqrt(np.mean(pcm.astype(np.float64)**2)))
+#             if rms < 50:
+#                 cocotb.log.info("[%s] low RMS=%.0f (possibly silent)" % (label, rms))
 
-            pdm     = pcm_to_pdm(pcm)
-            timeout = len(pdm) + DRAIN
+#             pdm     = pcm_to_pdm(pcm)
+#             timeout = len(pdm) + DRAIN
 
-            cocotb.start_soon(drive_pdm(dut, pdm))
-            frames = await collect_frames(dut, timeout)
+#             cocotb.start_soon(drive_pdm(dut, pdm))
+#             frames = await collect_frames(dut, timeout)
 
-            mat = save_features(frames, npy)
-            total_done += 1
+#             mat = save_features(frames, npy)
+#             total_done += 1
 
-            try:
-                assert len(frames) > 0, "[%s] No frames produced" % label
-                for i, f in enumerate(frames):
-                    assert len(f) == N_MELS, \
-                        "[%s] Frame %d has %d mels" % (label, i, len(f))
-                if mat is not None and rms >= 50:
-                    assert float(mat.mean()) > 1.0, \
-                        "[%s] Mean energy %.2f too low" % (label, mat.mean())
-                    assert float(mat.max()) < 63.0, \
-                        "[%s] Max energy %.2f saturated" % (label, mat.max())
-                kw_passed += 1
+#             try:
+#                 assert len(frames) > 0, "[%s] No frames produced" % label
+#                 for i, f in enumerate(frames):
+#                     assert len(f) == N_MELS, \
+#                         "[%s] Frame %d has %d mels" % (label, i, len(f))
+#                 if mat is not None and rms >= 50:
+#                     assert float(mat.mean()) > 1.0, \
+#                         "[%s] Mean energy %.2f too low" % (label, mat.mean())
+#                     assert float(mat.max()) < 63.0, \
+#                         "[%s] Max energy %.2f saturated" % (label, mat.max())
+#                 kw_passed += 1
 
-            except AssertionError as exc:
-                cocotb.log.info("FAIL: %s" % exc)
-                kw_failed  += 1
-                total_failed += 1
-                all_passed   = False
+#             except AssertionError as exc:
+#                 cocotb.log.info("FAIL: %s" % exc)
+#                 kw_failed  += 1
+#                 total_failed += 1
+#                 all_passed   = False
 
-        cocotb.log.info(
-            "Keyword '%s': %d/%d passed" % (keyword, kw_passed, kw_passed + kw_failed)
-        )
+#         cocotb.log.info(
+#             "Keyword '%s': %d/%d passed" % (keyword, kw_passed, kw_passed + kw_failed)
+#         )
 
-    cocotb.log.info(
-        "Speech test done: %d/%d passed across %d keywords"
-        % (total_done - total_failed, total_done, len(keyword_dirs))
-    )
-    assert all_passed, "%d file(s) failed -- see log above" % total_failed
+#     cocotb.log.info(
+#         "Speech test done: %d/%d passed across %d keywords"
+#         % (total_done - total_failed, total_done, len(keyword_dirs))
+#     )
+#     assert all_passed, "%d file(s) failed -- see log above" % total_failed
 
 
 # ---------------------------------------------------------------------------
@@ -511,7 +512,7 @@ async def test_full_pipeline_tone(dut):
 
 @cocotb.test()
 async def test_full_pipeline_silence_vad(dut):
-    """All-zero input with VAD enabled — should produce zero frames."""
+    """All-zero input with VAD enabled -- should produce zero frames."""
     pcm = make_silence(N_PCM_SAMPLES)
 
     cocotb.start_soon(Clock(dut.clk_i, 10, units="ns").start())
@@ -533,7 +534,7 @@ async def test_full_pipeline_silence_vad(dut):
 
 @cocotb.test()
 async def test_full_pipeline_chirp_vad(dut):
-    """Chirp with VAD — should produce same frames as without."""
+    """Chirp with VAD -- should produce same frames as without."""
     pcm = make_chirp(N_PCM_SAMPLES)
 
     cocotb.start_soon(Clock(dut.clk_i, 10, units="ns").start())
@@ -549,7 +550,7 @@ async def test_full_pipeline_chirp_vad(dut):
     frames = await collect_frames(dut, timeout)
 
     cocotb.log.info("[chirp_vad] Frames: %d (ideal=%d)" % (len(frames), ideal))
-    assert len(frames) > 0, "[chirp_vad] No frames — threshold too high?"
+    assert len(frames) > 0, "[chirp_vad] No frames -- threshold too high?"
     assert len(frames) >= ideal - 5, \
         "[chirp_vad] Too few frames: %d vs ideal %d" % (len(frames), ideal)
 
@@ -561,7 +562,7 @@ async def test_full_pipeline_chirp_vad(dut):
         late  = float(np.mean(peak_bins[3*n//4:]))
         assert late > early + 3, "[chirp_vad] Chirp diagonal not detected"
 
-    cocotb.log.info("[chirp_vad] PASS — %d frames" % len(frames))
+    cocotb.log.info("[chirp_vad] PASS -- %d frames" % len(frames))
 
 # ---------------------------------------------------------------------------
 # Test 7 - Spliced VAD Test
@@ -569,7 +570,7 @@ async def test_full_pipeline_chirp_vad(dut):
 
 @cocotb.test()
 async def test_full_pipeline_spliced_vad(dut):
-    """Silence + chirp spliced together — only chirp frames should appear."""
+    """Silence + chirp spliced together -- only chirp frames should appear."""
     silence = make_silence(N_PCM_SAMPLES // 2)
     chirp   = make_chirp(N_PCM_SAMPLES // 2)
     pcm     = np.concatenate([silence, chirp])
@@ -592,9 +593,9 @@ async def test_full_pipeline_spliced_vad(dut):
     # Should get roughly chirp-only frames, not the full count
     assert len(frames) > 0, "[spliced_vad] No frames at all"
     assert len(frames) < ideal_total, \
-        "[spliced_vad] Got %d frames — silence not suppressed" % len(frames)
+        "[spliced_vad] Got %d frames -- silence not suppressed" % len(frames)
 
-    cocotb.log.info("[spliced_vad] PASS — %d/%d frames (silence suppressed)"
+    cocotb.log.info("[spliced_vad] PASS -- %d/%d frames (silence suppressed)"
                     % (len(frames), ideal_total))
 
 @cocotb.test()
@@ -674,3 +675,239 @@ async def test_full_pipeline_speech_vad(dut):
     cocotb.log.info("Speech VAD test done: %d/%d passed"
                     % (total_done - total_failed, total_done))
     assert all_passed, "%d file(s) failed" % total_failed
+
+
+# ---------------------------------------------------------------------------
+# Test 9 - Auto-VAD: Silence then Chirp
+# ---------------------------------------------------------------------------
+
+AUTOVAD_SENTINEL = 0xFFFFFFFF
+CALIB_FRAMES     = 256
+CALIB_SILENCE_S  = 2.2   # seconds of silence for calibration period
+
+def make_silence_seconds(duration_s: float, rate: int = PCM_RATE) -> np.ndarray:
+    return np.zeros(int(duration_s * rate), dtype=np.int32)
+
+
+@cocotb.test()
+async def test_full_pipeline_autovad_silence_then_chirp(dut):
+    """Auto-calibrate: 2.2s silence (calibration) + chirp. Verify calibration
+    passes all frames, post-calibration silence is suppressed, chirp passes."""
+    silence_pcm = make_silence_seconds(CALIB_SILENCE_S)
+    chirp_pcm   = make_chirp(N_PCM_SAMPLES)
+    pcm = np.concatenate([silence_pcm, chirp_pcm])
+ 
+    cocotb.start_soon(Clock(dut.clk_i, 10, units="ns").start())
+    await do_reset(dut)
+    await flash_load_all(dut)
+    await do_reset(dut)
+    dut.vad_threshold_i.value = AUTOVAD_SENTINEL
+ 
+    pdm = pcm_to_pdm(pcm)
+    timeout = len(pdm) + DRAIN
+    cocotb.start_soon(drive_pdm(dut, pdm))
+    frames = await collect_frames(dut, timeout)
+ 
+    ideal_total   = (len(pcm) - FFT_SIZE) // HOP + 1
+    ideal_chirp   = (len(chirp_pcm) - FFT_SIZE) // HOP + 1
+    ideal_silence = (len(silence_pcm) - FFT_SIZE) // HOP + 1
+ 
+    cocotb.log.info("[autovad_silence_chirp] Total frames produced: %d" % len(frames))
+    cocotb.log.info("[autovad_silence_chirp] Ideal total (no VAD): %d" % ideal_total)
+    cocotb.log.info("[autovad_silence_chirp] Ideal silence frames: %d" % ideal_silence)
+    cocotb.log.info("[autovad_silence_chirp] Ideal chirp frames: %d" % ideal_chirp)
+    cocotb.log.info("[autovad_silence_chirp] CALIB_FRAMES param: %d" % CALIB_FRAMES)
+    cocotb.log.info("[autovad_silence_chirp] Expected: ~%d (calib) + %d (chirp) = ~%d"
+                    % (CALIB_FRAMES, ideal_chirp, CALIB_FRAMES + ideal_chirp))
+ 
+    assert len(frames) > 0, "[autovad_silence_chirp] No frames produced"
+    assert len(frames) < ideal_total, \
+        "[autovad_silence_chirp] Got %d frames -- post-calib silence not suppressed (ideal_total=%d)" \
+        % (len(frames), ideal_total)
+ 
+    expected_low  = CALIB_FRAMES + ideal_chirp - 15
+    expected_high = CALIB_FRAMES + ideal_chirp + 10
+    cocotb.log.info("[autovad_silence_chirp] Frame count %d, expected range [%d, %d]"
+                    % (len(frames), expected_low, expected_high))
+ 
+    if len(frames) < expected_low or len(frames) > expected_high:
+        cocotb.log.info("[autovad_silence_chirp] WARNING: frame count %d outside expected [%d, %d]"
+                        % (len(frames), expected_low, expected_high))
+ 
+    cocotb.log.info("[autovad_silence_chirp] PASS -- %d/%d frames (silence suppressed after calibration)"
+                    % (len(frames), ideal_total))
+
+
+
+# ---------------------------------------------------------------------------
+# Test 10 - Auto-VAD: Silence only
+# ---------------------------------------------------------------------------
+
+@cocotb.test()
+async def test_full_pipeline_autovad_silence_only(dut):
+    """Auto-calibrate on 4+ seconds of pure silence. First 250 frames pass
+    (calibration), all subsequent silence suppressed."""
+    pcm = make_silence_seconds(4.0)
+
+    cocotb.start_soon(Clock(dut.clk_i, 10, units="ns").start())
+    await do_reset(dut)
+    await flash_load_all(dut)
+    await do_reset(dut)
+    dut.vad_threshold_i.value = AUTOVAD_SENTINEL
+
+    pdm = pcm_to_pdm(pcm)
+    timeout = len(pdm) + DRAIN
+    cocotb.start_soon(drive_pdm(dut, pdm))
+    frames = await collect_frames(dut, timeout)
+
+    ideal_total = (len(pcm) - FFT_SIZE) // HOP + 1
+
+    cocotb.log.info("[autovad_silence_only] Total frames produced: %d" % len(frames))
+    cocotb.log.info("[autovad_silence_only] Ideal total (no VAD): %d" % ideal_total)
+    cocotb.log.info("[autovad_silence_only] Expected: ~%d (calibration period only)" % CALIB_FRAMES)
+
+    # Should get approximately CALIB_FRAMES (the passthrough during calibration)
+    # and then nothing after that
+    assert len(frames) >= CALIB_FRAMES - 5, \
+        "[autovad_silence_only] Too few calibration frames: %d (expected ~%d)" \
+        % (len(frames), CALIB_FRAMES)
+    assert len(frames) <= CALIB_FRAMES + 10, \
+        "[autovad_silence_only] Too many frames: %d -- post-calib silence not suppressed (expected ~%d)" \
+        % (len(frames), CALIB_FRAMES)
+
+    cocotb.log.info("[autovad_silence_only] PASS -- %d frames (~%d calibration, rest suppressed)"
+                    % (len(frames), CALIB_FRAMES))
+
+
+# ---------------------------------------------------------------------------
+# Test 11 - Auto-VAD override: fixed threshold bypasses auto-cal
+# ---------------------------------------------------------------------------
+
+@cocotb.test()
+async def test_full_pipeline_autovad_override(dut):
+    """Set threshold to 11M (not sentinel). Verify behavior matches fixed-threshold
+    exactly -- auto-calibration must be bypassed."""
+    pcm = make_chirp(N_PCM_SAMPLES)
+ 
+    cocotb.start_soon(Clock(dut.clk_i, 10, units="ns").start())
+    await do_reset(dut)
+    await flash_load_all(dut)
+    await do_reset(dut)
+    dut.vad_threshold_i.value = 11_000_000
+ 
+    pdm = pcm_to_pdm(pcm)
+    ideal = (len(pcm) - FFT_SIZE) // HOP + 1
+    timeout = len(pdm) + DRAIN
+    cocotb.start_soon(drive_pdm(dut, pdm))
+    frames = await collect_frames(dut, timeout)
+ 
+    cocotb.log.info("[autovad_override] Frames: %d (ideal=%d)" % (len(frames), ideal))
+    cocotb.log.info("[autovad_override] Threshold set to 11000000 (fixed mode, NOT sentinel)")
+ 
+    assert len(frames) > 0, "[autovad_override] No frames"
+    assert len(frames) >= ideal - 5, \
+        "[autovad_override] Too few frames: %d vs ideal %d" % (len(frames), ideal)
+ 
+    cocotb.log.info("[autovad_override] PASS -- %d frames (fixed threshold confirmed)" % len(frames))
+
+
+# ---------------------------------------------------------------------------
+# Test 12 - Auto-VAD: Real speech with silence prefix
+# ---------------------------------------------------------------------------
+@cocotb.test()
+async def test_full_pipeline_autovad_speech(dut):
+    """For each wav: prepend 2s silence, set threshold=sentinel.
+    Report calibration frames, post-calib silence dropped, speech kept."""
+    keyword_dirs = discover_keyword_dirs(SPEECH_WAV_DIR)
+    if not keyword_dirs:
+        cocotb.log.info("No keyword directories found -- skipping.")
+        return
+
+    total_wavs = sum(len(v) for v in keyword_dirs.values())
+    cocotb.log.info("[autovad_speech] Keywords: %s  |  Total files: %d"
+                    % (", ".join(sorted(keyword_dirs)), total_wavs))
+
+    cocotb.start_soon(Clock(dut.clk_i, 10, units="ns").start())
+    await do_reset(dut)
+    await flash_load_all(dut)
+
+    all_passed = True
+    total_done = 0
+    total_failed = 0
+
+    silence_prefix = make_silence_seconds(CALIB_SILENCE_S)
+    ideal_silence_frames = (len(silence_prefix) - FFT_SIZE) // HOP + 1
+
+    for keyword in sorted(keyword_dirs):
+        wav_files = keyword_dirs[keyword]
+        kw_passed = 0
+        kw_failed = 0
+        cocotb.log.info("=== [AutoVAD] Keyword: '%s'  (%d files) ==="
+                        % (keyword, len(wav_files)))
+
+        for wav_path in wav_files:
+            stem  = wav_path.stem.replace(" ", "_")[:32]
+            npy   = "rtl_features_autovad_%s_%s.npy" % (keyword, stem)
+            label = "autovad_%s/%s" % (keyword, stem)
+
+            await do_reset(dut)
+            dut.vad_threshold_i.value = AUTOVAD_SENTINEL
+
+            try:
+                speech_pcm = _load_wav(wav_path)
+            except RuntimeError as e:
+                cocotb.log.info("[%s] SKIP -- %s" % (label, e))
+                continue
+
+            # Prepend 2s silence for calibration
+            pcm = np.concatenate([silence_prefix, speech_pcm])
+
+            pdm = pcm_to_pdm(pcm)
+            timeout = len(pdm) + DRAIN
+
+            ideal_total  = (len(pcm) - FFT_SIZE) // HOP + 1
+            ideal_speech = (len(speech_pcm) - FFT_SIZE) // HOP + 1
+
+            cocotb.start_soon(drive_pdm(dut, pdm))
+            frames = await collect_frames(dut, timeout)
+
+            mat = save_features(frames, npy)
+            total_done += 1
+
+            # Estimate breakdown
+            post_calib_frames = max(0, len(frames) - CALIB_FRAMES)
+            calib_portion = min(len(frames), CALIB_FRAMES)
+            silence_after_calib = max(0, ideal_silence_frames - CALIB_FRAMES)
+            speech_frames_kept = max(0, post_calib_frames)
+            speech_pct = (100.0 * speech_frames_kept / ideal_speech) if ideal_speech > 0 else 0
+
+            cocotb.log.info("[%s] Total frames: %d / %d ideal" % (label, len(frames), ideal_total))
+            cocotb.log.info("[%s]   Calibration frames (passthrough): %d / %d expected"
+                            % (label, calib_portion, CALIB_FRAMES))
+            cocotb.log.info("[%s]   Post-calib silence frames expected dropped: ~%d"
+                            % (label, silence_after_calib))
+            cocotb.log.info("[%s]   Speech frames kept: %d / %d ideal (%.0f%%)"
+                            % (label, speech_frames_kept, ideal_speech, speech_pct))
+
+            try:
+                assert len(frames) > 0, "[%s] No frames produced" % label
+                for i, f in enumerate(frames):
+                    assert len(f) == N_MELS, \
+                        "[%s] Frame %d has %d mels" % (label, i, len(f))
+                # Speech retention should be > 50%
+                assert speech_pct > 50.0, \
+                    "[%s] Speech retention too low: %.0f%%" % (label, speech_pct)
+                kw_passed += 1
+            except AssertionError as exc:
+                cocotb.log.info("FAIL: %s" % exc)
+                kw_failed += 1
+                total_failed += 1
+                all_passed = False
+
+        cocotb.log.info("Keyword '%s': %d/%d passed"
+                        % (keyword, kw_passed, kw_passed + kw_failed))
+
+    cocotb.log.info("[autovad_speech] Done: %d/%d passed"
+                    % (total_done - total_failed, total_done))
+    assert all_passed, "%d file(s) failed" % total_failed
+

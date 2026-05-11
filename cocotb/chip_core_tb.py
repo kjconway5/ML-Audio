@@ -5,7 +5,7 @@
 chip_core_tb.py
 End-to-end cocotb testbench for chip_core.sv
 
-DUT: chip_core (1×1 slot — NUM_INPUT_PADS=12, NUM_BIDIR_PADS=40, NUM_ANALOG_PADS=2)
+DUT: chip_core (1×1 slot -- NUM_INPUT_PADS=12, NUM_BIDIR_PADS=40, NUM_ANALOG_PADS=2)
 
 Pad / signal mapping
 --------------------
@@ -15,14 +15,14 @@ Pad / signal mapping
   bidir_out[5:3] → KWS_CLASS[2:0] : winning class index (valid while DONE is high)
 
   input_in[0]  → PDM_DATA  : 1-bit PDM stream (1 = positive, 0 = negative)
-  input_in[1]  → PDM_VALID : strobe — one pulse per PDM bit (same convention as
+  input_in[1]  → PDM_VALID : strobe -- one pulse per PDM bit (same convention as
                               test_full_pipeline_top.py's valid_i)
 
 Tests
 -----
-  1. test_chip_core_boot   — mini UART boot with synthetic data; verifies ACK
+  1. test_chip_core_boot   -- mini UART boot with synthetic data; verifies ACK
                              responses, boot_done release, and pad OE directions
-  2. test_chip_core_e2e    — full boot with real model weights + mel coefficients,
+  2. test_chip_core_e2e    -- full boot with real model weights + mel coefficients,
                              drives PDM audio derived from a speech-commands WAV,
                              and verifies the KWS class output on the bidir pads
 """
@@ -37,7 +37,7 @@ from pathlib         import Path
 NUM_INPUT_PADS = 12
 NUM_BIDIR_PADS = 40
 
-# Pad indices — must match chip_core.sv localparam
+# Pad indices -- must match chip_core.sv localparam
 UART_RX_PAD    = 0
 UART_TX_PAD    = 1
 KWS_DONE_PAD   = 2
@@ -54,7 +54,7 @@ CLK_PERIOD_NS = 40
 UART_PRESCALE = 1    # matches `ifdef SIM in chip_core.sv
 BIT_CYCLES    = UART_PRESCALE * 8   # 8 cycles/bit in sim
 
-# Boot protocol constants — must match boot_pkg.sv
+# Boot protocol constants -- must match boot_pkg.sv
 SYNC_0    = 0xAA
 SYNC_1    = 0x55
 ACK_BYTE  = 0x06
@@ -388,25 +388,25 @@ async def _boot_chip(dut, mini=False):
         layer_cfgs   = load_layer_cfgs(SCALES_TXT, n_filters=32)
         cfg_fields, cfg_mults = _pack_layer_cfgs(layer_cfgs)
 
-    # Log LUT — 16-bit words packed lo/hi
+    # Log LUT -- 16-bit words packed lo/hi
     lut_payload = []
     for w in lut_words:
         lut_payload += [w & 0xFF, (w >> 8) & 0xFF]
     await _send_packet(dut, _make_target(MOD_FEATURES, FEAT_LOG_LUT), 0, lut_payload)
     dut._log.info(f"  Log LUT loaded ({len(lut_words)} words)")
 
-    # Mel coefficients — 16-bit words packed lo/hi
+    # Mel coefficients -- 16-bit words packed lo/hi
     mel_payload = []
     for w in mel_words:
         mel_payload += [w & 0xFF, (w >> 8) & 0xFF]
     await _send_packet(dut, _make_target(MOD_FEATURES, FEAT_MEL_COEFF), 0, mel_payload)
     dut._log.info(f"  Mel coeffs loaded ({len(mel_words)} words)")
 
-    # Mel meta / indices — 8-bit bytes
+    # Mel meta / indices -- 8-bit bytes
     await _send_packet(dut, _make_target(MOD_FEATURES, FEAT_MEL_META), 0, meta_bytes)
     dut._log.info(f"  Mel indices loaded ({len(meta_bytes)} bytes)")
 
-    # DS-CNN weights — 8-bit bytes
+    # DS-CNN weights -- 8-bit bytes
     w_payload = [b & 0xFF for b in weight_bytes]
     await _send_packet(dut, _make_target(MOD_DSCNN, DSCNN_WEIGHTS), 0, w_payload)
     dut._log.info(f"  Weights loaded ({len(weight_bytes)} bytes)")
@@ -421,7 +421,7 @@ async def _boot_chip(dut, mini=False):
 
     # Release inference reset
     await _send_packet(dut, _make_target(MOD_CONTROL, CTRL_BOOT_DONE), 0, [])
-    dut._log.info("  boot_done asserted — pipeline + KWS out of reset")
+    dut._log.info("  boot_done asserted -- pipeline + KWS out of reset")
 
     await ClockCycles(dut.clk, 10)
 
@@ -457,7 +457,7 @@ async def _drive_pdm(dut, pdm_bits):
     """
     Drive PDM bits through input_in[1:0].
       bit 0 = PDM_DATA  (the PDM bit value)
-      bit 1 = PDM_VALID (strobe — always 1 while driving audio)
+      bit 1 = PDM_VALID (strobe -- always 1 while driving audio)
     One PDM bit per chip-clock cycle, identical to test_full_pipeline_top.py.
     """
     for b in pdm_bits:
@@ -987,7 +987,7 @@ async def _monitor_kws_x_sources(dut, done_handle, log_limit=24, fail_fast=False
 
 
 
-# Test 2 — full end-to-end KWS
+# Test 2 -- full end-to-end KWS
 
 @cocotb.test()
 async def test_chip_core_e2e(dut):
@@ -1293,7 +1293,7 @@ async def test_chip_core_e2e(dut):
     dut._log.info(f"  {'PASS' if passed else 'FAIL'}")
 
     assert passed, \
-        f"KWS RTL produced '{rtl_name}', expected '{expected_name}' from {expected_source} — " \
+        f"KWS RTL produced '{rtl_name}', expected '{expected_name}' from {expected_source} -- " \
         f"check chip_core wiring or re-run generate_spect_full.py"
 
     dut._log.info("test_chip_core_e2e PASSED")

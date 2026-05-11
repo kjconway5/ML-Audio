@@ -305,24 +305,51 @@ class _CompFIR:
 
 
 class VadSpectral:
-    """
-    Golden model for spectral_vad.sv.
-    
-    Sums power_calc output across all N_BINS frequency bins per frame.
-    If total energy > threshold, frame is voiced.
-    
-    threshold=None disables VAD (all frames pass).
-    """
-    
-    def __init__(self, threshold=None, n_bins=N_BINS):
+    SENTINEL = 0xFFFFFFFF  # matches RTL all-ones sentinel
+
+    def __init__(self, threshold=None, n_bins=N_BINS,
+                 auto_calibrate=False, calib_frames=256,
+                 warmup_frames=1):
         self.threshold = threshold
         self.n_bins = n_bins
-    
+        self.auto_calibrate = auto_calibrate
+        self.calib_frames = calib_frames
+        self.warmup_frames = warmup_frames
+        self._warmup_cnt = 0
+        self._calib_cnt = 0
+        self._calib_sum = 0
+        self._calib_shift = int(np.log2(calib_frames))  # must be power of two
+        self._auto_threshold = None
+
     def is_voiced(self, power: np.ndarray) -> bool:
-        if self.threshold is None:
-            return True
         energy = int(np.sum(power[:self.n_bins].astype(np.uint64)))
         energy = min(energy, (1 << 32) - 1)
+
+        # Mode: disabled
+        if self.threshold is None and not self.auto_calibrate:
+            return True
+
+        # Mode: auto-calibrating
+# Mode: auto-calibrating (mean-based with warmup skip)
+        if self.auto_calibrate:
+            if self._auto_threshold is None:
+                # Skip warmup frames (startup transient)
+                if self._warmup_cnt < self.warmup_frames:
+                    self._warmup_cnt += 1
+                    return True  # pass through during warmup
+                # Accumulate sum for mean
+                self._calib_sum += energy
+                self._calib_cnt += 1
+                if self._calib_cnt >= self.calib_frames:
+                    calib_mean = self._calib_sum >> self._calib_shift
+                    # 2.5x mean = (mean << 1) + (mean >> 1)
+                    self._auto_threshold = min(
+                        (calib_mean << 1) + (calib_mean >> 1),
+                        (1 << 32) - 1)
+                return True  # pass all frames during calibration
+            return energy > self._auto_threshold
+
+        # Mode: fixed threshold
         return energy > self.threshold
 
 
@@ -562,12 +589,18 @@ class FullPipelineGoldenExtractor:
 
     DECIM = 63
 
-    def __init__(self, bfp_compensate: bool = True, vad_threshold=None):
+    def __init__(self, bfp_compensate: bool = True, vad_threshold=None,
+             auto_calibrate=False, calib_frames=256, warmup_frames=1):
         self._stfft = GoldenExtractor(bfp_compensate=bfp_compensate)
         self._cic   = _CICDecimator()
         self._fir   = _CompFIR()
         self.bfp_compensate = bfp_compensate
-        self.vad = VadSpectral(threshold=vad_threshold)
+        self.vad = VadSpectral(
+            threshold=vad_threshold,
+            auto_calibrate=auto_calibrate,
+            calib_frames=calib_frames,
+            warmup_frames=warmup_frames
+        )
 
     def extract(self, pcm: np.ndarray) -> np.ndarray:
         """
