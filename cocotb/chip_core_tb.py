@@ -82,16 +82,18 @@ _ML        = _SRC / "ml"
 _RTL       = _SRC / "rtl"
 _KWS_DIR   = _RTL / "dscnn/kws_top"
 _LOGMEL    = _RTL / "Log-Mel/data"
-_MODEL_DIR = _ML / "models/dscnn-24full-v1"
+_MODEL_DIR = _ML / "models/dscnn-24center-v1"
 
 LOG_LUT_HEX   = _LOGMEL    / "log2_lut.hex"
 MEL_COEFF_HEX = _LOGMEL    / "mel_coeffs_sparse.hex"
 MEL_INDEX_HEX = _LOGMEL    / "mel_indices.hex"
 WEIGHTS_HEX   = _MODEL_DIR / "weights.hex"
+BIAS_HEX      = _MODEL_DIR / "bias.hex"
 SCALES_TXT    = _MODEL_DIR / "scales.txt"
 MANIFEST_JSON = _KWS_DIR   / "test_vectors.json"
 SPECT_DIR     = _KWS_DIR   / "spectrograms"
 MODEL_FILTERS = 24
+SIM_CORE_RESULTS_TXT = _MODEL_DIR / "sim_core_results.txt"
 
 
 def _manifest_json_path():
@@ -129,7 +131,7 @@ def _load_hex(path, signed=False, width=8):
 #   arrays suitable for UART packet payloads.
 
 sys.path.insert(0, str(_KWS_DIR))
-from rtl_golden import load_layer_cfgs   # noqa: E402  (import after path insert)
+from rtl_golden import load_layer_cfgs, rtl_golden_predict   # noqa: E402  (import after path insert)
 
 def _pack_layer_cfgs(layer_cfgs):
     """Return (field_bytes[0x00..0x9F], mult_bytes[0xA0..0xC7])."""
@@ -369,7 +371,7 @@ async def _drive_pdm(dut, pdm_bits):
     dut.input_in.value = 0   # deassert valid
 
 
-def _load_wav_pcm(wav_path, target_samples=7_520):
+def _load_wav_pcm(wav_path, target_samples=16_000):
     """Load a WAV file and return int32 PCM trimmed / zero-padded to target_samples."""
     import numpy as np
     try:
@@ -469,6 +471,102 @@ def _select_manifest_sample(samples):
         )
 
     return filtered[0]
+
+
+def _class_label(class_names, class_idx):
+    return class_names[class_idx] if class_idx < len(class_names) else f"cls{class_idx}"
+
+
+def _sample_tag(sample_idx, sample):
+    wav = Path(sample.get("wav", ""))
+    return f"{sample_idx}:{wav.stem or wav.name}"
+
+
+def _sample_hex_path(sample):
+    hex_file = Path(sample["hex_file"])
+    if hex_file.is_absolute():
+        return hex_file
+
+    repo_root = Path(__file__).resolve().parent.parent
+    for candidate in (Path.cwd() / hex_file, repo_root / hex_file, _KWS_DIR / hex_file):
+        if candidate.exists():
+            return candidate
+    return _KWS_DIR / hex_file
+
+
+def _gap_scores_str(class_names, gap_scores):
+    return "  ".join(
+        f"{_class_label(class_names, idx)}:{score}"
+        for idx, score in enumerate(gap_scores)
+    )
+
+
+def _python_arithmetic_summary(sample_idx, sample, class_names):
+    spect_int8 = _load_hex(_sample_hex_path(sample), signed=True, width=8)
+    if len(spect_int8) != 2000:
+        raise AssertionError(
+            f"Sample {sample_idx}: expected 2000 spectrogram values, got {len(spect_int8)}"
+        )
+
+    weights = _load_hex(WEIGHTS_HEX, signed=True, width=8)
+    biases = _load_hex(BIAS_HEX, signed=True, width=32)
+    layer_cfgs = load_layer_cfgs(SCALES_TXT, n_filters=MODEL_FILTERS)
+
+    arith_class, gap_scores = rtl_golden_predict(
+        spect_int8, weights, biases, layer_cfgs
+    )
+    sorted_gap = sorted(gap_scores, reverse=True)
+    margin = sorted_gap[0] - sorted_gap[1] if len(sorted_gap) >= 2 else 0
+
+    return {
+        "class": arith_class,
+        "name": _class_label(class_names, arith_class),
+        "gap_scores": gap_scores,
+        "gap_scores_str": _gap_scores_str(class_names, gap_scores),
+        "margin": margin,
+    }
+
+
+def _sim_core_results_path():
+    path = Path(os.getenv("KWS_SIM_CORE_RESULTS", str(SIM_CORE_RESULTS_TXT)))
+    if path.is_absolute():
+        return path
+    return Path(__file__).resolve().parent.parent / path
+
+
+def _write_sim_core_result(
+    *,
+    sample_idx,
+    sample,
+    class_names,
+    rtl_class,
+    rtl_name,
+    gt_class,
+    gt_name,
+    arith,
+    passed,
+):
+    result_path = _sim_core_results_path()
+    result_path.parent.mkdir(parents=True, exist_ok=True)
+
+    status = "PASS" if passed else "FAIL"
+    lines = [
+        f"time: {time.strftime('%Y-%m-%d %H:%M:%S')}",
+        f"sample_tag: {_sample_tag(sample_idx, sample)}",
+        f"wav: {Path(sample.get('wav', '')).name}",
+        f"ground_truth: {gt_name} ({gt_class})",
+        f"rtl_classification: {rtl_name} ({rtl_class})",
+        f"python_arithmetic_classification: {arith['name']} ({arith['class']})",
+        f"gap_scores: {arith['gap_scores_str']}",
+        f"gap_margin: {arith['margin']}",
+        f"status: {status}",
+        "",
+    ]
+
+    with result_path.open("a") as f:
+        f.write("\n".join(lines))
+
+    return result_path, lines
 
 # KWS output reader
 
@@ -823,7 +921,7 @@ async def test_chip_core_e2e(dut):
     # Check data files
     manifest_path = _manifest_json_path()
     for p in [LOG_LUT_HEX, MEL_COEFF_HEX, MEL_INDEX_HEX,
-              WEIGHTS_HEX, SCALES_TXT, manifest_path]:
+              WEIGHTS_HEX, BIAS_HEX, SCALES_TXT, manifest_path]:
         if not Path(p).exists():
             raise FileNotFoundError(
                 f"Missing: {p}\n"
@@ -854,9 +952,15 @@ async def test_chip_core_e2e(dut):
     gt_class = s["ground_truth_class"]
     gt_name  = s["ground_truth_name"]
     wav_path = s["wav"]
+    arith = _python_arithmetic_summary(sample_idx, s, class_names)
     dut._log.info(
         f"=== Audio phase: sample[{sample_idx}] {Path(wav_path).name}  GT={gt_name} ==="
     )
+    dut._log.info(
+        f"  Python arithmetic class = {arith['name']} ({arith['class']})  "
+        f"margin={arith['margin']}"
+    )
+    dut._log.info(f"  GAP scores: {arith['gap_scores_str']}")
 
     # WAV → PCM → PDM
     pcm      = _load_wav_pcm(wav_path)
@@ -1068,11 +1172,28 @@ async def test_chip_core_e2e(dut):
         f"kws_done never asserted within {kws_timeout_cycles:,} cycles  " \
         f"(real time: {time.time()-t0_real:.0f}s)"
 
-    rtl_name = class_names[rtl_class] if rtl_class < len(class_names) else f"cls{rtl_class}"
+    rtl_name = _class_label(class_names, rtl_class)
     passed   = (rtl_class == gt_class)
 
-    dut._log.info(f"  RTL class = {rtl_name} ({rtl_class})  |  GT = {gt_name} ({gt_class})")
-    dut._log.info(f"  {'PASS' if passed else 'FAIL'}")
+    result_path, result_lines = _write_sim_core_result(
+        sample_idx=sample_idx,
+        sample=s,
+        class_names=class_names,
+        rtl_class=rtl_class,
+        rtl_name=rtl_name,
+        gt_class=gt_class,
+        gt_name=gt_name,
+        arith=arith,
+        passed=passed,
+    )
+
+    dut._log.info("=" * 72)
+    dut._log.info("SIM-CORE RESULT")
+    for line in result_lines:
+        if line:
+            dut._log.info(f"  {line}")
+    dut._log.info(f"  result_file: {result_path}")
+    dut._log.info("=" * 72)
 
     assert passed, \
         f"KWS misclassified '{gt_name}' as '{rtl_name}' — " \

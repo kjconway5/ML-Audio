@@ -1,0 +1,9 @@
+time: 2026-05-11 00:41:26
+sample_tag: 34:b9f46737_nohash_4
+wav: b9f46737_nohash_4.wav
+ground_truth: yes (6)
+rtl_classification: yes (6)
+python_arithmetic_classification: yes (6)
+gap_scores: no:563  off:-461  on:-1128  silence:-2092  unknown:669  wow:-290  yes:1342
+gap_margin: 673
+status: PASS

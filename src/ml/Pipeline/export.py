@@ -10,6 +10,7 @@ Outputs written to the same directory as the checkpoint:
     weights.hex  — all INT8 weights concatenated, one byte per line (2-digit hex)
     bias.hex     — all INT32 biases concatenated, one per line (8-digit hex)
     scales.txt   — per-layer requant shift values (paste into LAYER_CFGS in test)
+    input_quant.txt — spect_buffer_ctrl input requant constants
     bias_DFFs.sv snippet printed to stdout for updating bias_dff/bias_DFFs.sv
 """
 
@@ -47,6 +48,24 @@ def compute_mult_shift(scale: float) -> tuple:
     shift   = max(0, min(31, math.ceil(raw_exp) - 1))
     mult    = round(scale * (1 << (shift + 32)))
     mult    = min(max(mult, 0), (1 << 32) - 1)   # clamp to 32-bit unsigned
+    return mult, shift
+
+
+def compute_input_quant(scale: float, q_frac: int = 10, shift: int = 31) -> tuple:
+    """
+    Encode the log-mel input quantizer for spect_buffer_ctrl.sv.
+
+    The frontend emits Q6.q_frac log-mel values. The model expects:
+        int8 = round((q_fixed / 2^q_frac) / scale)
+
+    RTL implements:
+        int8 = round(q_fixed * mult / 2^shift)
+    """
+    if scale <= 0:
+        raise ValueError(f"input scale must be positive, got {scale}")
+    factor = 1.0 / ((1 << q_frac) * scale)
+    mult = round(factor * (1 << shift))
+    mult = min(max(mult, 0), (1 << 32) - 1)
     return mult, shift
 
 
@@ -98,7 +117,7 @@ def load_model(ckpt_path: Path) -> torch.nn.Module:
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--ckpt", type=Path, default=MODEL_DIR.parent / "dscnn-32full-v1" / "dscnn-32full-v1.pt")
+    parser.add_argument("--ckpt", type=Path, default=MODEL_DIR.parent / "dscnn-24center-v1" / "dscnn-24center-v1.pt")
     args = parser.parse_args()
 
     ckpt_path = args.ckpt
@@ -203,15 +222,24 @@ def main():
 
     # ── QuantStub input scale (for generate_spect.py / spect_buffer_ctrl) ─────
     # The mel features are Q6.10 fixed-point (divide by 2^Q_FRAC to get float log2).
-    # RTL applies: int8 = Q6.10_uint16 >> SPECT_SHIFT
-    # Match condition: 2^SPECT_SHIFT ≈ 2^Q_FRAC / (1/scale) = 2^Q_FRAC * scale
-    # → SPECT_SHIFT = round(Q_FRAC + log2(scale)) = Q_FRAC - round(-log2(scale))
+    # Legacy RTL applies: int8 = Q6.10_uint16 >> SPECT_SHIFT.
+    # New RTL applies:    int8 = round(Q6.10_uint16 * INPUT_QUANT_MULT / 2^INPUT_QUANT_SHIFT).
     Q_FRAC_LOG = 10  # must match golden_model.py Q_FRAC
     input_scale = float(model.quant.scale)
     spect_shift = Q_FRAC_LOG - round(-math.log2(input_scale))
     spect_shift = max(0, min(15, spect_shift))
-    print(f"\nQuantStub scale   : {input_scale:.8f}  → SPECT_SHIFT={spect_shift}")
-    print("  (Update SPECT_SHIFT in spect_buffer_ctrl.sv if needed)")
+    input_mult, input_shift = compute_input_quant(input_scale, q_frac=Q_FRAC_LOG)
+    input_quant_path = out_dir / "input_quant.txt"
+    with open(input_quant_path, "w") as f:
+        f.write(f"input_scale {input_scale:.10f}\n")
+        f.write(f"q_frac {Q_FRAC_LOG}\n")
+        f.write(f"spect_shift {spect_shift}\n")
+        f.write(f"input_quant_mult {input_mult}\n")
+        f.write(f"input_quant_shift {input_shift}\n")
+    print(f"\nQuantStub scale   : {input_scale:.8f}")
+    print(f"  legacy SPECT_SHIFT={spect_shift}")
+    print(f"  input requant   : mult={input_mult} shift={input_shift}")
+    print(f"input_quant.txt   : {input_quant_path}")
 
     # ── bias_DFFs.sv case statement snippet ───────────────────────────────────
     total_biases = len(all_biases)

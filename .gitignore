@@ -18,6 +18,13 @@ venv/
 # Librelane Outputs
 librelane/runs/
 
+# .hex files
+cocotb/hanning.hex
+cocotb/log2_lut.hex
+cocotb/mel_coeffs_sparse.hex
+cocotb/mel_indices.hex
+
+
 # Simulation outputs
 run/
 build/
@@ -68,6 +75,7 @@ src/rtl/Log-Mel/rtl/log_top/*.hex
 
 # Results
 results.json
+kws_sim_core_results.html
 /processed_features/
 /data/
 /output/
@@ -99,9 +107,10 @@ src/rtl/Log-Mel/rtl/logmel_top/*.hex
   # Training logs (generated at runtime)
   training_log*.txt          
 
-  #Datasets 
-  src/ml/Pipeline/speech_commands_v0.02/                                                                                           
-  src/ml/Pipeline/speech_commands_v0.02.tar.gz                                                                                     
+  #Datasets
+  src/ml/Pipeline/speech_commands_v0.02/
+  src/ml/Pipeline/speech_commands_v0.02.tar.gz
+src/ml/Pipeline/speech_commands_v0.02\ (1).tar.gz
   src/ml/output/                                                                                                                   
   *.npy  
 

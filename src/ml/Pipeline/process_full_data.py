@@ -10,7 +10,8 @@ Key differences from process_data.py:
   1. Uses FullPipelineGoldenExtractor (PCM -> PDM -> CIC -> compFIR -> STFFT)
   2. Scales audio to 14-bit signed range (±8191) to match RTL ADC dynamic range
   3. No center padding (matches RTL: no zero-padding at signal edges)
-  4. Fixed-point mel filterbank, log LUT, and power calculation
+  4. Crops/pads to frames 37..86, matching spect_buffer_ctrl.sv START_FRAME
+  5. Fixed-point mel filterbank, log LUT, and power calculation
 
 Usage:
     python process_full_data.py                    # uses config.yaml
@@ -52,6 +53,8 @@ N_MELS = _preproc["n_mels"]
 N_FFT = _preproc["n_fft"]
 HOP_LENGTH = _preproc["hop_length"]
 USE_FILTERS = _preproc.get("use_filters", False)
+N_FRAMES = 50
+START_FRAME = 37
 
 # RTL ADC range: 14-bit signed
 SAMPLE_W = 14
@@ -203,6 +206,23 @@ def _worker_init():
     global _worker_extractor
     _worker_extractor = FullPipelineGoldenExtractor()
 
+def crop_or_pad_frames(
+    feats: np.ndarray,
+    n_frames: int = N_FRAMES,
+    start_frame: int = START_FRAME,
+) -> np.ndarray:
+    """Return frame-major features matching RTL's selected fixed spectrogram window."""
+    feats_T = feats.T.astype(np.float32)  # (frames, n_mels)
+    n = feats_T.shape[0]
+    if n > start_frame:
+        window = feats_T[start_frame:start_frame + n_frames, :]
+    else:
+        window = feats_T[:0, :]
+    if window.shape[0] >= n_frames:
+        return window[:n_frames, :]
+    return np.pad(window, ((0, n_frames - window.shape[0]), (0, 0)), mode="constant")
+
+
 def _process_one(args):
     wav_path, label_id = args
     try:
@@ -210,7 +230,7 @@ def _process_one(args):
         audio_i14 = float_to_int14(audio_float)
         feats = _worker_extractor.extract_float(audio_i14)
         n_sat = float((feats >= 15.999).sum() / max(feats.size, 1))
-        return feats.T.astype(np.float32), int(label_id), n_sat
+        return crop_or_pad_frames(feats), int(label_id), n_sat
     except Exception:
         return None
 
@@ -230,8 +250,10 @@ def process_and_save():
     # Verify frame count for 1-second audio
     test_audio = np.zeros(SAMPLE_RATE, dtype=np.int16)
     test_feats = _tmp.extract_float(test_audio)
-    expected_frames = test_feats.shape[1]
-    print(f"Expected n_frames for 1-second audio: {expected_frames}")
+    raw_frames = test_feats.shape[1]
+    print(f"Raw frontend frames for 1-second audio: {raw_frames}")
+    print(f"Training/inference frames after RTL crop/pad: {N_FRAMES}")
+    print(f"RTL spectrogram start frame: {START_FRAME}")
 
     # Collect examples
     examples = collect_examples_speech_commands(DATA_ROOT)
@@ -299,6 +321,9 @@ def process_and_save():
         "include_silence": INCLUDE_SILENCE,
         "feature_extractor": "FullPipelineGoldenExtractor",
         "audio_scaling": f"float32 [-1,1] -> int14 [±{SAMPLE_MAX}]",
+        "frame_window": "fixed_start",
+        "start_frame": START_FRAME,
+        "n_frames": N_FRAMES,
         "pipeline": _tmp._stfft.get_config(),
     }
     with open(OUTPUT_DIR / "config.json", "w") as f:
