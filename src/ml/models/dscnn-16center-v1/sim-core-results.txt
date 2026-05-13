@@ -1,0 +1,18 @@
+[manual import 2026-05-12] make sim-core
+Model: dscnn-16center-v1
+Filters: 16
+Selected sample[0]: 15c563d7_nohash_4.wav
+Hex: spectrograms/spectrogram_0.hex
+Golden truth class: yes (6)
+Arithmetic class: yes (6)
+PyTorch class: yes (6)
+RTL class: yes (6)
+Expected[manifest arithmetic]: yes (6)
+Result: PASS
+RTL GAP scores: no(0)=272  off(1)=-368  on(2)=-2265  silence(3)=-1852  unknown(4)=852  wow(5)=-615  yes(6)=2515
+RTL GAP ranking: yes(6)=2515 > unknown(4)=852 > no(0)=272 > off(1)=-368 > wow(5)=-615 > silence(3)=-1852 > on(2)=-2265  margin=1663
+Sim time: 145385400.00 ns
+Real time: 1515.91 s
+Ratio: 95906.55 ns/s
+Regression: TESTS=1 PASS=1 FAIL=0 SKIP=0
+

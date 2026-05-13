@@ -1,0 +1,5 @@
+input_scale 0.3612563312
+q_frac 10
+spect_shift 9
+input_quant_mult 5805163
+input_quant_shift 31

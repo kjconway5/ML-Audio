@@ -1,0 +1,94 @@
+# Configuration for 7-Class Keyword Spotting
+# Based on Google Speech Commands dataset
+
+dataset:
+  data_dir: "./speech_commands_v0.02"
+
+data:
+  output_dir: "../output"
+
+  classes:
+    - "yes"
+    - "no"
+    - "on"
+    - "off"
+    - "wow"
+    - "silence"
+    - "unknown"
+
+  target_keywords:
+    - "yes"
+    - "no"
+    - "on"
+    - "off"
+    - "wow"
+
+  include_silence: true
+  num_silence_samples: 500
+  unknown_max_train: 3000
+  unknown_max_val: 300
+  unknown_max_test: 300
+  random_seed: 42
+
+
+preprocessing:
+  sample_rate: 16000
+  n_mels: 40
+  n_fft: 256
+  hop_length: 128
+  window_length: 256
+
+  #filters
+  use_filters: false
+  hpf_order: 2
+  lpf_order: 4
+  cutoff_hpf: 150
+  cutoff_lpf: 4000
+
+#ds-cnn
+model:
+  n_classes: 7  
+  
+  # First convolution layer
+  first_conv:
+    filters: 16
+    kernel_size: [10, 4]
+    stride: [2, 2]
+
+  # Depthwise Separable blocks
+  ds_blocks:
+    n_blocks: 4
+    filters: 16
+    kernel_size: [3, 3]
+    stride: [1, 1]
+
+training:
+  n_epochs: 100
+  batch_size: 64
+
+  optimizer: "sgd"
+  learning_rate: 0.01
+  momentum: 0.9
+  weight_decay: 0.0005
+  warmup_epochs: 5
+
+  # Float phase: epochs 1-59  (warmup 1-5, cosine 6-59 → eta_min_float)
+  # QAT phase:   epochs 60-80 (warm restart at qat_start_lr, cosine → eta_min_qat)
+  # 20 QAT epochs gives the fbgemm per-channel scales time to settle with multiply-shift.
+  qat_start_epoch: 78
+  qat_start_lr: 0.001
+  freeze_bn_epoch: 95
+
+  lr_schedule:
+    eta_min_float: 0.0001
+    eta_min_qat:   0.000001
+  val_every: 5
+
+vad:
+  calibration_duration: 2.0
+  threshold_multiplier: 3.0
+  default_energy_threshold: 0.0001
+
+output:
+  model_save_path: "../models/dscnn-16center-v1/dscnn-16center-v1.pt"
+  log_file: "../models/dscnn-16center-v1/training_log_16center-v1.txt"
