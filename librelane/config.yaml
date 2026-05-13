@@ -133,19 +133,14 @@ CLOCK_PORT: clk_PAD
 CLOCK_NET: clk_pad/Y
 CLOCK_PERIOD: 40 # 25 MHz
 
-# Fix hold violations — tightened from 0.35/0.30 to reduce buffer count
-# (~11k buffers were inserted in baseline and contributed to DRT congestion plateau)
-PL_RESIZER_HOLD_SLACK_MARGIN: 0.10
-GRT_RESIZER_HOLD_SLACK_MARGIN: 0.10
+# Fix hold violations
+PL_RESIZER_HOLD_SLACK_MARGIN: 0.35
+GRT_RESIZER_HOLD_SLACK_MARGIN: 0.3
 
 # Increase for more logic
 # on your die
 PL_TARGET_DENSITY_PCT: 35
 GRT_ALLOW_CONGESTION: true
-
-# Allow signal routing on all 5 metal layers (default caps at Metal4).
-# Adds capacity for long inter-block buses; helps DRT congestion.
-RT_MAX_LAYER: Metal5
 
 # Fix antenna violations after DRT
 DRT_ANTENNA_REPAIR_ITERS: 10
@@ -282,116 +277,116 @@ MACROS:
       # LogMel SRAMs spread vertically (450 µm pitch, ~225 µm gap each)
       # to relieve the left-edge congestion hot spot.
       i_chip_core.pipeline_inst.u_logmel.u_mel_filterbank.u_sram.u_coeff_hi:
-        location: [500, 2820]
+        location: [500, 500]
         orientation: N
       i_chip_core.pipeline_inst.u_logmel.u_mel_filterbank.u_sram.u_coeff_lo:
-        location: [832, 2820]
+        location: [500, 950]
         orientation: N
       i_chip_core.pipeline_inst.u_logmel.u_mel_filterbank.u_sram.u_index:
-        location: [1164, 2820]
+        location: [500, 1400]
         orientation: N
       i_chip_core.pipeline_inst.u_logmel.u_log_lut.u_lut_sram.u_lut_lo:
-        location: [1496, 2820]
+        location: [500, 1850]
         orientation: N
       i_chip_core.pipeline_inst.u_logmel.u_log_lut.u_lut_sram.u_lut_hi:
-        location: [1828, 2820]
+        location: [500, 2300]
         orientation: N
       # STFFT RAMS
       i_chip_core.pipeline_inst.u_stfft.u_a_ram0.u_a_b0:
-        location: [500, 3050]
+        location: [800, 500]
         orientation: N
       i_chip_core.pipeline_inst.u_stfft.u_a_ram0.u_a_b1:
-        location: [832, 3050]
+        location: [800, 700]
         orientation: N
       i_chip_core.pipeline_inst.u_stfft.u_a_ram0.u_a_b2:
-        location: [1164, 3050]
+        location: [800, 900]
         orientation: N
       i_chip_core.pipeline_inst.u_stfft.u_a_ram0.u_a_b3:
-        location: [1496, 3050]
+        location: [800, 1100]
         orientation: N
       i_chip_core.pipeline_inst.u_stfft.u_a_ram0.u_b_b0:
-        location: [1828, 3050]
+        location: [800, 1500]
         orientation: N
       i_chip_core.pipeline_inst.u_stfft.u_a_ram0.u_b_b1:
-        location: [2160, 3050]
+        location: [800, 1700]
         orientation: N
       i_chip_core.pipeline_inst.u_stfft.u_a_ram0.u_b_b2:
-        location: [2492, 3050]
+        location: [800, 1900]
         orientation: N
       i_chip_core.pipeline_inst.u_stfft.u_a_ram0.u_b_b3:
-        location: [2824, 3050]
+        location: [800, 2100]
         orientation: N
       i_chip_core.pipeline_inst.u_stfft.u_a_ram1.u_a_b0:
-        location: [500, 3280]
+        location: [1100, 500]
         orientation: N
       i_chip_core.pipeline_inst.u_stfft.u_a_ram1.u_a_b1:
-        location: [832, 3280]
+        location: [1100, 700]
         orientation: N
       i_chip_core.pipeline_inst.u_stfft.u_a_ram1.u_a_b2:
-        location: [1164, 3280]
+        location: [1100, 900]
         orientation: N
       i_chip_core.pipeline_inst.u_stfft.u_a_ram1.u_a_b3:
-        location: [1496, 3280]
+        location: [1100, 1100]
         orientation: N
       i_chip_core.pipeline_inst.u_stfft.u_a_ram1.u_b_b0:
-        location: [1828, 3280]
+        location: [1100, 1500]
         orientation: N
       i_chip_core.pipeline_inst.u_stfft.u_a_ram1.u_b_b1:
-        location: [2160, 3280]
+        location: [1100, 1700]
         orientation: N
       i_chip_core.pipeline_inst.u_stfft.u_a_ram1.u_b_b2:
-        location: [2492, 3280]
+        location: [1100, 1900]
         orientation: N
       i_chip_core.pipeline_inst.u_stfft.u_a_ram1.u_b_b3:
-        location: [2824, 3280]
+        location: [1100, 2100]
         orientation: N
       i_chip_core.pipeline_inst.u_stfft.u_b_ram0.u_a_b0:
-        location: [500, 3510]
+        location: [1400, 500]
         orientation: N
       i_chip_core.pipeline_inst.u_stfft.u_b_ram0.u_a_b1:
-        location: [832, 3510]
+        location: [1400, 700]
         orientation: N
       i_chip_core.pipeline_inst.u_stfft.u_b_ram0.u_a_b2:
-        location: [1164, 3510]
+        location: [1400, 900]
         orientation: N
       i_chip_core.pipeline_inst.u_stfft.u_b_ram0.u_a_b3:
-        location: [1496, 3510]
+        location: [1400, 1100]
         orientation: N
       i_chip_core.pipeline_inst.u_stfft.u_b_ram0.u_b_b0:
-        location: [1828, 3510]
+        location: [1400, 1500]
         orientation: N
       i_chip_core.pipeline_inst.u_stfft.u_b_ram0.u_b_b1:
-        location: [2160, 3510]
+        location: [1400, 1700]
         orientation: N
       i_chip_core.pipeline_inst.u_stfft.u_b_ram0.u_b_b2:
-        location: [2492, 3510]
+        location: [1400, 1900]
         orientation: N
       i_chip_core.pipeline_inst.u_stfft.u_b_ram0.u_b_b3:
-        location: [2824, 3510]
+        location: [1400, 2100]
         orientation: N
       i_chip_core.pipeline_inst.u_stfft.u_b_ram1.u_a_b0:
-        location: [500, 3740]
+        location: [1700, 500]
         orientation: N
       i_chip_core.pipeline_inst.u_stfft.u_b_ram1.u_a_b1:
-        location: [832, 3740]
+        location: [1700, 700]
         orientation: N
       i_chip_core.pipeline_inst.u_stfft.u_b_ram1.u_a_b2:
-        location: [1164, 3740]
+        location: [1700, 900]
         orientation: N
       i_chip_core.pipeline_inst.u_stfft.u_b_ram1.u_a_b3:
-        location: [1496, 3740]
+        location: [1700, 1100]
         orientation: N
       i_chip_core.pipeline_inst.u_stfft.u_b_ram1.u_b_b0:
-        location: [1828, 3740]
+        location: [1700, 1500]
         orientation: N
       i_chip_core.pipeline_inst.u_stfft.u_b_ram1.u_b_b1:
-        location: [2160, 3740]
+        location: [1700, 1700]
         orientation: N
       i_chip_core.pipeline_inst.u_stfft.u_b_ram1.u_b_b2:
-        location: [2492, 3740]
+        location: [1700, 1900]
         orientation: N
       i_chip_core.pipeline_inst.u_stfft.u_b_ram1.u_b_b3:
-        location: [2824, 3740]
+        location: [1700, 2100]
         orientation: N
   # No instances for this macro, if any added then uncomment out and place
   # gf180mcu_ocd_ip_sram__sram512x8m8wm1:
@@ -493,26 +488,26 @@ MACROS:
         orientation: N
       # Weight SRAM (3× sram1024x8 for 16-filter model)
       i_chip_core.kws_inst.inst_wsram.gen_weight_banks[0].inst_weight_sram:
-        location: [1828, 4020]
+        location: [452.4, 3082.0]
         orientation: N
       i_chip_core.kws_inst.inst_wsram.gen_weight_banks[1].inst_weight_sram:
-        location: [2160, 4020]
+        location: [763.7, 3082.0]
         orientation: N
       i_chip_core.kws_inst.inst_wsram.gen_weight_banks[2].inst_weight_sram:
-        location: [2492, 4020]
+        location: [1075.0, 3082.0]
         orientation: N
       # Spectrogram SRAM (4× sram1024x8)
       i_chip_core.kws_inst.inst_specram.gen_spect_banks[0].inst_spectrogram_sram:
-        location: [500, 4020]
+        location: [452.4, 4133.6]
         orientation: N
       i_chip_core.kws_inst.inst_specram.gen_spect_banks[0].inst_spectrogram_sram2:
-        location: [832, 4020]
+        location: [763.7, 4133.6]
         orientation: N
       i_chip_core.kws_inst.inst_specram.gen_spect_banks[1].inst_spectrogram_sram:
-        location: [1164, 4020]
+        location: [1075.0, 4133.6]
         orientation: N
       i_chip_core.kws_inst.inst_specram.gen_spect_banks[1].inst_spectrogram_sram2:
-        location: [1496, 4020]
+        location: [1386.3, 4133.6]
         orientation: N
 
 
