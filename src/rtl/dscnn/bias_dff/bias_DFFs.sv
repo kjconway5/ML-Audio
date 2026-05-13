@@ -1,7 +1,7 @@
 module bias_DFFs #(
-    parameter DEPTH  = 295,   // 9×32 channels + 7 classifier = 295 (32-filter model)
+    parameter DEPTH  = 295,   // 9x32 channels + 7 classifier = 295 (32-filter model)
     parameter DATA_W = 32,
-    parameter ADDR_W = 9      // 9-bit: supports bias offsets 256 and 288 in 32-filter model
+    parameter ADDR_W = 9      // 9-bit: supports bias offsets up to 288
 )(
     input  wire [ADDR_W-1:0]        addr,
     output reg  signed [DATA_W-1:0] data

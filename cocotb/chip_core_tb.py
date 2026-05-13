@@ -385,7 +385,7 @@ async def _boot_chip(dut, mini=False):
         mel_words    = _load_hex(MEL_COEFF_HEX,  signed=False, width=16)
         meta_bytes   = _load_hex(MEL_INDEX_HEX,  signed=False, width=8)
         weight_bytes = _load_hex(WEIGHTS_HEX,    signed=True,  width=8)
-        layer_cfgs   = load_layer_cfgs(SCALES_TXT, n_filters=16)
+        layer_cfgs   = load_layer_cfgs(SCALES_TXT, n_filters=MODEL_FILTERS)
         cfg_fields, cfg_mults = _pack_layer_cfgs(layer_cfgs)
 
     # Log LUT -- 16-bit words packed lo/hi
@@ -814,6 +814,65 @@ def _format_kws_score_ranking(scores):
     margin = ranked[0][2] - ranked[1][2] if len(ranked) > 1 else 0
     ranked_str = " > ".join(f"{name}({idx})={score}" for idx, name, score in ranked)
     return f"{ranked_str}  margin={margin}"
+
+
+def _class_label(name, cls):
+    if name is None and cls is None:
+        return "unavailable"
+    if name is None:
+        name = "?"
+    if cls is None:
+        cls = "?"
+    return f"{name} ({cls})"
+
+
+def _append_sim_core_result(
+    *,
+    sample_idx,
+    wav_path,
+    hex_file,
+    gt_name,
+    gt_class,
+    arith_name,
+    arith_class,
+    pytorch_name,
+    pytorch_class,
+    rtl_name,
+    rtl_class,
+    expected_source,
+    expected_name,
+    expected_class,
+    passed,
+    scores,
+    score_warning,
+    manifest_path,
+):
+    status = "PASS" if passed else "FAIL"
+    timestamp = time.strftime("%Y-%m-%d %H:%M:%S %Z")
+    lines = [
+        f"[{timestamp}] make sim-core",
+        f"Model: {_MODEL_DIR.name}",
+        f"Filters: {MODEL_FILTERS}",
+        f"Manifest: {manifest_path}",
+        f"Selected sample[{sample_idx}]: {Path(wav_path).name}",
+        f"WAV: {wav_path}",
+        f"Hex: {hex_file}",
+        f"Golden truth class: {_class_label(gt_name, gt_class)}",
+        f"Arithmetic class: {_class_label(arith_name, arith_class)}",
+        f"PyTorch class: {_class_label(pytorch_name, pytorch_class)}",
+        f"RTL class: {_class_label(rtl_name, rtl_class)}",
+        f"Expected[{expected_source}]: {_class_label(expected_name, expected_class)}",
+        f"Result: {status}",
+        f"RTL GAP scores: {_format_kws_scores(scores)}",
+        f"RTL GAP ranking: {_format_kws_score_ranking(scores)}",
+    ]
+    if score_warning:
+        lines.append(f"RTL GAP score warning: {score_warning}")
+
+    RESULTS_TXT.parent.mkdir(parents=True, exist_ok=True)
+    with open(RESULTS_TXT, "a", encoding="utf-8") as f:
+        f.write("\n".join(lines))
+        f.write("\n\n")
 
 
 def _missing_milestone(milestones):
@@ -1299,6 +1358,27 @@ async def test_chip_core_e2e(dut):
             f"  RTL does not match dataset label: label={gt_name} rtl={rtl_name}"
         )
     dut._log.info(f"  {'PASS' if passed else 'FAIL'}")
+    _append_sim_core_result(
+        sample_idx=sample_idx,
+        wav_path=wav_path,
+        hex_file=hex_file,
+        gt_name=gt_name,
+        gt_class=gt_class,
+        arith_name=arith_name,
+        arith_class=arith_class,
+        pytorch_name=pytorch_name,
+        pytorch_class=pytorch_class,
+        rtl_name=rtl_name,
+        rtl_class=rtl_class,
+        expected_source=expected_source,
+        expected_name=expected_name,
+        expected_class=expected_class,
+        passed=passed,
+        scores=scores,
+        score_warning=score_warning,
+        manifest_path=manifest_path,
+    )
+    dut._log.info(f"  sim-core result appended to {RESULTS_TXT}")
 
     assert passed, \
         f"KWS RTL produced '{rtl_name}', expected '{expected_name}' from {expected_source} -- " \

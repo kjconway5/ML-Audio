@@ -12,8 +12,8 @@ It supports the current 16-, 24-, and 32-filter DS-CNN variants:
 
 Usage:
     python3 update_rtl.py --ckpt ../models/dscnn-16center-v1
-    python3 update_rtl.py --ckpt ../models/dscnn-24full-v1
-    python3 update_rtl.py --ckpt ../models/dscnn-32requant-v11 --dry-run
+    python3 update_rtl.py --ckpt ../models/dscnn-24center-v1
+    python3 update_rtl.py --ckpt ../models/dscnn-32center-v1 --dry-run
 
 If the checkpoint is not trained yet, --filters can be used to preview the RTL
 memory retargeting, but weights.hex/bias.hex/scales.txt are still required for
@@ -33,7 +33,9 @@ REPO_ROOT = HERE.parents[2]  # Pipeline -> ml -> src -> repo root
 MODELS_DIR = HERE.parent / "models"
 
 BIAS_SV = REPO_ROOT / "src/rtl/dscnn/bias_dff/bias_DFFs.sv"
+BIAS_HEX_DEST = REPO_ROOT / "src/rtl/dscnn/bias_dff/bias.hex"
 FEATURE_SRAM_SV = REPO_ROOT / "src/rtl/dscnn/feature_sram/feature_sram.sv"
+FEATURE_SRAM_TEST_PY = REPO_ROOT / "src/rtl/dscnn/feature_sram/test_feature_sram.py"
 WEIGHT_SRAM_SV = REPO_ROOT / "src/rtl/dscnn/weight_sram/weight_sram.sv"
 WEIGHT_SRAM_DIR = REPO_ROOT / "src/rtl/dscnn/weight_sram"
 KWS_TEST_PY = REPO_ROOT / "src/rtl/dscnn/kws_top/test_kws_top.py"
@@ -146,11 +148,11 @@ def resolve_model_dir(arg: Path | None, allow_missing: bool = False) -> Path:
     if arg is None:
         candidates = []
         for d in MODELS_DIR.iterdir():
-            m = re.fullmatch(r"dscnn-(16|24|32).*-v(\d+)", d.name)
+            m = re.fullmatch(r"dscnn-(16|24|32).*center.*-v(\d+)", d.name)
             if d.is_dir() and m:
                 candidates.append((int(m.group(2)), d.stat().st_mtime, d))
         if not candidates:
-            raise FileNotFoundError(f"No dscnn-16/24/32 model directories found in {MODELS_DIR}")
+            raise FileNotFoundError(f"No dscnn-16/24/32 center model directories found in {MODELS_DIR}")
         return max(candidates)[2]
 
     if arg.suffix == ".pt":
@@ -287,6 +289,18 @@ def update_bias_sv(arch: Arch, bias_path: Path, dry_run: bool) -> bool:
     body = "\n".join(lines)
 
     text = BIAS_SV.read_text()
+    text = re.sub(
+        r"parameter DEPTH\s*=\s*\d+\s*,\s*//.*",
+        f"parameter DEPTH  = {arch.bias_count},   // 9x{arch.filters} channels + 7 classifier = {arch.bias_count} ({arch.filters}-filter model)",
+        text,
+        count=1,
+    )
+    text = re.sub(
+        r"parameter ADDR_W\s*=\s*\d+\s*//.*",
+        f"parameter ADDR_W = 9      // 9-bit: supports bias offsets up to {arch.layers[-1].bias_off}",
+        text,
+        count=1,
+    )
     new_text, n = re.subn(
         r"(always @\(\*\) begin\s*\n\s*case \(addr\)\s*\n).*?(\n\s*endcase)",
         r"\1" + body + r"\2",
@@ -322,6 +336,17 @@ def update_feature_sram(arch: Arch, dry_run: bool) -> bool:
 
     changed = replace_text(FEATURE_SRAM_SV, text, dry_run)
     print(f"  feature_sram: depth={arch.feature_depth}, banks={arch.feature_banks}, ADDR_W={arch.feature_addr_w} ({'would update' if dry_run and changed else 'updated' if changed else 'already current'})")
+    return True
+
+
+def update_feature_sram_test(arch: Arch, dry_run: bool) -> bool:
+    text = FEATURE_SRAM_TEST_PY.read_text()
+    text = re.sub(r"DEPTH\s*=\s*\d+", f"DEPTH         = {arch.feature_depth}", text)
+    text = re.sub(r"ADDR_W\s*=\s*\d+", f"ADDR_W        = {arch.feature_addr_w}", text)
+    text = re.sub(r"NUM_BANKS\s*=\s*\d+", f"NUM_BANKS     = {arch.feature_banks}", text)
+
+    changed = replace_text(FEATURE_SRAM_TEST_PY, text, dry_run)
+    print(f"  test_feature_sram.py: depth={arch.feature_depth}, banks={arch.feature_banks}, ADDR_W={arch.feature_addr_w} ({'would update' if dry_run and changed else 'updated' if changed else 'already current'})")
     return True
 
 
@@ -427,6 +452,13 @@ def copy_weights(weights_src: Path, dry_run: bool) -> bool:
     return True
 
 
+def copy_bias_hex(bias_src: Path, dry_run: bool) -> bool:
+    if not dry_run:
+        shutil.copy2(bias_src, BIAS_HEX_DEST)
+    print(f"  bias.hex {'would copy' if dry_run else 'copied'} -> {BIAS_HEX_DEST}")
+    return True
+
+
 def validate_export_files(arch: Arch, model_dir: Path) -> tuple[Path, Path, Path, bool]:
     scales_path = model_dir / "scales.txt"
     bias_path = model_dir / "bias.hex"
@@ -473,7 +505,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--ckpt", type=Path,
-                        help="Model directory or checkpoint file. Defaults to latest dscnn-24/32 model dir.")
+                        help="Model directory or checkpoint file. Defaults to latest dscnn-16/24/32 center model dir.")
     parser.add_argument("--filters", type=int, choices=SUPPORTED_FILTERS,
                         help="Override/inject filter count when the checkpoint is not available yet.")
     parser.add_argument("--dry-run", action="store_true",
@@ -494,7 +526,7 @@ def main():
 
     scales_path, bias_path, weights_path, files_ok = validate_export_files(arch, model_dir)
     required_sources = [
-        BIAS_SV, FEATURE_SRAM_SV, WEIGHT_SRAM_SV, KWS_TEST_PY,
+        BIAS_SV, FEATURE_SRAM_SV, FEATURE_SRAM_TEST_PY, WEIGHT_SRAM_SV, KWS_TEST_PY,
         CHIP_CORE_TB_PY, CHIP_CORE_SV, FULL_PIPELINE_TOP_SV, PIPELINE_TOP_SV,
     ]
     missing_sources = [p for p in required_sources if not p.exists()]
@@ -517,12 +549,14 @@ def main():
             print(f"ERROR: could not compute input quantizer from {scales_path}: {e}")
             sys.exit(1)
         ok &= copy_weights(weights_path, args.dry_run)
+        ok &= copy_bias_hex(bias_path, args.dry_run)
         ok &= update_bias_sv(arch, bias_path, args.dry_run)
         print(f"  QuantStub input scale={input_scale:.8f}")
         ok &= update_input_quant(spect_shift, input_mult, input_shift, args.dry_run)
     else:
         print("  skipping weights/bias updates because exported files are not present")
     ok &= update_feature_sram(arch, args.dry_run)
+    ok &= update_feature_sram_test(arch, args.dry_run)
     ok &= update_weight_sram(arch, args.dry_run)
     ok &= update_chip_core_tb(arch, model_dir, args.dry_run)
     ok &= update_kws_test(arch, model_dir, args.dry_run)

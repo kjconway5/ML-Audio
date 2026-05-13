@@ -228,19 +228,7 @@ module chip_core #(
     wire [15:0] pdm_word  = input_in[0] ? 16'h7FFF : 16'h8000;
     wire        pdm_valid = input_in[1];
 
-    // ---- Pipeline + KWS ----
-
-    // Spectrogram signals
-    wire            sp_a_we;
-    wire [10:0]     sp_a_waddr;
-    wire signed [7:0] sp_a_wdata;
-
-    wire            sp_b_we;
-    wire [10:0]     sp_b_waddr;
-    wire signed [7:0] sp_b_wdata;
-
     wire            spect_done;
-    wire            spect_write_sel;
 
     // Auto-start KWS inference one cycle after spect_done fires.
     // spect_ready inside the FSM is registered (set 1 cycle after spect_done),
@@ -252,6 +240,19 @@ module chip_core #(
         else
             kws_start <= spect_done;
     end
+
+    // ---- Pipeline + KWS ----
+
+    // Spectrogram signals
+    wire            sp_a_we;
+    wire [10:0]     sp_a_waddr;
+    wire signed [7:0] sp_a_wdata;
+
+    wire            sp_b_we;
+    wire [10:0]     sp_b_waddr;
+    wire signed [7:0] sp_b_wdata;
+
+    wire            spect_write_sel;
 
     // Dangling outputs for full_pipeline_top
     wire pipeline_ready;

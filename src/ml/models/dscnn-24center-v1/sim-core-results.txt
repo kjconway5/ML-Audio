@@ -1,0 +1,48 @@
+[2026-05-12 14:26:26 PDT] make sim-core
+Model: dscnn-24center-v1
+Filters: 24
+Manifest: /home/dnocera/ML-Audio/src/rtl/dscnn/kws_top/spectrograms/test_vectors.json
+Selected sample[6]: 98ea0818_nohash_2.wav
+WAV: /home/dnocera/ML-Audio/src/ml/Pipeline/speech_commands_v0.02/yes/98ea0818_nohash_2.wav
+Hex: spectrograms/spectrogram_6.hex
+Golden truth class: yes (6)
+Arithmetic class: off (1)
+PyTorch class: off (1)
+RTL class: off (1)
+Expected[manifest arithmetic]: off (1)
+Result: FAIL
+RTL GAP scores: no(0)=-650  off(1)=733  on(2)=340  silence(3)=-2038  unknown(4)=622  wow(5)=-883  yes(6)=384
+RTL GAP ranking: off(1)=733 > unknown(4)=622 > yes(6)=384 > on(2)=340 > no(0)=-650 > wow(5)=-883 > silence(3)=-2038  margin=111
+
+[2026-05-12 17:24:11 PDT] make sim-core
+Model: dscnn-24center-v1
+Filters: 24
+Manifest: /home/dnocera/ML-Audio/src/rtl/dscnn/kws_top/spectrograms/test_vectors.json
+Selected sample[9]: f839238a_nohash_1.wav
+WAV: /home/dnocera/ML-Audio/src/ml/Pipeline/speech_commands_v0.02/yes/f839238a_nohash_1.wav
+Hex: spectrograms/spectrogram_9.hex
+Golden truth class: yes (6)
+Arithmetic class: yes (6)
+PyTorch class: yes (6)
+RTL class: yes (6)
+Expected[manifest arithmetic]: yes (6)
+Result: PASS
+RTL GAP scores: no(0)=-45  off(1)=-423  on(2)=-2371  silence(3)=-3444  unknown(4)=1677  wow(5)=-587  yes(6)=3982
+RTL GAP ranking: yes(6)=3982 > unknown(4)=1677 > no(0)=-45 > off(1)=-423 > wow(5)=-587 > on(2)=-2371 > silence(3)=-3444  margin=2305
+
+[2026-05-12 17:49:28 PDT] make sim-core
+Model: dscnn-24center-v1
+Filters: 24
+Manifest: /home/dnocera/ML-Audio/src/rtl/dscnn/kws_top/spectrograms/test_vectors.json
+Selected sample[7]: a6d586b7_nohash_2.wav
+WAV: /home/dnocera/ML-Audio/src/ml/Pipeline/speech_commands_v0.02/yes/a6d586b7_nohash_2.wav
+Hex: spectrograms/spectrogram_7.hex
+Golden truth class: yes (6)
+Arithmetic class: yes (6)
+PyTorch class: no (0)
+RTL class: yes (6)
+Expected[manifest arithmetic]: yes (6)
+Result: PASS
+RTL GAP scores: no(0)=1439  off(1)=-1347  on(2)=-2019  silence(3)=-2303  unknown(4)=842  wow(5)=392  yes(6)=1592
+RTL GAP ranking: yes(6)=1592 > no(0)=1439 > unknown(4)=842 > wow(5)=392 > off(1)=-1347 > on(2)=-2019 > silence(3)=-2303  margin=153
+
