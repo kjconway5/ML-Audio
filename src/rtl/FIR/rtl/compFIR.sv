@@ -53,8 +53,8 @@ module compFIR #(
     input  wire                   o_tready,
 
     input wire                    test_mode_audio,
-    output reg signed [OW-1:0]    FIR_audio_in,
-    output reg signed [OW-1:0]    FIR_audio_out
+    output logic signed [OW-1:0]    FIR_audio_in,
+    output logic signed [OW-1:0]    FIR_audio_out
 );
 
     localparam M  = (NTAPS-1)/2;   // Index of centre tap

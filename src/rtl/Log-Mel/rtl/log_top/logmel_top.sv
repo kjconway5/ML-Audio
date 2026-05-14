@@ -42,9 +42,14 @@ module logmel_top #(
 
     // Test mode for SRAM readback
     input  logic                test_mode_i,
+
     input  logic [7:0]          test_coeff_addr_i,
     input  logic [7:0]          test_index_addr_i,
-    input  logic [LUT_FRAC-1:0] test_lut_addr_i
+    input  logic [LUT_FRAC-1:0] test_lut_addr_i,
+
+    output logic [$clog2(N_MELS)-1:0] mel_idx_test,
+    output logic [(2*IW)-SHIFT:0] power_test,
+    output logic [1:0] frame_control_state
 );
 
     // Internal Signals
@@ -77,6 +82,8 @@ module logmel_top #(
         .valid_il (fft_valid_il),
         .power_ol (power),
         .valid_ol (power_valid)
+        .power_test (power_test),
+        .test_mode_audio (test_mode_i)
     );
 
     // mel_filterbank
@@ -121,9 +128,9 @@ module logmel_top #(
         .mel_idx_o         (mel_idx),
         .log_en_o          (log_en),
         .output_valid_o    (output_valid),
-        .test_mode_audio   (),
-        .mel_idx_test      (),
-        .frame_control_state ()
+        .test_mode_audio   (test_mode_i),
+        .mel_idx_test      (mel_idx_test),
+        .frame_control_state (frame_control_state)
     );
 
     // log_lut
