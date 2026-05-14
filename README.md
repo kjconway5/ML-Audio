@@ -403,3 +403,34 @@ SLOT=0p5x0p5 make librelane-padring
 ## Precheck
 
 To check whether your design is suitable for manufacturing, run the [gf180mcu-precheck](https://github.com/wafer-space/gf180mcu-precheck) with your layout.
+
+## Remote Server `sim-core` Environment
+
+```
+cd ~/ML-Audio
+deactivate 2>/dev/null || true
+unset LD_LIBRARY_PATH
+nix develop
+```
+
+```
+which vvp
+which iverilog
+which cocotb-config
+python -c "import numpy, scipy, cocotb; print('nix sim env ok')"
+```
+
+```
+make sim-core KWS_KEYWORD=yes KWS_SAMPLE_INDEX=9
+```
+
+```
+nix develop --command bash -lc 'unset LD_LIBRARY_PATH; make sim-core KWS_KEYWORD=yes KWS_SAMPLE_INDEX=9'
+```
+
+
+## Tmux Session
+
+```bash
+tmux new -s my-session
+```

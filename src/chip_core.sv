@@ -228,6 +228,8 @@ module chip_core #(
     wire [15:0] pdm_word  = input_in[0] ? 16'h7FFF : 16'h8000;
     wire        pdm_valid = input_in[1];
 
+    wire            spect_done;
+
     // Auto-start KWS inference one cycle after spect_done fires.
     // spect_ready inside the FSM is registered (set 1 cycle after spect_done),
     // so we delay start by one cycle to guarantee both flags are true together.
@@ -250,7 +252,6 @@ module chip_core #(
     wire [10:0]     sp_b_waddr;
     wire signed [7:0] sp_b_wdata;
 
-    wire            spect_done;
     wire            spect_write_sel;
 
     // Dangling outputs for full_pipeline_top
