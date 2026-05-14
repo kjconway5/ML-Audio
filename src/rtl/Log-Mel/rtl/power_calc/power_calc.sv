@@ -12,6 +12,9 @@ module power_calc #(
     input  logic                valid_il,
     output logic [(2*IW)-SHIFT:0] power_ol,
     output logic                valid_ol
+
+    output logic [(2*IW)-SHIFT:0] power_test,
+    input logic test_mode_audio
 );
 
     logic [2*IW-1:0] real_sq, imag_sq;
@@ -57,5 +60,15 @@ module power_calc #(
         end
     end
 
+    // test mode to observe at io pins
+    always_ff @(posedge clk) begin
+        if (reset_i) begin
+            power_test <= '0;
+        end else if (test_mode_audio) begin
+            power_test <= power_ol;
+        end else begin
+            power_test <= '0;
+        end
+    end
 
 endmodule

@@ -1,7 +1,11 @@
 // kws_top.v
 // This is the only file Yosys needs as the top for synthesis
 
-module kws_top (
+module kws_top #(
+    parameter DATA_W  = 8,
+    parameter ACC_W   = 32,
+    parameter ADDR_W  = 14
+)(
     input  wire        clk,
     input  wire        reset,
     input  wire        start,
@@ -31,7 +35,67 @@ module kws_top (
     // Bank B 
     input  wire        sp_b_we,
     input  wire [10:0] sp_b_waddr,
-    input  wire signed [7:0] sp_b_wdata
+    input  wire signed [7:0] sp_b_wdata,
+
+    // test signals 
+    input logic test_mode_ml,
+
+        // fsm
+    output logic [2:0]fsm_class_test,
+
+    output logic  [ADDR_W-1:0]        fsm_a_waddr_test,
+    output logic  signed [DATA_W-1:0] fsm_a_wdata_test,
+    output logic  [ADDR_W-1:0]        fsm_a_raddr_test,   
+    output logic  signed [DATA_W-1:0] fsm_a_rdata_test,
+
+    output logic  [ADDR_W-1:0]        fsm_b_waddr_test,
+    output logic  signed [DATA_W-1:0] fsm_b_wdata_test,
+    output logic  [ADDR_W-1:0]        fsm_b_raddr_test,   
+    output logic  signed [DATA_W-1:0] fsm_b_rdata_test, 
+
+    output logic  signed [DATA_W-1:0] mac_ifmap_test,
+    output logic  signed [DATA_W-1:0] mac_weight_test,
+    output logic  signed [ACC_W-1:0]  mac_bias_test,
+
+    output logic  [31:0]              rq_mult_test,
+    output logic  [4:0]               rq_shift_test,
+
+    output logic [3:0]                state_test,
+    output logic [3:0]                layer_test,
+
+        // weight SRAM signals
+    output logic [12:0]          w_raddr_test,         
+    output logic signed [7:0]    w_rdata_test,         
+
+        // Spectrogram SRAM signals 
+    output logic [10:0]          ss_a_raddr_test,
+    output logic signed [7:0]    ss_a_rdata_test,
+
+    output logic [10:0]          ss_b_raddr_test,
+    output logic signed [7:0]    ss_b_rdata_test,
+
+        // MAC signals (scalar: one INT8 × INT8 per cycle)
+    output logic                 mac_en_test,
+    output logic                 mac_clear_test,
+    output logic signed [ACC_W-1:0]   acc_test,
+
+        // Requant Signals
+    output logic                 rq_relu_en_test,
+    output logic signed [7:0]    rq_out_test,
+
+        // Debug visibility for cocotb: final classifier GAP accumulators.
+    output logic signed [31:0]   debug_gap0_test,
+    output logic signed [31:0]   debug_gap1_test,
+    output logic signed [31:0]   debug_gap2_test,
+    output logic signed [31:0]   debug_gap3_test,
+    output logic signed [31:0]   debug_gap4_test,
+    output logic signed [31:0]   debug_gap5_test,
+    output logic signed [31:0]   debug_gap6_test,
+
+        // Bias signals
+    output logic [8:0]           bias_addr_test,
+    output logic signed [31:0]   bias_data_test
+
     );
 
     // weight SRAM signals
@@ -105,7 +169,11 @@ module kws_top (
         .clk(clk), .reset(reset),
         .en(mac_en), .clear(mac_clear),
         .ifmap(mac_ifmap), .weight(mac_weight),
-        .bias(mac_bias), .acc(mac_acc)
+        .bias(mac_bias), .acc(mac_acc),
+
+        // test signals
+        .test_mode_ml(test_mode_ml),
+        .acc_test(acc_test)
     );
 
     requant inst_rq (
@@ -139,7 +207,94 @@ module kws_top (
         .mac_ifmap(mac_ifmap), .mac_weight(mac_weight),
         .mac_bias(mac_bias), .mac_acc(mac_acc),
         .rq_mult(rq_mult), .rq_shift(rq_shift), .rq_relu_en(rq_relu_en), .rq_out(rq_out),
-        .bias_addr(bias_addr), .bias_data(bias_data)
+        .bias_addr(bias_addr), .bias_data(bias_data), 
+
+        // test signals to be passed up to pins
+        .test_mode_ml(test_mode_ml),
+        .fsm_class_test(fsm_class_test),
+        .fsm_a_waddr_test(fsm_a_waddr_test),
+        .fsm_a_wdata_test(fsm_a_wdata_test),
+        .fsm_a_raddr_test(fsm_a_raddr_test),   
+        .fsm_a_rdata_test(fsm_a_rdata_test),
+        .fsm_b_waddr_test(fsm_b_waddr_test),
+        .fsm_b_wdata_test(fsm_b_wdata_test),
+        .fsm_b_raddr_test(fsm_b_raddr_test),   
+        .fsm_b_rdata_test(fsm_b_rdata_test), 
+        .mac_ifmap_test(mac_ifmap_test),
+        .mac_weight_test(mac_weight_test),
+        .mac_bias_test(mac_bias_test),
+        .rq_mult_test(rq_mult_test),
+        .rq_shift_test(rq_shift_test),
+        .state_test(state_test),
+        .layer_test(layer_test) 
     );
+
+    // for signals in files that dont have clocks
+    always_ff @(posedge clk) begin
+        if (reset) begin
+            w_raddr_test <= '0;
+            w_rdata_test <= '0;
+            ss_a_raddr_test <= '0;
+            ss_a_rdata_test <= '0;
+            ss_b_raddr_test <= '0;
+            ss_b_rdata_test <= '0;
+            mac_en_test <= '0;
+            mac_clear_test <= '0;
+            rq_relu_en_test <= '0;
+            rq_out_test <= '0;
+            debug_gap0_test <= '0;
+            debug_gap1_test <= '0;
+            debug_gap2_test <= '0;
+            debug_gap3_test <= '0;
+            debug_gap4_test <= '0;
+            debug_gap5_test <= '0;
+            debug_gap6_test <= '0;
+            bias_addr_test  <= '0;
+            bias_data_test <= '0;
+
+        end else if (test_mode_ml) begin
+            // weight SRAM signals
+            w_raddr_test <= w_raddr;
+            w_rdata_test <= w_rdata;
+            ss_a_raddr_test <= ss_a_raddr;
+            ss_a_rdata_test <= ss_a_rdata;
+            ss_b_raddr_test <= ss_b_raddr;
+            ss_b_rdata_test <= ss_b_rdata;
+            mac_en_test <= mac_en;
+            mac_clear_test <= mac_clear;
+            rq_relu_en_test <= rq_relu_en;
+            rq_out_test <= rq_out;
+            debug_gap0_test <= debug_gap0;
+            debug_gap1_test <= debug_gap1;
+            debug_gap2_test <= debug_gap2;
+            debug_gap3_test <= debug_gap3;
+            debug_gap4_test <= debug_gap4;
+            debug_gap5_test <= debug_gap5;
+            debug_gap6_test <= debug_gap6;
+            bias_addr_test  <= bias_addr;
+            bias_data_test <= bias_data;
+
+        end else begin 
+            w_raddr_test <= '0;
+            w_rdata_test <= '0;
+            ss_a_raddr_test <= '0;
+            ss_a_rdata_test <= '0;
+            ss_b_raddr_test <= '0;
+            ss_b_rdata_test <= '0;
+            mac_en_test <= '0;
+            mac_clear_test <= '0;
+            rq_relu_en_test <= '0;
+            rq_out_test <= '0;
+            debug_gap0_test <= '0;
+            debug_gap1_test <= '0;
+            debug_gap2_test <= '0;
+            debug_gap3_test <= '0;
+            debug_gap4_test <= '0;
+            debug_gap5_test <= '0;
+            debug_gap6_test <= '0;
+            bias_addr_test  <= '0;
+            bias_data_test <= '0;
+        end
+    end
 
 endmodule

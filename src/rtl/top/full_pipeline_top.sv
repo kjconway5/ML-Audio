@@ -91,7 +91,36 @@ module full_pipeline_top #(
 
     input  logic                 flash_log_lut_we_i,
     input  logic [LUT_FRAC-1:0]  flash_log_lut_addr_i,
-    input  logic [LOG_OUT_W-1:0] flash_log_lut_data_i
+    input  logic [LOG_OUT_W-1:0] flash_log_lut_data_i,
+
+    // test signals 
+    input  logic                   test_mode_audio,
+
+        // cic 
+    output logic [CIC_REG_W-1:0]     cic_audio,
+
+        // fir 
+    output logic signed [FIR_OW-1:0]    FIR_audio_in,
+    output logic signed [FIR_OW-1:0]    FIR_audio_out
+
+        // spect buff
+    output logic [ADDR_W-1:0]      sp_a_waddr_test,
+    output logic signed [7:0]      sp_a_wdata_test,
+
+    output logic [ADDR_W-1:0]      sp_b_waddr_test,
+    output logic signed [7:0]      sp_b_wdata_test,
+    output logic                   spect_write_sel_test,
+
+        // logmel 
+    input  logic [7:0]          test_coeff_addr_i,
+    input  logic [7:0]          test_index_addr_i,
+    input  logic [LUT_FRAC-1:0] test_lut_addr_i,
+
+    output logic [1:0] frame_control_state, 
+    output logic [$clog2(N_MELS)-1:0] mel_idx_test,
+    output logic [POWER_W:0] power_test,
+
+
 );
 
 // 1.  CIC Decimator — 1.008 MHz → 16 kHz  (ratio 63, 3 stages, M=1)
@@ -116,7 +145,10 @@ cic_decimator #(
     .output_tdata  (cic_data),
     .output_tvalid (cic_valid),
     .output_tready (fir_ready_o),
-    .rate          ($clog2(CIC_RMAX+1)'(CIC_RMAX))
+    .rate          ($clog2(CIC_RMAX+1)'(CIC_RMAX)),
+
+    // test output 
+    .cic_audio     (cic_audio)
 );
 
 
@@ -150,7 +182,10 @@ compFIR #(
     .i_tready (fir_ready_o),         // output fix naming(in tb too) TODO from i_tready -> o_tready
     .o_tdata  (fir_result),
     .o_tvalid (fir_valid_o),
-    .o_tready (fir_ready_i)          // input fix naming(in tb too) TODO from o_tready -> i_tready
+    .o_tready (fir_ready_i),         // input fix naming(in tb too) TODO from o_tready -> i_tready
+
+    .FIR_audio_in (FIR_audio_in),
+    .FIR_audio_out(FIR_audio_out)
 );
 
 
@@ -294,14 +329,19 @@ logmel_top #(
     .flash_log_lut_we_i     (flash_log_lut_we_i),
     .flash_log_lut_addr_i   (flash_log_lut_addr_i),
     .flash_log_lut_data_i   (flash_log_lut_data_i),
-    .test_mode_i            (1'b0),
-    .test_coeff_addr_i      (8'd0),
-    .test_index_addr_i      (8'd0),
-    .test_lut_addr_i        ({LUT_FRAC{1'b0}}),
     .vad_threshold_il       (vad_threshold_i),
     .vad_active_ol          (vad_active),
     .dft_vad_obs_en_i       (dft_vad_obs_en_i),
     .vad_frame_drop_ol      (vad_frame_drop_ol)
+
+    // test mode
+    .test_mode_i(audio_test_mode_i),
+    .test_coeff_addr_i(flash_mel_coeff_addr_i),
+    .test_index_addr_i(flash_mel_index_addr_i),
+    .test_lut_addr_i(flash_log_lut_addr_i),
+    .mel_idx_test(mel_idx_test),
+    .power_test(power_test),
+    .frame_control_state(frame_control_state)
 );
 
 assign vad_active_o = vad_active;
@@ -359,6 +399,14 @@ spect_buffer_ctrl #(
     .sp_b_wdata     (sp_b_wdata),
     .spect_done     (spect_done),
     .spect_write_sel(spect_write_sel)
+
+    // test signals 
+    .sp_a_waddr_test(sp_a_waddr_test),
+    .sp_a_wdata_test(sp_a_wdata_test),
+    .sp_b_waddr_test(sp_b_waddr_test),
+    .sp_b_wdata_test(sp_b_wdata_test),
+    .spect_write_sel_test(spect_write_sel_test),
+    .test_mode_audio(test_mode_audio)
 );
 
 endmodule

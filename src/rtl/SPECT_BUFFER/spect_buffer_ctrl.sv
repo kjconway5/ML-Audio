@@ -107,7 +107,17 @@ module spect_buffer_ctrl #(
 
     // FSM Handshake
     output logic                  spect_done,      // full selected spectrogram written
-    output logic                  spect_write_sel  // 0 = writing A / 1 = writing B
+    output logic                  spect_write_sel,  // 0 = writing A / 1 = writing B
+
+    // test signals 
+    output logic [ADDR_W-1:0]      sp_a_waddr_test,
+    output logic signed [7:0]      sp_a_wdata_test,
+
+    output logic [ADDR_W-1:0]      sp_b_waddr_test,
+    output logic signed [7:0]      sp_b_wdata_test,
+    output logic                   spect_write_sel_test,
+    input  logic                   test_mode_audio
+
 );
 
     localparam int TOTAL_SAMPLES = N_FRAMES * N_MELS;     // 50 x 40 = 2000
@@ -187,6 +197,31 @@ module spect_buffer_ctrl #(
                     end
                 end
             end
+        end
+    end
+
+    // test mode to observe at io pins
+    always_ff @(posedge clk) begin
+        if (reset) begin
+            sp_a_waddr_test <= '0;
+            sp_a_wdata_test <= '0;
+            sp_b_waddr_test <= '0;
+            sp_b_wdata_test <= '0;
+            spect_write_sel_test <= 1'b0;
+        end else if (test_mode_audio) begin
+            sp_a_waddr_test <= sp_a_waddr;
+            sp_a_wdata_test <= sp_a_wdata;
+
+            sp_b_waddr_test <= sp_b_waddr;
+            sp_b_wdata_test <= sp_b_wdata;
+
+            spect_write_sel_test <= spect_write_sel;
+        end else begin
+            sp_a_waddr_test <= '0;
+            sp_a_wdata_test <= '0;
+            sp_b_waddr_test <= '0;
+            sp_b_wdata_test <= '0;
+            spect_write_sel_test <= 1'b0;
         end
     end
 

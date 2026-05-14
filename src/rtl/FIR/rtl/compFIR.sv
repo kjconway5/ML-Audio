@@ -50,7 +50,11 @@ module compFIR #(
     // ── Downstream (to STFFT) ──────────────────────────────────────────────
     output reg  signed [OW-1:0]   o_tdata,
     output reg                    o_tvalid,
-    input  wire                   o_tready
+    input  wire                   o_tready,
+
+    input wire                    test_mode_audio,
+    output logic signed [OW-1:0]    FIR_audio_in,
+    output logic signed [OW-1:0]    FIR_audio_out
 );
 
     localparam M  = (NTAPS-1)/2;   // Index of centre tap
@@ -191,5 +195,19 @@ module compFIR #(
             o_tvalid <= 0;
         end
     end
+
+// test mode to observe at io pins
+always_ff @(posedge i_clk) begin
+    if (i_reset) begin
+        FIR_audio_in <= 0;
+        FIR_audio_out <= 0;
+    end else if (test_mode_audio) begin
+        FIR_audio_in <= i_tdata;
+        FIR_audio_out <= o_tdata;
+    end else begin
+        FIR_audio_in <= 0;
+        FIR_audio_out <= 0;
+    end
+end
 
 endmodule
