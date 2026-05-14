@@ -94,7 +94,7 @@ module FSM #(
     output logic  signed [ACC_W-1:0]  mac_bias_test,
 
     output logic  [31:0]              rq_mult_test,
-    output logic  [4:0]               rq_shift_test
+    output logic  [4:0]               rq_shift_test,
 
     output logic [3:0]                state_test,
     output logic [3:0]                layer_test
