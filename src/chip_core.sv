@@ -81,6 +81,10 @@ module chip_core #(
     wire            kws_done;
     wire [2:0]      kws_class_out;
 
+    // VAD DFT
+    wire pipeline_vad_active;
+    wire pipeline_vad_frame_drop;
+
     always_comb begin
         bidir_oe_r  = '1;
         bidir_ie_r  = '0;
@@ -258,8 +262,7 @@ module chip_core #(
     wire pipeline_ready;
     wire [15:0] mel_compensated;
     wire mel_compensated_valid;
-    wire pipeline_vad_active;
-    wire pipeline_vad_frame_drop;
+
 
 
     full_pipeline_top #(

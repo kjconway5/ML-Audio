@@ -50,6 +50,7 @@ VERILOG_FILES:
 - dir::../src/rtl/Log-Mel/rtl/mel_filterbank/mel_filterbank.sv
 - dir::../src/rtl/Log-Mel/rtl/output_buffer/output_buffer.sv
 - dir::../src/rtl/Log-Mel/rtl/power_calc/power_calc.sv
+- dir::../src/rtl/Log-Mel/rtl/spectral_vad/spectral_vad.sv
 # Logmel IP
 - dir::../src/rtl/Log-Mel/ip/Add.sv
 - dir::../src/rtl/Log-Mel/ip/AddMopCsv.sv
