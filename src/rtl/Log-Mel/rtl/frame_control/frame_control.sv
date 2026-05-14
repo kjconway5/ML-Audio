@@ -17,7 +17,11 @@ module frame_control #(
     output logic output_valid_o, // high during OUTPUT state when buffer has valid data
 
     // vad
-    input logic vad_active_i
+    input logic vad_active_i, 
+    input logic test_mode_audio,
+    output logic [$clog2(MEL_BINS)-1:0] mel_idx_test,
+    output logic [1:0] frame_control_state
+
 );
 
 

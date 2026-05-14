@@ -73,7 +73,31 @@ module FSM #(
     output reg  [31:0]              rq_mult,      // Q0.32 multiplier for multiply-shift requant
     output reg  [4:0]               rq_shift,     // exponent n; effective scale = rq_mult * 2^-(n+32)
     output reg                      rq_relu_en,
-    input  wire signed [DATA_W-1:0] rq_out
+    input  wire signed [DATA_W-1:0] rq_out,
+
+    // Test signals for io
+    input logic test_mode_ml,
+    output logic [2:0]fsm_class_test,
+
+    output logic  [ADDR_W-1:0]        fsm_a_waddr_test,
+    output logic  signed [DATA_W-1:0] fsm_a_wdata_test,
+    output logic  [ADDR_W-1:0]        fsm_a_raddr_test,   
+    output logic  signed [DATA_W-1:0] fsm_a_rdata_test,
+
+    output logic  [ADDR_W-1:0]        fsm_b_waddr_test,
+    output logic  signed [DATA_W-1:0] fsm_b_wdata_test,
+    output logic  [ADDR_W-1:0]        fsm_b_raddr_test,   
+    output logic  signed [DATA_W-1:0] fsm_b_rdata_test, 
+
+    output logic  signed [DATA_W-1:0] mac_ifmap_test,
+    output logic  signed [DATA_W-1:0] mac_weight_test,
+    output logic  signed [ACC_W-1:0]  mac_bias_test,
+
+    output logic  [31:0]              rq_mult_test,
+    output logic  [4:0]               rq_shift_test,
+
+    output logic [3:0]                state_test,
+    output logic [3:0]                layer_test
 );
 
     // Model Config Parameters
