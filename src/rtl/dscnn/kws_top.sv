@@ -1,7 +1,11 @@
 // kws_top.v
 // This is the only file Yosys needs as the top for synthesis
 
-module kws_top (
+module kws_top #(
+    parameter DATA_W  = 8,
+    parameter ACC_W   = 32,
+    parameter ADDR_W  = 14
+)(
     input  wire        clk,
     input  wire        reset,
     input  wire        start,
@@ -32,6 +36,36 @@ module kws_top (
     input  wire        sp_b_we,
     input  wire [10:0] sp_b_waddr,
     input  wire signed [7:0] sp_b_wdata
+
+    // test signals 
+    input logic test_mode_ml,
+
+    // fsm
+    output logic [2:0]fsm_class_test,
+
+    output logic  [ADDR_W-1:0]        fsm_a_waddr_test,
+    output logic  signed [DATA_W-1:0] fsm_a_wdata_test,
+    output logic  [ADDR_W-1:0]        fsm_a_raddr_test,   
+    output logic  signed [DATA_W-1:0] fsm_a_rdata_test,
+
+    output logic  [ADDR_W-1:0]        fsm_b_waddr_test,
+    output logic  signed [DATA_W-1:0] fsm_b_wdata_test,
+    output logic  [ADDR_W-1:0]        fsm_b_raddr_test,   
+    output logic  signed [DATA_W-1:0] fsm_b_rdata_test, 
+
+    output logic  signed [DATA_W-1:0] mac_ifmap_test,
+    output logic  signed [DATA_W-1:0] mac_weight_test,
+    output logic  signed [ACC_W-1:0]  mac_bias_test,
+
+    output logic  [31:0]              rq_mult_test,
+    output logic  [4:0]               rq_shift_test
+
+    output logic [3:0]                state_test,
+    output logic [3:0]                layer_test
+
+    // acc 
+    output logic signed [ACC_W-1:0]   acc_test
+
     );
 
     // weight SRAM signals
@@ -106,6 +140,10 @@ module kws_top (
         .en(mac_en), .clear(mac_clear),
         .ifmap(mac_ifmap), .weight(mac_weight),
         .bias(mac_bias), .acc(mac_acc)
+
+        // test signals
+        .test_mode_ml(test_mode_ml),
+        .acc_test(acc_test)
     );
 
     requant inst_rq (
@@ -139,7 +177,26 @@ module kws_top (
         .mac_ifmap(mac_ifmap), .mac_weight(mac_weight),
         .mac_bias(mac_bias), .mac_acc(mac_acc),
         .rq_mult(rq_mult), .rq_shift(rq_shift), .rq_relu_en(rq_relu_en), .rq_out(rq_out),
-        .bias_addr(bias_addr), .bias_data(bias_data)
+        .bias_addr(bias_addr), .bias_data(bias_data), 
+
+        // test signals to be passed up to pins
+        .test_mode_ml(test_mode_ml),
+        .fsm_class_test(fsm_class_test),
+        .fsm_a_waddr_test(fsm_a_waddr_test),
+        .fsm_a_wdata_test(fsm_a_wdata_test),
+        .fsm_a_raddr_test(fsm_a_raddr_test),   
+        .fsm_a_rdata_test(fsm_a_rdata_test),
+        .fsm_b_waddr_test(fsm_b_waddr_test),
+        .fsm_b_wdata_test(fsm_b_wdata_test),
+        .fsm_b_raddr_test(fsm_b_raddr_test),   
+        .fsm_b_rdata_test(fsm_b_rdata_test), 
+        .mac_ifmap_test(mac_ifmap_test),
+        .mac_weight_test(mac_weight_test),
+        .mac_bias_test(mac_bias_test),
+        .rq_mult_test(rq_mult_test),
+        .rq_shift_test(rq_shift_test),
+        .state_test(state_test),
+        .layer_test(layer_test) 
     );
 
 endmodule
