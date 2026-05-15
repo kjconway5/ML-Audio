@@ -35,7 +35,7 @@ module kws_top #(
     // Bank B 
     input  wire        sp_b_we,
     input  wire [10:0] sp_b_waddr,
-    input  wire signed [7:0] sp_b_wdata
+    input  wire signed [7:0] sp_b_wdata,
 
     // test signals 
     input logic test_mode_ml,
@@ -58,10 +58,10 @@ module kws_top #(
     output logic  signed [ACC_W-1:0]  mac_bias_test,
 
     output logic  [31:0]              rq_mult_test,
-    output logic  [4:0]               rq_shift_test
+    output logic  [4:0]               rq_shift_test,
 
     output logic [3:0]                state_test,
-    output logic [3:0]                layer_test
+    output logic [3:0]                layer_test,
 
     // acc 
     output logic signed [ACC_W-1:0]   acc_test
@@ -139,7 +139,7 @@ module kws_top #(
         .clk(clk), .reset(reset),
         .en(mac_en), .clear(mac_clear),
         .ifmap(mac_ifmap), .weight(mac_weight),
-        .bias(mac_bias), .acc(mac_acc)
+        .bias(mac_bias), .acc(mac_acc),
 
         // test signals
         .test_mode_ml(test_mode_ml),
