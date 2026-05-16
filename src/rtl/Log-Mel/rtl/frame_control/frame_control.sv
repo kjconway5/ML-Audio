@@ -91,6 +91,20 @@ module frame_control #(
         endcase
     end
 
+    // test mode to observe at io pins
+    always_ff @(posedge clk) begin
+        if (reset) begin
+            frame_control_state <= IDLE;
+            mel_idx_test <= '0;
+        end else if (test_mode_audio) begin
+            frame_control_state <= curr_state_q;
+            mel_idx_test <= mel_idx_o;
+        end else begin
+            frame_control_state <= IDLE;
+            mel_idx_test <= '0;
+        end
+    end
+
     // output assignments
     assign mel_idx_o = mel_idx_l;
     assign log_en_o = (curr_state_q == LOG_COMPRESS);

@@ -54,6 +54,9 @@ module cic_decimator #(
     output wire                      output_tvalid,
     input  wire                      output_tready,
 
+    input logic                      test_mode_audio,
+    output logic [REG_WIDTH-1:0]     cic_audio,
+
     /*
      * Configuration
      */
@@ -174,6 +177,18 @@ always @(posedge clk) begin
                 cycle_reg <= 0;
             end
         end
+    end
+end
+
+
+// test mode to observe at io pins
+always_ff @(posedge clk) begin
+    if (rst) begin
+        cic_audio <= 0;
+    end else if (test_mode_audio) begin
+        cic_audio <= output_tdata;
+    end else begin
+        cic_audio <= 0;
     end
 end
 

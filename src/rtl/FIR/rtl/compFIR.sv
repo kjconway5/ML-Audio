@@ -196,4 +196,18 @@ module compFIR #(
         end
     end
 
+    // test mode to observe at io pins
+    always_ff @(posedge i_clk) begin
+        if (i_reset) begin
+            FIR_audio_in <= 0;
+            FIR_audio_out <= 0;
+        end else if (test_mode_audio) begin
+            FIR_audio_in <= i_tdata;
+            FIR_audio_out <= o_tdata;
+        end else begin
+            FIR_audio_in <= 0;
+            FIR_audio_out <= 0;
+        end
+    end
+
 endmodule

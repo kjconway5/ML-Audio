@@ -12,7 +12,11 @@ module mac_array #(
     input  wire signed [DATA_W-1:0]  ifmap,
     input  wire signed [DATA_W-1:0]  weight,
     input  wire signed [ACC_W-1:0]   bias,
-    output reg  signed [ACC_W-1:0]   acc
+    output reg  signed [ACC_W-1:0]   acc,
+
+    // Test signals
+    input logic test_mode_ml,
+    output logic signed [ACC_W-1:0]   acc_test
 );
 
     always @(posedge clk) begin
@@ -23,6 +27,17 @@ module mac_array #(
         end else if (en) begin
             acc <= acc + $signed({{(ACC_W-DATA_W){ifmap[DATA_W-1]}},  ifmap})
                        * $signed({{(ACC_W-DATA_W){weight[DATA_W-1]}}, weight});
+        end
+    end
+
+
+    always_ff @(posedge clk) begin
+        if (reset) begin
+            acc_test <= 0;
+        end else if (test_mode_ml) begin
+            acc_test <= acc;
+        end else begin 
+            acc_test <= 0;
         end
     end
 
