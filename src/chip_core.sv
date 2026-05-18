@@ -81,6 +81,8 @@ module chip_core #(
     wire            kws_done;
     wire [2:0]      kws_class_out;
 
+    wire pipeline_vad_frame_drop;
+
     always_comb begin
         bidir_oe_r  = '1;
         bidir_ie_r  = '0;
@@ -182,6 +184,8 @@ module chip_core #(
 
 
     features_boot_router u_feat_router (
+        .clk_i             (clk),
+        .reset_i           (reset),
         .boot_i            (features_boot),
         .lut_boot_we_o     (flash_log_lut_we),
         .lut_boot_addr_o   (flash_log_lut_addr),
@@ -265,7 +269,6 @@ module chip_core #(
     wire [15:0] mel_compensated;
     wire mel_compensated_valid;
     wire pipeline_vad_active;
-    wire pipeline_vad_frame_drop;
 
 
     full_pipeline_top #(
@@ -313,7 +316,9 @@ module chip_core #(
         .flash_log_lut_data_i   (flash_log_lut_data),
         // VAD DFT Ports
         .dft_vad_obs_en_i   (input_in[2]),
-        .vad_frame_drop_ol  (pipeline_vad_frame_drop)
+        .vad_frame_drop_ol  (pipeline_vad_frame_drop),
+        // TODO: wire test_mode_audio to a real pad/scan chain when DFT is complete
+        .test_mode_audio    (1'b0)
     );
 
     kws_top kws_inst (

@@ -45,6 +45,7 @@ module FSM #(
 
     // Bias SRAM interface
     output wire [8:0]               bias_addr,   // 9-bit: supports up to 511 bias entries
+    output wire                     bias_read_high,
     input  wire signed [31:0]       bias_data,
 
     //Feature SRAM signals
@@ -202,18 +203,19 @@ module FSM #(
         (spect_read_sel == 1'b0) ? sp_a_rdata : sp_b_rdata;
 
     // FSM states
-    localparam  IDLE        = 4'd0,
-                LOAD_LAYER  = 4'd1,
-                LOAD_BIAS   = 4'd2,   // present bias_addr for 1-cycle SRAM read
-                CLEAR_ACC   = 4'd3,
-                FETCH       = 4'd4,   // 1 cycle latency state to match read latency of SRAM
-                COMPUTE     = 4'd5,   // read SRAM data, accumulate MAC
-                DRAIN       = 4'd6,   // flush last MAC product before WRITE_OFMAP
-                WRITE_OFMAP = 4'd7,
-                NEXT_PIXEL  = 4'd8,
-                NEXT_LAYER  = 4'd9,
-                GLOBAL_POOL = 4'd10,  // global-average-pool argmax scan
-                OUTPUT      = 4'd11;  // output class_out and assert done
+    localparam  IDLE         = 4'd0,
+                LOAD_LAYER   = 4'd1,
+                LOAD_BIAS    = 4'd2,   // present bias_addr, read low 16-bit halfword
+                CLEAR_ACC    = 4'd3,
+                FETCH        = 4'd4,   // 1 cycle latency state to match read latency of SRAM
+                COMPUTE      = 4'd5,   // read SRAM data, accumulate MAC
+                DRAIN        = 4'd6,   // flush last MAC product before WRITE_OFMAP
+                WRITE_OFMAP  = 4'd7,
+                NEXT_PIXEL   = 4'd8,
+                NEXT_LAYER   = 4'd9,
+                GLOBAL_POOL  = 4'd10,  // global-average-pool argmax scan
+                OUTPUT       = 4'd11,  // output class_out and assert done
+                LOAD_BIAS_HI = 4'd12;  // read high 16-bit halfword, then bias_data is valid
 
     reg [3:0]  state;
     reg [3:0]  layer;       // FSM layer counter (0-9), separate from cfg_layer decode above
@@ -347,6 +349,10 @@ module FSM #(
                 end
 
                 LOAD_BIAS: begin
+                    state <= LOAD_BIAS_HI;
+                end
+
+                LOAD_BIAS_HI: begin
                     state <= CLEAR_ACC;
                 end
 
@@ -488,6 +494,7 @@ module FSM #(
 
     // Bias address: 9-bit = {cfg_bias_hi[layer], cfg_bias_off[layer]} + oc
     assign bias_addr = {cfg_bias_hi[layer], cfg_bias_off[layer]} + {1'b0, oc};
+    assign bias_read_high = (state == LOAD_BIAS_HI);
 
     always_ff @(posedge clk) begin
         if (reset) begin

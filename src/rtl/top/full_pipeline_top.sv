@@ -335,7 +335,7 @@ logmel_top #(
     .vad_frame_drop_ol      (vad_frame_drop_ol),
 
     // test mode
-    .test_mode_i(audio_test_mode_i),
+    .test_mode_i(test_mode_audio),
     .test_coeff_addr_i(flash_mel_coeff_addr_i),
     .test_index_addr_i(flash_mel_index_addr_i),
     .test_lut_addr_i(flash_log_lut_addr_i),

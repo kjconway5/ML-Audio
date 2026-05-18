@@ -145,6 +145,9 @@ spectral_vad #(
     );
 
 
+    logic vad_frame_accept;
+    assign vad_frame_accept = (vad_threshold_il == 32'd0) ? 1'b1 : vad_active;
+
     // frame_controller
     // FSM to sequence log compression and output stages
     // filterbank manages its own accumulation so FSM just waits for done
@@ -155,7 +158,7 @@ spectral_vad #(
         .reset             (reset_i),
         .fft_sync_i        (fft_sync_il),
         .filterbank_done_i (filterbank_done),
-        .vad_active_i      (vad_active),
+        .vad_active_i      (vad_frame_accept),
         .frame_sent_i      (frame_sent),
         .mel_idx_o         (mel_idx),
         .log_en_o          (log_en),

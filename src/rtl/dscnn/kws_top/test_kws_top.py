@@ -28,6 +28,7 @@ FSM_STATES = {
     9:  "NEXT_LAYER",
     10: "GLOBAL_POOL",
     11: "OUTPUT",
+    12: "LOAD_BIAS_HI",
 }
 
 LAYER_NAMES = [
@@ -274,7 +275,7 @@ async def run_single_inference(dut, spect_int8, sample_idx, timeout_ns, layer_cf
 async def test_kws_inference(dut):
     test_dir = get_test_dir()
 
-    MODEL_DIR     = os.path.join(test_dir, "..", "..", "..", "ml", "models", "dscnn-32center-v1")
+    MODEL_DIR     = os.path.join(test_dir, "..", "..", "..", "ml", "models", "dscnn-16full-v1")
     weights_path  = os.path.join(MODEL_DIR, "weights.hex")
     bias_path     = os.path.join(MODEL_DIR, "bias.hex")
     scales_path   = os.path.join(MODEL_DIR, "scales.txt")
@@ -290,14 +291,14 @@ async def test_kws_inference(dut):
             )
 
     from pathlib import Path
-    layer_cfgs = load_layer_cfgs(Path(scales_path), n_filters=32)
+    layer_cfgs = load_layer_cfgs(Path(scales_path), n_filters=16)
 
     with open(manifest_path) as f:
         manifest = json.load(f)
 
     weights    = load_hex_file(weights_path, signed=True, width=8)
     biases_raw = load_hex_file(bias_path,   signed=True, width=32)
-    assert len(weights) == 6752, f"Expected 6752 weights, got {len(weights)}"
+    assert len(weights) == 2352, f"Expected 2352 weights, got {len(weights)}"
 
     keyword     = manifest["keyword"]
     class_names = manifest["class_names"]

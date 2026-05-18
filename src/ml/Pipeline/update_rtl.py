@@ -285,15 +285,17 @@ def update_bias_sv(arch: Arch, bias_path: Path, dry_run: bool) -> bool:
         text,
         count=1,
     )
+    bias_addr_w = addr_width(arch.bias_count)
     text = re.sub(
         r"parameter ADDR_W\s*=\s*\d+\s*,",
-        "parameter ADDR_W    = 9,",
+        f"parameter ADDR_W    = {bias_addr_w},",
         text,
         count=1,
     )
 
+    sram_type = "sram256x8" if bias_addr_w <= 8 else "sram512x8"
     changed = replace_text(BIAS_SV, text, dry_run)
-    print(f"  bias_sram: depth={arch.bias_count}, ADDR_W=9 ({'would update' if dry_run and changed else 'updated' if changed else 'already current'})")
+    print(f"  bias_sram: depth={arch.bias_count}, ADDR_W={bias_addr_w}, macro={sram_type} ({'would update' if dry_run and changed else 'updated' if changed else 'already current'})")
     return True
 
 

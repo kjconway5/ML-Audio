@@ -68,6 +68,12 @@ src/ml/__pycache__/
 
 src/rtl/Log-Mel/rtl/log_top/*.hex
 /workspace/src/rtl/Log-Mel/rtl/mel_filterbank/*.hex
+cocotb/hanning.hex
+cocotb/log2_lut.hex
+cocotb/mel_coeffs_sparse.hex
+cocotb/mel_indices.hex
+int14
+src/ml/Pipeline/speech_commands_v0.02 (1).tar.gz
 
 # Formal verification outputs
 *_bmc/

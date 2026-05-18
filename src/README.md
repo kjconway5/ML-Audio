@@ -53,11 +53,11 @@ python3 update_rtl.py --ckpt-dir ../models/dscnn-32requant-v11/
 ```bash
 cd src/rtl/dscnn/kws_top/
 
-python3 generate_spect.py \
+python3 generate_spect_full.py \
     --keyword yes \
     --n-samples 10 \
     --dataset-dir /path/to/speech_commands_v0.02 \
-    --ckpt dscnn-32requant-v11/dscnn-32requant-v11.pt \
+    --ckpt dscnn-16center-v1/dscnn-16center-v1.pt \
     --out-dir ./spectrograms
 ```
 

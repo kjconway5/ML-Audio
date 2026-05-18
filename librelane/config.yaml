@@ -33,7 +33,7 @@ VERILOG_FILES:
 - dir::../src/rtl/top/full_pipeline_top.sv
 - dir::../src/rtl/top/pipeline_top.sv
 # DSCNN SRCS
-- dir::../src/rtl/dscnn/bias_dff/bias_DFFs.sv
+- dir::../src/rtl/dscnn/bias_SRAM/bias_SRAM.sv
 - dir::../src/rtl/dscnn/feature_sram/feature_sram.sv
 - dir::../src/rtl/dscnn/fsm/FSM.sv
 - dir::../src/rtl/dscnn/mac_array/mac_array.sv
@@ -41,6 +41,7 @@ VERILOG_FILES:
 - dir::../src/rtl/dscnn/spectrogram_sram/spectrogram_sram.sv
 - dir::../src/rtl/dscnn/weight_sram/weight_sram.sv
 # Logmel Filterbank SRCS
+- dir::../src/rtl/Log-Mel/rtl/spectral_vad/spectral_vad.sv
 - dir::../src/rtl/Log-Mel/rtl/log_top/logmel_top.sv
 - dir::../src/rtl/Log-Mel/rtl/frame_control/frame_control.sv
 - dir::../src/rtl/Log-Mel/rtl/log_lut/log_lut_sram.sv
@@ -139,7 +140,7 @@ GRT_RESIZER_HOLD_SLACK_MARGIN: 0.3
 
 # Increase for more logic
 # on your die
-PL_TARGET_DENSITY_PCT: 35
+PL_TARGET_DENSITY_PCT: 50
 GRT_ALLOW_CONGESTION: true
 
 # Fix antenna violations after DRT
@@ -386,26 +387,34 @@ MACROS:
       i_chip_core.pipeline_inst.u_stfft.u_b_ram1.u_b_b3:
         location: [1700, 1900]
         orientation: N
-  # No instances for this macro, if any added then uncomment out and place
-  # gf180mcu_ocd_ip_sram__sram512x8m8wm1:
-  #   gds:
-  #     - dir::../gf180mcu_ocd_ip_sram/cells/gf180mcu_ocd_ip_sram__sram512x8m8wm1/gf180mcu_ocd_ip_sram__sram512x8m8wm1.gds
-  #   lef:
-  #     - dir::../gf180mcu_ocd_ip_sram/cells/gf180mcu_ocd_ip_sram__sram512x8m8wm1/gf180mcu_ocd_ip_sram__sram512x8m8wm1.lef
-  #   vh:
-  #     - dir::../gf180mcu_ocd_ip_sram/cells/gf180mcu_ocd_ip_sram__sram512x8m8wm1/gf180mcu_ocd_ip_sram__sram512x8m8wm1.blackbox.v
-  #   lib:
-  #     "*__tt_025C_3v30":
-  #       - dir::../gf180mcu_ocd_ip_sram/cells/gf180mcu_ocd_ip_sram__sram512x8m8wm1/gf180mcu_ocd_ip_sram__sram512x8m8wm1__tt_025C_3v30.lib
-  #     "*__ff_n40C_3v60":
-  #       - dir::../gf180mcu_ocd_ip_sram/cells/gf180mcu_ocd_ip_sram__sram512x8m8wm1/gf180mcu_ocd_ip_sram__sram512x8m8wm1__ff_n40C_3v60.lib
-  #     "*__ss_125C_3v00":
-  #       - dir::../gf180mcu_ocd_ip_sram/cells/gf180mcu_ocd_ip_sram__sram512x8m8wm1/gf180mcu_ocd_ip_sram__sram512x8m8wm1__ss_125C_3v00.lib
-  #   instances:
-      # You'll fill these in after inventorying your SRAM instances
-      # i_chip_core.pipeline_inst.u_logmel.i_mel_fb.i_coeff_sram_0:
-      #   location: [500, 500]
-      #   orientation: N
+  gf180mcu_ocd_ip_sram__sram512x8m8wm1:
+    gds:
+      - dir::../gf180mcu_ocd_ip_sram/cells/gf180mcu_ocd_ip_sram__sram512x8m8wm1/gf180mcu_ocd_ip_sram__sram512x8m8wm1.gds
+    lef:
+      - dir::../gf180mcu_ocd_ip_sram/cells/gf180mcu_ocd_ip_sram__sram512x8m8wm1/gf180mcu_ocd_ip_sram__sram512x8m8wm1.lef
+    vh:
+      - dir::../gf180mcu_ocd_ip_sram/cells/gf180mcu_ocd_ip_sram__sram512x8m8wm1/gf180mcu_ocd_ip_sram__sram512x8m8wm1.blackbox.v
+    lib:
+      "nom_tt_025C_3v30":
+        - dir::../gf180mcu_ocd_ip_sram/cells/gf180mcu_ocd_ip_sram__sram512x8m8wm1/gf180mcu_ocd_ip_sram__sram512x8m8wm1__tt_025C_3v30.lib
+      "min_tt_025C_3v30":
+        - dir::../gf180mcu_ocd_ip_sram/cells/gf180mcu_ocd_ip_sram__sram512x8m8wm1/gf180mcu_ocd_ip_sram__sram512x8m8wm1__tt_025C_3v30.lib
+      "max_tt_025C_3v30":
+        - dir::../gf180mcu_ocd_ip_sram/cells/gf180mcu_ocd_ip_sram__sram512x8m8wm1/gf180mcu_ocd_ip_sram__sram512x8m8wm1__tt_025C_3v30.lib
+      "nom_ff_n40C_3v60":
+        - dir::../gf180mcu_ocd_ip_sram/cells/gf180mcu_ocd_ip_sram__sram512x8m8wm1/gf180mcu_ocd_ip_sram__sram512x8m8wm1__ff_n40C_3v60.lib
+      "min_ff_n40C_3v60":
+        - dir::../gf180mcu_ocd_ip_sram/cells/gf180mcu_ocd_ip_sram__sram512x8m8wm1/gf180mcu_ocd_ip_sram__sram512x8m8wm1__ff_n40C_3v60.lib
+      "max_ff_n40C_3v60":
+        - dir::../gf180mcu_ocd_ip_sram/cells/gf180mcu_ocd_ip_sram__sram512x8m8wm1/gf180mcu_ocd_ip_sram__sram512x8m8wm1__ff_n40C_3v60.lib
+    instances:
+      # Bias SRAM: 2× sram512x8, read as two 16-bit halfwords over two cycles
+      i_chip_core.kws_inst.inst_bias.gen_bias_bytes[0].inst_bias_sram:
+        location: [452.4, 2250.0]
+        orientation: N
+      i_chip_core.kws_inst.inst_bias.gen_bias_bytes[1].inst_bias_sram:
+        location: [763.7, 2250.0]
+        orientation: N
 
   gf180mcu_ocd_ip_sram__sram1024x8m8wm1:
     gds:
@@ -619,6 +628,7 @@ PDN_MACRO_CONNECTIONS:
 - 'i_chip_core.kws_inst.inst_specram.gen_spect_banks.*.inst_spectrogram_sram VDD VSS VDD VSS'
 - 'i_chip_core.kws_inst.inst_specram.gen_spect_banks.*.inst_spectrogram_sram2 VDD VSS VDD VSS'
 - 'i_chip_core.kws_inst.inst_wsram.gen_weight_banks.*.inst_weight_sram VDD VSS VDD VSS'
+- 'i_chip_core.kws_inst.inst_bias.gen_bias_bytes.*.inst_bias_sram VDD VSS VDD VSS'
 # Halo size around macros while cutting rows.
 # Workaround for: https://github.com/The-OpenROAD-Project/OpenROAD/issues/8868
 FP_MACRO_HORIZONTAL_HALO: 10

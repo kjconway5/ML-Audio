@@ -27,7 +27,7 @@ def load_hex_file(filename):
 
 
 EXPECTED_HEX = load_hex_file("bias.hex")
-DEPTH = 295
+DEPTH = 151
 DATA_W = 32
 
 
@@ -37,13 +37,20 @@ async def init_dut(dut):
     dut.waddr.value = 0
     dut.wdata.value = 0
     dut.addr.value = 0
+    dut.read_high.value = 0
     await ClockCycles(dut.clk, 2)
 
 
 async def read_bias(dut, addr):
+    # 2-cycle read: present addr with read_high=0, then read_high=1.
+    # SIM model pipelines addr through raddr_q0→raddr_q1; data valid after 2 edges.
     await FallingEdge(dut.clk)
     dut.addr.value = addr
-    await RisingEdge(dut.clk)
+    dut.read_high.value = 0
+    await RisingEdge(dut.clk)   # edge 1: raddr_q0 <= addr
+    await FallingEdge(dut.clk)
+    dut.read_high.value = 1
+    await RisingEdge(dut.clk)   # edge 2: raddr_q1 <= raddr_q0; data valid
     await ReadOnly()
     return dut.data.value.signed_integer
 
@@ -52,9 +59,8 @@ async def read_bias(dut, addr):
 async def test_bias_sram_basic_addresses(dut):
     await init_dut(dut)
     test_addrs = [
-        0, 1, 31, 32, 63, 64, 95, 96,
-        127, 128, 159, 160, 191, 192,
-        223, 255, 256, 287, 288, 294,
+        0, 1, 15, 16, 31, 32, 47, 48,
+        63, 64, 79, 80, 95, 112, 128, 143, 150,
     ]
 
     for addr in test_addrs:
@@ -72,7 +78,7 @@ async def test_bias_sram_basic_addresses(dut):
 @cocotb.test()
 async def test_bias_sram_full_sweep(dut):
     await init_dut(dut)
-    for addr in range(295):
+    for addr in range(151):
         got = await read_bias(dut, addr)
         exp = EXPECTED_HEX[addr] if addr < len(EXPECTED_HEX) else 0
 
@@ -87,17 +93,19 @@ async def test_bias_sram_full_sweep(dut):
 @cocotb.test()
 async def test_bias_sram_block_boundaries(dut):
     await init_dut(dut)
+    # 16-filter DS-CNN: first_conv(16) + 4 ds_blocks(16 dw + 16 pw each) + classifier(7)
+    # bias offsets: 0-15, 16-31, 32-47, 48-63, 64-79, 80-95, 96-111, 112-127, 128-143, 144-150
     boundary_addrs = [
-        0, 31,       # first_conv
-        32, 63,      # ds_blocks.0.depthwise
-        64, 95,      # ds_blocks.0.pointwise
-        96, 127,     # ds_blocks.1.depthwise
-        128, 159,    # ds_blocks.1.pointwise
-        160, 191,    # ds_blocks.2.depthwise
-        192, 223,    # ds_blocks.2.pointwise
-        224, 255,    # ds_blocks.3.depthwise
-        256, 287,    # ds_blocks.3.pointwise
-        288, 294,    # classifier
+        0, 15,       # first_conv
+        16, 31,      # ds_blocks.0.depthwise
+        32, 47,      # ds_blocks.0.pointwise
+        48, 63,      # ds_blocks.1.depthwise
+        64, 79,      # ds_blocks.1.pointwise
+        80, 95,      # ds_blocks.2.depthwise
+        96, 111,     # ds_blocks.2.pointwise
+        112, 127,    # ds_blocks.3.depthwise
+        128, 143,    # ds_blocks.3.pointwise
+        144, 150,    # classifier
     ]
 
     for addr in boundary_addrs:
