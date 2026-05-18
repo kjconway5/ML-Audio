@@ -11,7 +11,7 @@ Outputs written to the same directory as the checkpoint:
     bias.hex     — all INT32 biases concatenated, one per line (8-digit hex)
     scales.txt   — per-layer requant shift values (paste into LAYER_CFGS in test)
     input_quant.txt — spect_buffer_ctrl input requant constants
-    bias_DFFs.sv snippet printed to stdout for updating bias_dff/bias_DFFs.sv
+    bias SRAM layout summary printed to stdout
 """
 
 import argparse
@@ -241,18 +241,15 @@ def main():
     print(f"  input requant   : mult={input_mult} shift={input_shift}")
     print(f"input_quant.txt   : {input_quant_path}")
 
-    # ── bias_DFFs.sv case statement snippet ───────────────────────────────────
+    # ── bias SRAM summary ─────────────────────────────────────────────────────
     total_biases = len(all_biases)
     addr_bits = max(8, total_biases - 1).bit_length()   # 8 for ≤255, 9 for ≤511, etc.
     print("\n" + "="*70)
-    print("Paste the following into bias_dff/bias_DFFs.sv case statement:")
+    print("Bias SRAM contents are written to bias.hex:")
     print("="*70)
     offset = 0
     for l in bias_layers:
         print(f"\n    // {l['name']} (bias_off={l['offset']}, {len(l['bias'])} channels)")
-        for i, val in enumerate(l["bias"]):
-            u = int(val) & 0xFFFFFFFF
-            print(f"    {addr_bits}'d{offset + i}: data = 32'sh{u:08X};")
         offset += len(l["bias"])
     print(f"\n    // Total entries: {offset}  (addr_bits={addr_bits})")
 

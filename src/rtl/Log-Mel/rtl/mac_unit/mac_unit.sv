@@ -9,7 +9,7 @@ module mac_unit #(
     input  logic [COEFF_W-1:0]   weight_i,
     input  logic                 accumulate_i,
     input  logic                 clear_i,
-    output logic [ACCUM_W-1:0]   accum_o
+    output logic [ACCUM_W-1:0]   accum_o,
 
     output logic [POWER_W-1:0]   mac_accum_test,
     input logic test_mode_audio

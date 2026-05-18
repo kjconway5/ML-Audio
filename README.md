@@ -434,3 +434,6 @@ nix develop --command bash -lc 'unset LD_LIBRARY_PATH; make sim-core KWS_KEYWORD
 ```bash
 tmux new -s my-session
 ```
+
+openroad: 
+docker run -it --rm   -e DISPLAY=$DISPLAY   -v /tmp/.X11-unix:/tmp/.X11-unix   -v /home/dnocera:/home/dnocera   --entrypoint=bash   openroad/orfs:26Q1-338-g1face8531   -c "/OpenROAD-flow-scripts/tools/install/OpenROAD/bin/openroad -gui -no_init /home/dnocera/librelane_files/load_chip.tcl"

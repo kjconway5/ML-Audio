@@ -15,7 +15,7 @@ package boot_pkg;
     //  Top-level module encoding (high nibble of target byte)
     typedef enum logic [MODULE_SEL_W-1:0] {
         MOD_FEATURES = 4'h0,   // Target SRAMS in different modules found within Features Pipeline
-        MOD_DSCNN    = 4'h1,   // weights, layer config
+        MOD_DSCNN    = 4'h1,   // weights, biases, layer config
         MOD_DEBUG    = 4'h8,   // DFT
         MOD_CONTROL  = 4'hF    // Booting (maybe additional run-time operations)
     } module_sel_e;
@@ -34,8 +34,9 @@ package boot_pkg;
 
     // DS-CNN subtargets (low nibble when MOD_DSCNN)
     typedef enum logic [SUBTARGET_W-1:0] {
-        DSCNN_WEIGHTS = 4'h0,   // 4296 × 8-bit  → 9× sram512x8
-        DSCNN_CFG     = 4'h1    // layer config registers
+        DSCNN_WEIGHTS = 4'h0,   // INT8 weights, byte-addressed
+        DSCNN_CFG     = 4'h1,   // layer config registers
+        DSCNN_BIAS    = 4'h2    // INT32 biases, byte-addressed little-endian
     } dscnn_subtarget_e;
 
 
@@ -80,8 +81,9 @@ package boot_pkg;
                 endcase
             MOD_DSCNN:
                 case (sub)
-                    DSCNN_WEIGHTS:  return 1'b0;   // 6752 × 8-bit
+                    DSCNN_WEIGHTS:  return 1'b0;   // 6752 x 8-bit
                     DSCNN_CFG:      return 1'b0;   // 8-bit config registers
+                    DSCNN_BIAS:     return 1'b0;   // 295 x 32-bit, byte-addressed
                     default:        return 1'b0;
                 endcase
             default: return 1'b0;   // MOD_CONTROL, MOD_DEBUG: no packing

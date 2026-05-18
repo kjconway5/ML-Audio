@@ -22,6 +22,11 @@ module kws_top #(
     input  wire [12:0] w_waddr,
     input  wire [7:0]  w_wdata,
 
+    // Bias SRAM byte-write port (connects to UART boot)
+    input  wire        b_we,
+    input  wire [10:0] b_waddr,
+    input  wire [7:0]  b_wdata,
+
     // spect_buffer_ctrl → FSM
     input  wire        spect_done,
     input  wire        spect_write_sel,
@@ -181,9 +186,13 @@ module kws_top #(
         .relu_en(rq_relu_en), .out(rq_out)
     );
 
-    bias_DFFs inst_bias (
+    bias_SRAM inst_bias (
+        .clk(clk),
         .addr(bias_addr),
-        .data(bias_data)
+        .data(bias_data),
+        .we(b_we),
+        .waddr(b_waddr),
+        .wdata(b_wdata)
     );
 
     FSM inst_ctrl (

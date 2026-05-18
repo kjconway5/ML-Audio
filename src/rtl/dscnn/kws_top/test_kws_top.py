@@ -18,15 +18,16 @@ CLK_PERIOD_NS = 100
 FSM_STATES = {
     0:  "IDLE",
     1:  "LOAD_LAYER",
-    2:  "CLEAR_ACC",
-    3:  "FETCH",
-    4:  "COMPUTE",
-    5:  "DRAIN",
-    6:  "WRITE_OFMAP",
-    7:  "NEXT_PIXEL",
-    8:  "NEXT_LAYER",
-    9:  "GLOBAL_POOL",
-    10: "OUTPUT",
+    2:  "LOAD_BIAS",
+    3:  "CLEAR_ACC",
+    4:  "FETCH",
+    5:  "COMPUTE",
+    6:  "DRAIN",
+    7:  "WRITE_OFMAP",
+    8:  "NEXT_PIXEL",
+    9:  "NEXT_LAYER",
+    10: "GLOBAL_POOL",
+    11: "OUTPUT",
 }
 
 LAYER_NAMES = [
@@ -119,6 +120,9 @@ async def reset_dut(dut):
     dut.w_we.value         = 0
     dut.w_waddr.value      = 0
     dut.w_wdata.value      = 0
+    dut.b_we.value         = 0
+    dut.b_waddr.value      = 0
+    dut.b_wdata.value      = 0
 
     await ClockCycles(dut.clk, 10)
     dut.reset.value = 0
@@ -138,6 +142,23 @@ async def load_weight_sram(dut, weights):
     dut.w_we.value = 0
     await RisingEdge(dut.clk)
     dut._log.info("Weight SRAM loaded.")
+
+
+async def load_bias_sram(dut, biases):
+    dut._log.info(f"Loading bias SRAM ({len(biases)} INT32 values)...")
+    for addr, val in enumerate(biases):
+        raw = val & 0xFFFFFFFF
+        for byte in range(4):
+            await FallingEdge(dut.clk)
+            dut.b_we.value = 1
+            dut.b_waddr.value = addr * 4 + byte
+            dut.b_wdata.value = (raw >> (8 * byte)) & 0xFF
+            await RisingEdge(dut.clk)
+
+    await FallingEdge(dut.clk)
+    dut.b_we.value = 0
+    await RisingEdge(dut.clk)
+    dut._log.info("Bias SRAM loaded.")
 
 
 async def load_spectrogram(dut, spect_int8):
@@ -325,6 +346,7 @@ async def test_kws_inference(dut):
 
     await reset_dut(dut)
     await load_weight_sram(dut, weights)
+    await load_bias_sram(dut, biases_raw)
 
     TIMEOUT_NS = 12_000_000 * CLK_PERIOD_NS
     results = []

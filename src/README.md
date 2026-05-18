@@ -42,7 +42,7 @@ python3 update_rtl.py --ckpt-dir ../models/dscnn-32requant-v11/
 ```
 
 `export.py` writes `weights.hex`, `bias.hex`, and `scales.txt` into the checkpoint directory.  
-`update_rtl.py` patches `rtl/dscnn/kws_top/test_kws_top.py` (layer shifts) and `rtl/dscnn/bias_dff/bias_DFFs.sv` (bias case statement).
+`update_rtl.py` patches `rtl/dscnn/kws_top/test_kws_top.py` (layer shifts), copies `bias.hex`, and retargets the bias SRAM parameters.
 
 ---
 
@@ -74,7 +74,7 @@ make test-cocotb
 cd src/rtl/Log-Mel/rtl/log_top/
 make test-cocotb
 
-# Any individual submodule (mac_array, requant, bias_dff, etc.)
+# Any individual submodule (mac_array, requant, bias_SRAM, etc.)
 cd src/rtl/dscnn/<module>/
 make test-cocotb
 ```

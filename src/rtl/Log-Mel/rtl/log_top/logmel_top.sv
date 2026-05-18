@@ -55,7 +55,7 @@ module logmel_top #(
 
     // DFT / debug
     input  logic                dft_vad_obs_en_i,
-    output logic                vad_frame_drop_ol
+    output logic                vad_frame_drop_ol,
     output logic [$clog2(N_MELS)-1:0] mel_idx_test,
     output logic [(2*IW)-SHIFT:0] power_test,
     output logic [1:0] frame_control_state
@@ -90,7 +90,7 @@ module logmel_top #(
         .imag_il  (im_il),
         .valid_il (fft_valid_il),
         .power_ol (power),
-        .valid_ol (power_valid)
+        .valid_ol (power_valid),
         .power_test (power_test),
         .test_mode_audio (test_mode_i)
     );

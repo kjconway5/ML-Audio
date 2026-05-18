@@ -58,7 +58,7 @@ set sv_sources [list \
     $dscnn/fsm/FSM.sv \
     $dscnn/mac_array/mac_array.sv \
     $dscnn/requant/requant.sv \
-    $dscnn/bias_dff/bias_DFFs.sv \
+    $dscnn/bias_SRAM/bias_SRAM.sv \
     $dscnn/feature_sram/feature_sram.sv \
     $dscnn/weight_sram/weight_sram.sv \
     $dscnn/spectrogram_sram/spectrogram_sram.sv \

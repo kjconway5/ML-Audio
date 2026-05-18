@@ -101,7 +101,7 @@ module full_pipeline_top #(
 
         // fir 
     output logic signed [FIR_OW-1:0]    FIR_audio_in,
-    output logic signed [FIR_OW-1:0]    FIR_audio_out
+    output logic signed [FIR_OW-1:0]    FIR_audio_out,
 
         // spect buff
     output logic [ADDR_W-1:0]      sp_a_waddr_test,
@@ -118,7 +118,7 @@ module full_pipeline_top #(
 
     output logic [1:0] frame_control_state, 
     output logic [$clog2(N_MELS)-1:0] mel_idx_test,
-    output logic [POWER_W:0] power_test,
+    output logic [POWER_W:0] power_test
 
 
 );
@@ -332,7 +332,7 @@ logmel_top #(
     .vad_threshold_il       (vad_threshold_i),
     .vad_active_ol          (vad_active),
     .dft_vad_obs_en_i       (dft_vad_obs_en_i),
-    .vad_frame_drop_ol      (vad_frame_drop_ol)
+    .vad_frame_drop_ol      (vad_frame_drop_ol),
 
     // test mode
     .test_mode_i(audio_test_mode_i),
@@ -398,7 +398,7 @@ spect_buffer_ctrl #(
     .sp_b_waddr     (sp_b_waddr),
     .sp_b_wdata     (sp_b_wdata),
     .spect_done     (spect_done),
-    .spect_write_sel(spect_write_sel)
+    .spect_write_sel(spect_write_sel),
 
     // test signals 
     .sp_a_waddr_test(sp_a_waddr_test),

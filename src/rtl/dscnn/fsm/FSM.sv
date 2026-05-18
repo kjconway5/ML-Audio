@@ -43,7 +43,7 @@ module FSM #(
     input wire                      weights_ready, // from UART control
     output wire                     inference_idle, // to UART
 
-    // Bias ROM interface
+    // Bias SRAM interface
     output wire [8:0]               bias_addr,   // 9-bit: supports up to 511 bias entries
     input  wire signed [31:0]       bias_data,
 
@@ -204,15 +204,16 @@ module FSM #(
     // FSM states
     localparam  IDLE        = 4'd0,
                 LOAD_LAYER  = 4'd1,
-                CLEAR_ACC   = 4'd2,
-                FETCH       = 4'd3,   // 1 cycle latency state to match read latency of SRAM
-                COMPUTE     = 4'd4,   // read SRAM data, accumulate MAC
-                DRAIN       = 4'd5,   // flush last MAC product before WRITE_OFMAP
-                WRITE_OFMAP = 4'd6,
-                NEXT_PIXEL  = 4'd7,
-                NEXT_LAYER  = 4'd8,
-                GLOBAL_POOL = 4'd9,   // global-average-pool argmax scan
-                OUTPUT      = 4'd10;  // output class_out and assert done
+                LOAD_BIAS   = 4'd2,   // present bias_addr for 1-cycle SRAM read
+                CLEAR_ACC   = 4'd3,
+                FETCH       = 4'd4,   // 1 cycle latency state to match read latency of SRAM
+                COMPUTE     = 4'd5,   // read SRAM data, accumulate MAC
+                DRAIN       = 4'd6,   // flush last MAC product before WRITE_OFMAP
+                WRITE_OFMAP = 4'd7,
+                NEXT_PIXEL  = 4'd8,
+                NEXT_LAYER  = 4'd9,
+                GLOBAL_POOL = 4'd10,  // global-average-pool argmax scan
+                OUTPUT      = 4'd11;  // output class_out and assert done
 
     reg [3:0]  state;
     reg [3:0]  layer;       // FSM layer counter (0-9), separate from cfg_layer decode above
@@ -342,6 +343,10 @@ module FSM #(
                         for (int i = 0; i < 7; i = i + 1)
                             global_pool_acc[i] <= {ACC_W{1'b0}};
                     end
+                    state <= LOAD_BIAS;
+                end
+
+                LOAD_BIAS: begin
                     state <= CLEAR_ACC;
                 end
 
@@ -424,17 +429,17 @@ module FSM #(
                 NEXT_PIXEL: begin
                     if (ow < cfg_ofmap_w[layer]-1) begin
                         ow    <= ow + 1;
-                        state <= CLEAR_ACC;
+                        state <= LOAD_BIAS;
                     end else begin
                         ow <= 8'd0;
                         if (oh < cfg_ofmap_h[layer]-1) begin
                             oh    <= oh + 1;
-                            state <= CLEAR_ACC;
+                            state <= LOAD_BIAS;
                         end else begin
                             oh <= 8'd0;
                             if (oc < cfg_out_ch[layer]-1) begin
                                 oc    <= oc + 1;
-                                state <= CLEAR_ACC;
+                                state <= LOAD_BIAS;
                             end else begin
                                 oc    <= 8'd0;
                                 state <= NEXT_LAYER;

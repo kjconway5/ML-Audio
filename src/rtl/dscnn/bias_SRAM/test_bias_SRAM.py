@@ -31,8 +31,26 @@ DEPTH = 295
 DATA_W = 32
 
 
+async def init_dut(dut):
+    cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
+    dut.we.value = 0
+    dut.waddr.value = 0
+    dut.wdata.value = 0
+    dut.addr.value = 0
+    await ClockCycles(dut.clk, 2)
+
+
+async def read_bias(dut, addr):
+    await FallingEdge(dut.clk)
+    dut.addr.value = addr
+    await RisingEdge(dut.clk)
+    await ReadOnly()
+    return dut.data.value.signed_integer
+
+
 @cocotb.test()
-async def test_bias_dffs_basic_addresses(dut):
+async def test_bias_sram_basic_addresses(dut):
+    await init_dut(dut)
     test_addrs = [
         0, 1, 31, 32, 63, 64, 95, 96,
         127, 128, 159, 160, 191, 192,
@@ -40,10 +58,7 @@ async def test_bias_dffs_basic_addresses(dut):
     ]
 
     for addr in test_addrs:
-        dut.addr.value = addr
-        await Timer(1, units="ns")
-
-        got = dut.data.value.signed_integer
+        got = await read_bias(dut, addr)
         exp = EXPECTED_HEX[addr] if addr < len(EXPECTED_HEX) else 0
 
         assert got == exp, (
@@ -51,16 +66,14 @@ async def test_bias_dffs_basic_addresses(dut):
             f"got {got} (0x{(got & 0xFFFFFFFF):08X})"
         )
 
-    cocotb.log.info("test_bias_dffs_basic_addresses passed")
+    cocotb.log.info("test_bias_sram_basic_addresses passed")
 
 
 @cocotb.test()
-async def test_bias_dffs_full_sweep(dut):
+async def test_bias_sram_full_sweep(dut):
+    await init_dut(dut)
     for addr in range(295):
-        dut.addr.value = addr
-        await Timer(1, units="ns")
-
-        got = dut.data.value.signed_integer
+        got = await read_bias(dut, addr)
         exp = EXPECTED_HEX[addr] if addr < len(EXPECTED_HEX) else 0
 
         assert got == exp, (
@@ -68,11 +81,12 @@ async def test_bias_dffs_full_sweep(dut):
             f"got {got} (0x{(got & 0xFFFFFFFF):08X})"
         )
 
-    cocotb.log.info("test_bias_dffs_full_sweep passed")
+    cocotb.log.info("test_bias_sram_full_sweep passed")
 
 
 @cocotb.test()
-async def test_bias_dffs_block_boundaries(dut):
+async def test_bias_sram_block_boundaries(dut):
+    await init_dut(dut)
     boundary_addrs = [
         0, 31,       # first_conv
         32, 63,      # ds_blocks.0.depthwise
@@ -87,10 +101,7 @@ async def test_bias_dffs_block_boundaries(dut):
     ]
 
     for addr in boundary_addrs:
-        dut.addr.value = addr
-        await Timer(1, units="ns")
-
-        got = dut.data.value.signed_integer
+        got = await read_bias(dut, addr)
         exp = EXPECTED_HEX[addr] if addr < len(EXPECTED_HEX) else 0
 
         assert got == exp, (
@@ -98,4 +109,4 @@ async def test_bias_dffs_block_boundaries(dut):
             f"got {got} (0x{(got & 0xFFFFFFFF):08X})"
         )
 
-    cocotb.log.info("test_bias_dffs_block_boundaries passed")
+    cocotb.log.info("test_bias_sram_block_boundaries passed")
