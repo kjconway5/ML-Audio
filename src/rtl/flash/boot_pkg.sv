@@ -16,6 +16,7 @@ package boot_pkg;
     typedef enum logic [MODULE_SEL_W-1:0] {
         MOD_FEATURES = 4'h0,   // Target SRAMS in different modules found within Features Pipeline
         MOD_DSCNN    = 4'h1,   // weights, biases, layer config
+        MOD_AUDIO    = 4'h2,   // Streaming audio samples (16-bit signed PCM, packed lo|hi)
         MOD_DEBUG    = 4'h8,   // DFT
         MOD_CONTROL  = 4'hF    // Booting (maybe additional run-time operations)
     } module_sel_e;
@@ -42,9 +43,19 @@ package boot_pkg;
 
     //  Control subtargets (low nibble when MOD_CONTROL)
     typedef enum logic [SUBTARGET_W-1:0] {
-        CTRL_BOOT_DONE = 4'h0,   // assert boot_done, release inference reset
-        CTRL_START     = 4'h1    // trigger an inference run (Possible move to MOD_DEBUG)
+        CTRL_BOOT_DONE     = 4'h0,   // assert boot_done, release inference reset
+        CTRL_START         = 4'h1,   // trigger an inference run (Possible move to MOD_DEBUG)
+        CTRL_SESSION_RESET = 4'h2    // 1-cycle pulse to reset the data path (keeps SRAMs)
     } control_subtarget_e;
+
+
+    //  Debug subtargets (low nibble when MOD_DEBUG)
+    // Used by the Arty-A7 demo's features_stage2/spect_streamer.sv to
+    // stream a spectrogram-SRAM bank back over UART for verification.
+    typedef enum logic [SUBTARGET_W-1:0] {
+        DBG_READ_SPECT_A = 4'h0,  // read bank A of spectrogram SRAM
+        DBG_READ_SPECT_B = 4'h1   // read bank B
+    } debug_subtarget_e;
 
 
 
@@ -86,7 +97,8 @@ package boot_pkg;
                     DSCNN_BIAS:     return 1'b0;   // 295 x 32-bit, byte-addressed
                     default:        return 1'b0;
                 endcase
-            default: return 1'b0;   // MOD_CONTROL, MOD_DEBUG: no packing
+            MOD_AUDIO: return 1'b1;   // 16-bit signed PCM, lo|hi packed
+            default: return 1'b0;     // MOD_CONTROL, MOD_DEBUG: no packing
         endcase
     endfunction
     

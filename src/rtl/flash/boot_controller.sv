@@ -37,9 +37,11 @@ module boot_controller
     //
     output boot_bus_t         features_boot_o,
     output boot_bus_t         dscnn_boot_o,
+    output boot_bus_t         audio_boot_o,   // MOD_AUDIO: streamed 16-bit PCM samples
 
     // Status
     output logic              boot_done_o,
+    output logic              session_reset_o, // 1-cycle pulse on CTRL_SESSION_RESET
     output logic              pkt_valid_o,    // 1-cycle pulse on good packet
     output logic [7:0]        last_target_o,  // observability for debug
     output logic [15:0]       last_addr_o,
@@ -128,15 +130,19 @@ module boot_controller
             lo_byte_q     <= 8'h00;
             have_lo_q     <= 1'b0;
             boot_done_o   <= 1'b0;
+            session_reset_o <= 1'b0;
             features_boot_o <= '0;
             dscnn_boot_o    <= '0;
+            audio_boot_o    <= '0;
         end else begin
 
             state <= next_state;
 
-            //deassert bus valid every cycle
+            //deassert bus valid + pulses every cycle (1-cycle defaults)
             features_boot_o.valid <= 1'b0;
             dscnn_boot_o.valid    <= 1'b0;
+            audio_boot_o.valid    <= 1'b0;
+            session_reset_o       <= 1'b0;
             case (state)
                 S_HUNT_AA, S_HUNT_55: begin
                     //RESET CHECKSUM 
@@ -222,6 +228,15 @@ module boot_controller
                                     dscnn_boot_o.addr      <= write_addr_q;
                                     dscnn_boot_o.data      <= bus_data;
                                 end
+                                MOD_AUDIO: begin
+                                    // 16-bit packed PCM samples streamed to pipeline_top.
+                                    // subtarget unused (always 0); addr increments so
+                                    // downstream can sanity-check sample ordering.
+                                    audio_boot_o.valid     <= 1'b1;
+                                    audio_boot_o.subtarget <= target_q[3:0];
+                                    audio_boot_o.addr      <= write_addr_q;
+                                    audio_boot_o.data      <= bus_data;
+                                end
                                 default: ; // MOD_CONTROL, MOD_DEBUG: no bus write
                             endcase
                         end
@@ -232,8 +247,11 @@ module boot_controller
                     // ── Handle MOD_CONTROL on successful packet ───
                     if (tx_valid_o && tx_ready_i) begin
                         if (target_q[7:4] == MOD_CONTROL) begin
-                            if (target_q[3:0] == CTRL_BOOT_DONE)
-                                boot_done_o <= 1'b1;
+                            case (target_q[3:0])
+                                CTRL_BOOT_DONE:     boot_done_o     <= 1'b1;
+                                CTRL_SESSION_RESET: session_reset_o <= 1'b1; // 1-cycle pulse
+                                default: ;
+                            endcase
                         end
                     end
                 end

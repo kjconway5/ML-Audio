@@ -91,8 +91,10 @@ module flash_top
 
         .features_boot_o (features_boot),
         .dscnn_boot_o    (dscnn_boot),
+        .audio_boot_o    (),               // unused in this sim harness
 
         .boot_done_o     (boot_done_o),
+        .session_reset_o (),               // unused in this sim harness
         .pkt_valid_o     (pkt_valid_o),
         .last_target_o   (),
         .last_addr_o     (),
