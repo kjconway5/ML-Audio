@@ -77,6 +77,18 @@ module pipeline_top #(
     output logic [OUT_W-1:0]   mel_compensated_o,
     output logic               mel_compensated_valid_o,
 
+    // VAD (mirrors full_pipeline_top / chip_core).
+    //   vad_threshold_i  : 32-bit threshold from features_boot_router
+    //                      (FEAT_VAD_THRESH). 0 ⇒ VAD bypassed; 'F..F ⇒
+    //                      auto-calibration (2 s avg); other ⇒ hardcoded.
+    //   vad_active_o     : high while speech is detected
+    //   dft_vad_obs_en_i : enable DFT observation of frame drops
+    //   vad_frame_drop_ol: 1-cycle pulse when a frame is dropped (gated)
+    input  logic [31:0]        vad_threshold_i,
+    output logic               vad_active_o,
+    input  logic               dft_vad_obs_en_i,
+    output logic               vad_frame_drop_ol,
+
     input  logic               flash_mel_coeff_we_i,
     input  logic [7:0]         flash_mel_coeff_addr_i,
     input  logic [15:0]        flash_mel_coeff_data_i,
@@ -242,18 +254,18 @@ logmel_top #(
     .flash_log_lut_addr_i   (flash_log_lut_addr_i),
     .flash_log_lut_data_i   (flash_log_lut_data_i),
 
-    // Tie off logmel ports the post-merge pipeline_top doesn't drive.
-    // These were floating (relying on synth flooring to 0); make the
-    // safe-off intent explicit. VAD: threshold 0 ⇒ every frame accepted
-    // (VAD bypassed). DFT: observation disabled. test_*: test mode off.
+    // VAD / DFT — now plumbed to module ports (mirrors full_pipeline_top).
+    .vad_threshold_il       (vad_threshold_i),
+    .vad_active_ol          (vad_active_o),
+    .dft_vad_obs_en_i       (dft_vad_obs_en_i),
+    .vad_frame_drop_ol      (vad_frame_drop_ol),
+
+    // Test/DFT taps not exposed on pipeline_top (boot path doesn't drive
+    // them, and the demo doesn't use test mode). Tied off explicitly.
     .test_mode_i            (1'b0),
     .test_coeff_addr_i      (8'd0),
     .test_index_addr_i      (8'd0),
-    .test_lut_addr_i        ('0),
-    .vad_threshold_il       (32'd0),
-    .dft_vad_obs_en_i       (1'b0),
-    .vad_active_ol          (),
-    .vad_frame_drop_ol      ()
+    .test_lut_addr_i        ('0)
 );
 
 // ==========================================================================

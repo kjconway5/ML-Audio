@@ -168,8 +168,14 @@ module full_demo_top
     logic        meta_we;
     logic [7:0]  meta_addr;
     logic [7:0]  meta_data;
+    // VAD threshold register (latches FEAT_VAD_THRESH packets; resets
+    // to 0 ⇒ VAD bypassed). Persists across session_reset, same as the
+    // SRAMs, because the router lives in the boot domain (rst_sync).
+    logic [31:0] vad_threshold;
 
     features_boot_router u_feat_router (
+        .clk_i             (CLK100MHZ),
+        .reset_i           (rst_sync),
         .boot_i            (features_boot),
         .lut_boot_we_o     (lut_we),
         .lut_boot_addr_o   (lut_addr),
@@ -179,7 +185,8 @@ module full_demo_top
         .mel_boot_wdata_o  (mel_data),
         .meta_boot_we_o    (meta_we),
         .meta_boot_addr_o  (meta_addr),
-        .meta_boot_wdata_o (meta_data)
+        .meta_boot_wdata_o (meta_data),
+        .vad_threshold_o   (vad_threshold)
     );
 
     logic        w_we;
@@ -244,6 +251,13 @@ module full_demo_top
 
         .mel_compensated_o      (),
         .mel_compensated_valid_o(),
+
+        // VAD threshold from features_boot_router (FEAT_VAD_THRESH).
+        // Defaults to 0 ⇒ VAD bypassed if the host never sends one.
+        .vad_threshold_i        (vad_threshold),
+        .vad_active_o           (),  // not exposed on the demo (could be LED)
+        .dft_vad_obs_en_i       (1'b0),
+        .vad_frame_drop_ol      (),  // not exposed on the demo
 
         .flash_mel_coeff_we_i   (mel_we),
         .flash_mel_coeff_addr_i (mel_addr),
