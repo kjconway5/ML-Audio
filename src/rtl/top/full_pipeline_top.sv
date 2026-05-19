@@ -40,7 +40,7 @@ module full_pipeline_top #(
     // Spectrogram buffer params
     parameter int SPECT_SHIFT = 9,
     parameter int USE_INPUT_REQUANT = 1,
-    parameter int INPUT_QUANT_MULT  = 5817845,
+    parameter int INPUT_QUANT_MULT  = 5765736,
     parameter int INPUT_QUANT_SHIFT = 31,
     parameter int START_FRAME = 37,
     parameter int N_FRAMES    = 50,
@@ -119,9 +119,14 @@ module full_pipeline_top #(
     output logic [1:0] frame_control_state, 
     output logic [$clog2(N_MELS)-1:0] mel_idx_test,
     output logic [POWER_W:0] power_test
-
-
 );
+
+// Test-mode enable tied off (0) for this production P&R run.
+// NOTE: the DFT/test-mode integration on this branch is incomplete — the
+// test_mode_i path into u_logmel was never sourced. Tied low so the design
+// synthesizes; test mode is effectively disabled in this build. Revisit
+// when the DFT integration is finished.
+wire audio_test_mode_i = 1'b0;
 
 // 1.  CIC Decimator — 1.008 MHz → 16 kHz  (ratio 63, 3 stages, M=1)
 
@@ -335,7 +340,7 @@ logmel_top #(
     .vad_frame_drop_ol      (vad_frame_drop_ol),
 
     // test mode
-    .test_mode_i(test_mode_audio),
+    .test_mode_i(audio_test_mode_i),
     .test_coeff_addr_i(flash_mel_coeff_addr_i),
     .test_index_addr_i(flash_mel_index_addr_i),
     .test_lut_addr_i(flash_log_lut_addr_i),
@@ -400,7 +405,7 @@ spect_buffer_ctrl #(
     .spect_done     (spect_done),
     .spect_write_sel(spect_write_sel),
 
-    // test signals 
+    // test signals
     .sp_a_waddr_test(sp_a_waddr_test),
     .sp_a_wdata_test(sp_a_wdata_test),
     .sp_b_waddr_test(sp_b_waddr_test),

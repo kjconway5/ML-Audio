@@ -70,18 +70,38 @@ module chip_core #(
     assign bidir_pu = '0;
     assign bidir_pd = '0;
 
-    wire reset;
-    assign reset = ~rst_n;
+    // 2-FF reset synchronizer. rst_n is an external asynchronous input.
+    // Async assert (rst_n low forces reset immediately), synchronized
+    // 2-stage deassert. Removes the rst_n -> FF/D hold violations (the
+    // only async path is the negedge-rst_n clear, which STA treats as
+    // recovery/removal, not hold) and is metastability-safe on release.
+    reg rst_meta, rst_sync;
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            rst_meta <= 1'b0;
+            rst_sync <= 1'b0;
+        end else begin
+            rst_meta <= 1'b1;
+            rst_sync <= rst_meta;
+        end
+    end
+    wire reset = ~rst_sync;   // active-high internal reset, deassertion synchronized
 
-    // UART pad wiring
-    wire uart_rxd = bidir_in[UART_RX_PAD];
+    // UART pad wiring — 2-FF synchronizer for the async external RX line.
+    // Idle UART line is high; reset the chain to 1 to avoid a false
+    // start-bit being seen on reset release.
+    reg [1:0] uart_rxd_sync;
+    always @(posedge clk) begin
+        if (reset) uart_rxd_sync <= 2'b11;
+        else       uart_rxd_sync <= {uart_rxd_sync[0], bidir_in[UART_RX_PAD]};
+    end
+    wire uart_rxd = uart_rxd_sync[1];
     wire uart_txd;
 
     // KWS outputs
     wire            kws_done;
     wire [2:0]      kws_class_out;
-
-    wire pipeline_vad_frame_drop;
+    wire            pipeline_vad_frame_drop;
 
     always_comb begin
         bidir_oe_r  = '1;
@@ -235,8 +255,22 @@ module chip_core #(
     // The test (and real mic) drive input_in[1] as a strobe (one pulse per PDM bit)
     // and input_in[0] as the data bit — identical to how test_full_pipeline_top.py
     // drives valid_i / data_i directly on the sub-module.
-    wire [15:0] pdm_word  = input_in[0] ? 16'h7FFF : 16'h8000;
-    wire        pdm_valid = input_in[1];
+    // 2-FF synchronizers for the asynchronous external PDM mic inputs
+    // (input_in[0]=DATA, input_in[1]=VALID strobe). Adds 2 clk of
+    // latency on the mic interface — cycle-accurate testbenches and the
+    // golden model MUST account for this 2-cycle shift.
+    reg [1:0] pdm_data_sync, pdm_valid_sync;
+    always @(posedge clk) begin
+        if (reset) begin
+            pdm_data_sync  <= 2'b00;
+            pdm_valid_sync <= 2'b00;
+        end else begin
+            pdm_data_sync  <= {pdm_data_sync[0],  input_in[0]};
+            pdm_valid_sync <= {pdm_valid_sync[0], input_in[1]};
+        end
+    end
+    wire [15:0] pdm_word  = pdm_data_sync[1] ? 16'h7FFF : 16'h8000;
+    wire        pdm_valid = pdm_valid_sync[1];
 
     wire            spect_done;
 
@@ -281,7 +315,7 @@ module chip_core #(
         .START_FRAME(37),
         .SPECT_SHIFT(9),
         .USE_INPUT_REQUANT(1),
-        .INPUT_QUANT_MULT (5817845),
+        .INPUT_QUANT_MULT (5765736),
         .INPUT_QUANT_SHIFT(31),
         .ADDR_W     (11),
         .LUT_FRAC   (6)

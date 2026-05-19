@@ -7,7 +7,7 @@
 // Write latency: 1 cycle 
 
 module feature_sram #(
-    parameter DEPTH  = 16000,
+    parameter DEPTH  = 8000,
     parameter DATA_W = 8,
     parameter ADDR_W = 14   // covers 0-16383; valid range 0-15999
 )(
@@ -52,8 +52,8 @@ module feature_sram #(
 
 `else
 
-    // 16 x 1024 = 16,384
-    localparam NUM_BANKS = 16;
+    // 8 x 1024 = 8,192
+    localparam NUM_BANKS = 8;
 
     wire [ADDR_W-1:0] a_addr = a_we ? a_waddr : a_raddr;
     wire [ADDR_W-1:0] b_addr = b_we ? b_waddr : b_raddr;

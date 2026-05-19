@@ -7,9 +7,9 @@ from cocotb.triggers import RisingEdge, FallingEdge
 import os
 
 CLK_PERIOD_NS = 100
-DEPTH         = 16000
+DEPTH         = 8000
 ADDR_W        = 14
-NUM_BANKS     = 16
+NUM_BANKS     = 8
 
 def test_pattern(addr):
     return (addr) % 256

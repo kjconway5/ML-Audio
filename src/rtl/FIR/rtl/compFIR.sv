@@ -68,7 +68,8 @@ module compFIR #(
     wire advance = i_tvalid && i_tready;  // a new sample is accepted this cycle
 
     // Delay line — advances only when we accept a new sample
-    reg signed [IW-1:0] sr [0:NTAPS-1];
+    // mem2reg: force discrete FFs (tapped delay line, not an inferred memory)
+    (* mem2reg *) reg signed [IW-1:0] sr [0:NTAPS-1];
     integer i;
     always @(posedge i_clk) begin
         if (i_reset) begin
