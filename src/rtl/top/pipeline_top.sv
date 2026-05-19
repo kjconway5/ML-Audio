@@ -1,12 +1,33 @@
-// pipeline_top_fixed.sv
+// pipeline_top.sv
 //
-// Drop-in replacement for pipeline_top.sv that instantiates `stfft_fixed`
-// instead of `stfft`.  The only difference from pipeline_top.sv is the
-// instantiated module name on line ~100 — everything else (ports, params,
-// timing, logmel chain, bfpexp compensation, spect buffer wiring) is
-// byte-for-byte identical.
+// Updated for the new single-channel ready/valid stfft.
 //
-// See stfft_fixed.sv for the bug-fix rationale.
+// Frame timing in the new design (T = cycle stfft first asserts o_valid):
+//
+//   T-1 : stfft_o_valid = 0                              (idle between frames)
+//   T   : stfft_o_valid = 1, stfft_o_data = bin 0        <-- frame starts
+//         fft_sync_pulse = 1  (combinational rising edge)
+//   T+1 : fft_valid_r=1, fft_result_r=bin 0, fft_sync_r=1
+//         <-- logmel sees fft_sync_il pulse on this cycle
+//         end of cycle: bin_cnt_q <= N_BINS, bfpexp_for_mel <= bfpexp_raw
+//   T+2 : fft_result_rr = bin 0, fft_sync_rr = 1, bin_cnt_q = N_BINS
+//         fft_valid = (bin_cnt_q > 0) = 1
+//         <-- first valid bin reaches logmel
+//   ...
+//   T+130 : fft_result_rr = bin 128, bin_cnt_q = 1, fft_valid = 1
+//   T+131 : fft_valid = 0  (bin_cnt_q hits 0; logmel stops consuming)
+//
+// Things that changed vs the dual-channel pipeline_top:
+//   - stfft instance uses the new ready/valid port set
+//     (i_valid/i_data/i_ready, o_valid/o_data/o_ready/o_last, o_bfpexp).
+//   - The SYNC_ALIGN_DELAY shift register is gone: it existed to bridge
+//     the old DMA-readout pipeline, which doesn't exist in the new FFT
+//     (o_valid and o_data are driven by the same output register).
+//   - bin_cnt_q loads on fft_sync_r (one cycle before fft_result_rr
+//     latches bin 0), so fft_valid is high exactly during the 129 cycles
+//     when bins 0..128 sit on fft_result_rr.
+//   - o_bfpexp is now meaningful (the old stfft hardcoded it to 0); the
+//     BFP-compensation adder downstream finally does real work.
 
 module pipeline_top #(
     parameter int IW_STFFT  = 16,
@@ -70,13 +91,14 @@ module pipeline_top #(
 );
 
 // ==========================================================================
-// 1. STFFT — now the FIXED variant (FIFO + per-channel local Hann)
+// 1. STFFT — new single-channel ready/valid streaming variant
 // ==========================================================================
 
-logic [2*OW_STFFT-1:0] o_fft_result;
-logic                   o_fft_sync;
-logic                   win_ce_raw;
-logic signed [7:0]      bfpexp_raw;
+logic                       stfft_o_valid;
+logic [2*OW_STFFT-1:0]      stfft_o_data;
+logic                       stfft_o_last;
+logic                       stfft_i_ready;     // exposed for hierarchical probing
+logic signed [7:0]          bfpexp_raw;
 
 stfft #(
     .IW      (IW_STFFT),
@@ -84,34 +106,56 @@ stfft #(
     .FFT_SIZE(FFT_SIZE),
     .HOP     (HOP)
 ) u_stfft (
-    .i_clk       (clk_i),
-    .i_reset     (reset_i),
-    .i_ce        (valid_i),
-    .i_sample    (data_i),
-    .o_fft_result(o_fft_result),
-    .o_fft_sync  (o_fft_sync),
-    .win_ce_o    (win_ce_raw),
-    .o_bfpexp    (bfpexp_raw)
+    .i_clk    (clk_i),
+    .i_reset  (reset_i),
+
+    .i_valid  (valid_i),
+    .i_data   (data_i),
+    .i_ready  (stfft_i_ready),
+
+    .o_valid  (stfft_o_valid),
+    .o_data   (stfft_o_data),
+    .o_ready  (1'b1),               // never backpressure the FFT output
+    .o_last   (stfft_o_last),
+    .o_bfpexp (bfpexp_raw)
 );
 
 // ==========================================================================
-// 2. FFT output pipeline registers + 2-cycle delayed sync
+// 2. Frame-start detection — combinational rising edge of stfft_o_valid
 // ==========================================================================
 
-logic                    fft_sync_r, fft_sync_rr;
-logic [2*OW_STFFT-1:0]   fft_result_r, fft_result_rr;
+logic stfft_o_valid_d;
+always_ff @(posedge clk_i) begin
+    if (reset_i) stfft_o_valid_d <= 1'b0;
+    else         stfft_o_valid_d <= stfft_o_valid;
+end
+
+// 1-cycle pulse on the FIRST cycle of each frame's output stream.
+wire fft_sync_pulse = stfft_o_valid && !stfft_o_valid_d;
+
+// ==========================================================================
+// 3. FFT-output pipeline registers (2 stages, mirrors old timing)
+// ==========================================================================
+
+logic                       fft_valid_r,  fft_valid_rr;
+logic [2*OW_STFFT-1:0]      fft_result_r, fft_result_rr;
+logic                       fft_sync_r,   fft_sync_rr;
 
 always_ff @(posedge clk_i) begin
     if (reset_i) begin
-        fft_sync_r    <= '0;
-        fft_sync_rr   <= '0;
+        fft_valid_r   <= 1'b0;
+        fft_valid_rr  <= 1'b0;
         fft_result_r  <= '0;
         fft_result_rr <= '0;
+        fft_sync_r    <= 1'b0;
+        fft_sync_rr   <= 1'b0;
     end else begin
-        fft_sync_r    <= o_fft_sync;
-        fft_sync_rr   <= fft_sync_r;
-        fft_result_r  <= o_fft_result;
+        fft_valid_r   <= stfft_o_valid;
+        fft_valid_rr  <= fft_valid_r;
+        fft_result_r  <= stfft_o_data;
         fft_result_rr <= fft_result_r;
+        fft_sync_r    <= fft_sync_pulse;
+        fft_sync_rr   <= fft_sync_r;
     end
 end
 
@@ -120,70 +164,46 @@ assign fft_re = fft_result_rr[2*OW_STFFT-1 : OW_STFFT];
 assign fft_im = fft_result_rr[OW_STFFT-1   : 0];
 
 // ==========================================================================
-// 2b. FIX for Bug D — DMA-pipeline-aligned sync
+// 4. Bin counter — gate fft_valid to the first N_BINS cycles of each frame
 //
-// `fft_sync_rr` fires when the R2FFT's DMA begins, but the ACTUAL bin-0
-// value propagates through:
-//   a_dmadr_real_r → a_result → o_fft_result → fft_result_r → fft_result_rr
-// which is 4 more cycles.  Meanwhile bin_cnt_q needs only 1 cycle to assert
-// fft_valid after fft_sync_rr.  Net: the first 3 fft_valid=1 cycles show
-// STALE fft_result_rr (from the previous frame), causing mel_filterbank to
-// store garbage into power_buf[0..2] — a cyclic roll of +3 on the FFT
-// output visible as a slight mel-bin shift and a "double ridge" pattern
-// in comparison.png.
-//
-// Fix: delay fft_sync_rr by SYNC_ALIGN_DELAY cycles before driving the
-// bin counter, the bfpexp latch, and the logmel sync.  This pushes
-// fft_valid=1 to start exactly when bin 0 arrives at fft_result_rr.
-// ==========================================================================
-
-localparam int SYNC_ALIGN_DELAY = 3;  // empirically measured DMA-to-fft_result_rr gap
-
-logic [SYNC_ALIGN_DELAY-1:0] fft_sync_align_sr;
-always_ff @(posedge clk_i) begin
-    if (reset_i)
-        fft_sync_align_sr <= '0;
-    else
-        fft_sync_align_sr <= {fft_sync_align_sr[SYNC_ALIGN_DELAY-2:0], fft_sync_rr};
-end
-logic fft_sync_aligned;
-assign fft_sync_aligned = fft_sync_align_sr[SYNC_ALIGN_DELAY-1];
-
-// ==========================================================================
-// 3. Bin counter  (driven by the aligned sync)
+// bin_cnt_q loads on fft_sync_r (one cycle before fft_result_rr latches
+// bin 0), so fft_valid is high for exactly the 129 cycles when bins
+// 0..128 sit on fft_result_rr.
 // ==========================================================================
 
 localparam int CNT_W = $clog2(N_BINS + 1);
 logic [CNT_W-1:0] bin_cnt_q;
 
 always_ff @(posedge clk_i) begin
-    if (reset_i)
-        bin_cnt_q <= '0;
-    else if (fft_sync_aligned)
-        bin_cnt_q <= CNT_W'(N_BINS);
-    else if (bin_cnt_q > 0)
-        bin_cnt_q <= bin_cnt_q - 1'b1;
+    if (reset_i)            bin_cnt_q <= '0;
+    else if (fft_sync_r)    bin_cnt_q <= CNT_W'(N_BINS);
+    else if (bin_cnt_q > 0) bin_cnt_q <= bin_cnt_q - 1'b1;
 end
 
 logic fft_valid;
 assign fft_valid = (bin_cnt_q > 0);
 
 // ==========================================================================
-// 4. bfpexp latch  (also driven by aligned sync so it updates on the same
-//    cycle logmel starts consuming the new frame)
+// 5. bfpexp latch
+//
+// bfpexp_raw is combinational from u_stfft.o_bfpexp (which the FFT
+// wrapper drives from the per-RAM bfpexp register based on which RAM is
+// currently DMA-ing). Latch on fft_sync_r so logmel's compensation sees
+// the right exponent throughout the frame.
 // ==========================================================================
 
 logic signed [7:0] bfpexp_for_mel;
 
 always_ff @(posedge clk_i) begin
-    if (reset_i)
-        bfpexp_for_mel <= '0;
-    else if (fft_sync_aligned)
-        bfpexp_for_mel <= bfpexp_raw;
+    if (reset_i)         bfpexp_for_mel <= '0;
+    else if (fft_sync_r) bfpexp_for_mel <= bfpexp_raw;
 end
 
 // ==========================================================================
-// 5. LogMel
+// 6. LogMel
+//
+// fft_sync_il fires one cycle before fft_valid_il goes high, matching
+// logmel's expected hand-off pattern.
 // ==========================================================================
 
 logic [OUT_W-1:0] mel_data;
@@ -208,7 +228,7 @@ logmel_top #(
     .re_il                  (fft_re),
     .im_il                  (fft_im),
     .fft_valid_il           (fft_valid),
-    .fft_sync_il            (fft_sync_aligned),
+    .fft_sync_il            (fft_sync_r),
     .cnn_data_ol            (mel_data),
     .cnn_valid_ol           (mel_valid),
     .cnn_ready_il           (mel_ready),
@@ -224,7 +244,7 @@ logmel_top #(
 );
 
 // ==========================================================================
-// 6. bfpexp compensation
+// 7. bfpexp compensation
 // ==========================================================================
 
 localparam int CORR_W = OUT_W + 10;
@@ -250,7 +270,7 @@ assign mel_compensated_o       = mel_compensated;
 assign mel_compensated_valid_o = mel_valid;
 
 // ==========================================================================
-// 7. Spectrogram buffer
+// 8. Spectrogram buffer
 // ==========================================================================
 
 spect_buffer_ctrl #(

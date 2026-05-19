@@ -37,9 +37,9 @@ STFFT_SOURCES := \
    $(STFFT_DIR)/R2FFT/hdl/twiddleFactorRomBridge.sv \
    $(STFFT_DIR)/R2FFT/hdl/butterflyUnit.sv \
    $(STFFT_DIR)/R2FFT/hdl/fftAddressGenerator.sv \
-   $(STFFT_DIR)/R2FFT/hdl/readBusMux.sv \
-   $(STFFT_DIR)/R2FFT/hdl/writeBusMux.sv \
+   $(STFFT_DIR)/R2FFT/hdl/rwBusMux.sv \
    $(STFFT_DIR)/R2FFT/hdl/R2FFT.sv \
+   $(STFFT_DIR)/R2FFT/hdl/fft.sv \
    $(STFFT_DIR)/tests/models/gf180mcu_fd_ip_sram__sram128x8m8wm1.v \
    $(STFFT_DIR)/ZipCPU/ip/Window/windowfn.v \
    $(STFFT_DIR)/rtl/fft_data_ram.sv \
@@ -132,7 +132,7 @@ link-hex:
 test-pipeline: link-hex
 	SIM=verilator TOPLEVEL_LANG=verilog TOPLEVEL=$(TOP_PIPELINE) MODULE=$(COCOTB_MODULE_A) \
 		VERILOG_SOURCES="$(abspath $(SOURCES))" \
-		EXTRA_ARGS="--trace-fst -Wno-fatal" \
+		EXTRA_ARGS="--trace-fst -Wno-fatal -DSIM" \
 		$(MAKE) -f $(COCOTB_MAKEFILES)/Makefile.sim
 .PHONY: test-pipeline
 

@@ -1,133 +1,94 @@
-// fft_data_ram.sv
-// Stage ping-pong dual-port wrapper for GF180 3.3V single-port SRAMs
-// Each logical port = 2 physical banks, alternating read/write by FFT stage.
-// No simultaneous read+write to any physical bank.
+// =============================================================================
+// fft_data_ram  —  256 x 32-bit single-port (1RW) RAM
 //
-// SRAM: gf180mcu_ocd_ip_sram__sram256x8m8wm1  (3.3V, 256 x 8-bit)
-// Four instances per bank give 32-bit width; two banks (A/B) give dual-port.
-// Address width: 8 bits (256 entries), matching R2FFT FFT_LENGTH=256.
-
+//   act = 1, we = 1  : write dw at address a
+//   act = 1, we = 0  : read; dr valid 1 cycle later
+//   act = 0          : idle (dr holds)
+//
+// SIM:    behavioural model with 1-cycle synchronous read latency.
+// SYNTH:  4 GF180 single-port byte SRAMs in parallel, with the same
+//         registered-Q pattern as your original. (NOTE: if your GF180
+//         macro already has a registered Q, the extra latch makes this
+//         a 2-cycle read — the R2FFT assumes 1 cycle. Drop the latch or
+//         widen the butterfly schedule if you hit that.)
+// =============================================================================
 module fft_data_ram (
     input  wire        clk,
     input  wire        rst,
-    // Stage control -- toggle every FFT stage (connect to R2FFT SB_NEXT_STAGE)
-    input  wire        next_stage,
-    // Read port
-    input  wire        ract,
-    input  wire [7:0]  ra,
-    output reg  [31:0] rdata,
-    // Write port
-    input  wire        wact,
-    input  wire [7:0]  wa,
-    input  wire [31:0] wdata
+
+    input  wire        act,
+    input  wire        we,
+    input  wire [7:0]  a,
+    input  wire [31:0] dw,
+    output reg  [31:0] dr
 );
 
 `ifdef SIM
 
-    // Simulation: dual-port behavioural RAM (separate read and write ports)
-    // Matches the dual-port semantics the synthesis version achieves through
-    // ping-pong banking.
     reg [31:0] mem [0:255];
-    integer i;
-
-    initial begin
-        for (i = 0; i < 256; i = i + 1)
-            mem[i] = 32'h0;
-        rdata = 32'h0;
-    end
 
     always @(posedge clk) begin
-        if (wact) mem[wa] <= wdata;
-        if (ract) rdata   <= mem[ra];
+        if (act) begin
+            if (we) mem[a] <= dw;
+            else    dr     <= mem[a];
+        end
     end
-
 
 `else
-    
-    // Ping-pong stage register
-    //   stage_sel = 0 : Bank A is write-bank,  Bank B is read-bank
-    //   stage_sel = 1 : Bank A is read-bank,   Bank B is write-bank
-    reg stage_sel;
 
+    // --------------------------------------------------------
+    // GF180MCU single-port mapping (one access per cycle).
+    //   CEN  = active-low chip enable               -> ~act
+    //   GWEN = active-low global write enable       -> ~(act & we)
+    //   WEN  = per-bit write mask (active low)      ->  8'h00 (all writable)
+    // --------------------------------------------------------
+    wire [7:0] q0, q1, q2, q3;
+
+    gf180mcu_ocd_ip_sram__sram256x8m8wm1 u0 (
+        .CLK  (clk),
+        .CEN  (~act),
+        .GWEN (~(act & we)),
+        .WEN  (8'h00),
+        .A    (a),
+        .D    (dw[7:0]),
+        .Q    (q0)
+    );
+
+    gf180mcu_ocd_ip_sram__sram256x8m8wm1 u1 (
+        .CLK  (clk),
+        .CEN  (~act),
+        .GWEN (~(act & we)),
+        .WEN  (8'h00),
+        .A    (a),
+        .D    (dw[15:8]),
+        .Q    (q1)
+    );
+
+    gf180mcu_ocd_ip_sram__sram256x8m8wm1 u2 (
+        .CLK  (clk),
+        .CEN  (~act),
+        .GWEN (~(act & we)),
+        .WEN  (8'h00),
+        .A    (a),
+        .D    (dw[23:16]),
+        .Q    (q2)
+    );
+
+    gf180mcu_ocd_ip_sram__sram256x8m8wm1 u3 (
+        .CLK  (clk),
+        .CEN  (~act),
+        .GWEN (~(act & we)),
+        .WEN  (8'h00),
+        .A    (a),
+        .D    (dw[31:24]),
+        .Q    (q3)
+    );
+
+    // Registered read collation. Only updates on read cycles so writes
+    // don't clobber dr with spurious bus state.
     always @(posedge clk) begin
-        if (rst)
-            stage_sel <= 1'b0;
-        else if (next_stage)
-            stage_sel <= ~stage_sel;
-    end
-
-
-    // Bank A control
-    //   Read  from A when stage_sel == 1
-    //   Write to  A when stage_sel == 0
-    wire        cen_a  = ~((ract && stage_sel == 1'b1) ||
-                            (wact && stage_sel == 1'b0));
-    wire        gwen_a = ~(wact && stage_sel == 1'b0);
-    wire [7:0]  addr_a = (wact && stage_sel == 1'b0) ? wa : ra;
-
-    // Bank B control
-    //   Read  from B when stage_sel == 0
-    //   Write to  B when stage_sel == 1
-    wire        cen_b  = ~((ract && stage_sel == 1'b0) ||
-                            (wact && stage_sel == 1'b1));
-    wire        gwen_b = ~(wact && stage_sel == 1'b1);
-    wire [7:0]  addr_b = (wact && stage_sel == 1'b1) ? wa : ra;
-
-    // All byte-write enables asserted (word-wide writes only; GWEN controls enable)
-    wire [7:0] wen = 8'h00;
-
-    // Bank A -- 4x sram256x8 for 32-bit width
-    wire [7:0] qa0, qa1, qa2, qa3;
-
-    gf180mcu_ocd_ip_sram__sram256x8m8wm1 u_a_b0 (
-        .CLK(clk), .CEN(cen_a), .GWEN(gwen_a), .WEN(wen),
-        .A(addr_a), .D(wdata[7:0]),   .Q(qa0)
-    );
-    gf180mcu_ocd_ip_sram__sram256x8m8wm1 u_a_b1 (
-        .CLK(clk), .CEN(cen_a), .GWEN(gwen_a), .WEN(wen),
-        .A(addr_a), .D(wdata[15:8]),  .Q(qa1)
-    );
-    gf180mcu_ocd_ip_sram__sram256x8m8wm1 u_a_b2 (
-        .CLK(clk), .CEN(cen_a), .GWEN(gwen_a), .WEN(wen),
-        .A(addr_a), .D(wdata[23:16]), .Q(qa2)
-    );
-    gf180mcu_ocd_ip_sram__sram256x8m8wm1 u_a_b3 (
-        .CLK(clk), .CEN(cen_a), .GWEN(gwen_a), .WEN(wen),
-        .A(addr_a), .D(wdata[31:24]), .Q(qa3)
-    );
-
-    // Bank B -- 4x sram256x8 for 32-bit width
-    wire [7:0] qb0, qb1, qb2, qb3;
-
-    gf180mcu_ocd_ip_sram__sram256x8m8wm1 u_b_b0 (
-        .CLK(clk), .CEN(cen_b), .GWEN(gwen_b), .WEN(wen),
-        .A(addr_b), .D(wdata[7:0]),   .Q(qb0)
-    );
-    gf180mcu_ocd_ip_sram__sram256x8m8wm1 u_b_b1 (
-        .CLK(clk), .CEN(cen_b), .GWEN(gwen_b), .WEN(wen),
-        .A(addr_b), .D(wdata[15:8]),  .Q(qb1)
-    );
-    gf180mcu_ocd_ip_sram__sram256x8m8wm1 u_b_b2 (
-        .CLK(clk), .CEN(cen_b), .GWEN(gwen_b), .WEN(wen),
-        .A(addr_b), .D(wdata[23:16]), .Q(qb2)
-    );
-    gf180mcu_ocd_ip_sram__sram256x8m8wm1 u_b_b3 (
-        .CLK(clk), .CEN(cen_b), .GWEN(gwen_b), .WEN(wen),
-        .A(addr_b), .D(wdata[31:24]), .Q(qb3)
-    );
-
-    // Read mux -- registered bank select matches 1-cycle SRAM output latency
-    reg stage_sel_q;
-    always @(posedge clk)
-        stage_sel_q <= stage_sel;
-
-    always @(posedge clk) begin
-        if (ract) begin
-            if (stage_sel_q == 1'b0)
-                rdata <= {qb3, qb2, qb1, qb0};   // read from B when sel=0
-            else
-                rdata <= {qa3, qa2, qa1, qa0};    // read from A when sel=1
-        end
+        if (act && !we)
+            dr <= {q3, q2, q1, q0};
     end
 
 `endif
