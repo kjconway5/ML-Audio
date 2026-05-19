@@ -52,6 +52,7 @@ set sv_sources [list \
     $logmel/rtl/log_lut/log_lut.sv \
     $logmel/rtl/log_lut/log_lut_sram.sv \
     $logmel/rtl/output_buffer/output_buffer.sv \
+    $logmel/rtl/spectral_vad/spectral_vad.sv \
     $spect/spect_buffer_ctrl.sv \
     $dscnn/kws_top.sv \
     $dscnn/fsm/FSM.sv \
