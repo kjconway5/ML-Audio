@@ -8,7 +8,8 @@ READMEMH_HEX_FILES := \
 	$(HANNING_HEX) \
 	$(LOGMEL_DATA)/mel_coeffs_sparse.hex \
 	$(LOGMEL_DATA)/mel_indices.hex \
-	$(LOGMEL_DATA)/log2_lut.hex
+	$(LOGMEL_DATA)/log2_lut.hex \
+	$(RTL)/dscnn/bias_SRAM/bias.hex
 
 TOP    := chip_core
 MODULE := chip_core_tb
@@ -25,7 +26,7 @@ SIM_SOURCES := \
 	$(RTL)/top/full_pipeline_top.sv \
 	$(RTL)/top/pipeline_top.sv \
 	$(RTL)/dscnn/kws_top.sv \
-	$(RTL)/dscnn/bias_dff/bias_DFFs.sv \
+	$(RTL)/dscnn/bias_SRAM/bias_SRAM.sv \
 	$(RTL)/dscnn/feature_sram/feature_sram.sv \
 	$(RTL)/dscnn/fsm/FSM.sv \
 	$(RTL)/dscnn/mac_array/mac_array.sv \

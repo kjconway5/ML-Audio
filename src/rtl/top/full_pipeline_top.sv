@@ -120,6 +120,7 @@ module full_pipeline_top #(
     output logic [$clog2(N_MELS)-1:0] mel_idx_test,
     output logic [POWER_W:0] power_test
 
+
 );
 
 // 1.  CIC Decimator — 1.008 MHz → 16 kHz  (ratio 63, 3 stages, M=1)
@@ -344,7 +345,7 @@ logmel_top #(
     .vad_frame_drop_ol      (vad_frame_drop_ol),
 
     // test mode
-    .test_mode_i(audio_test_mode_i),
+    .test_mode_i(test_mode_audio),
     .test_coeff_addr_i(flash_mel_coeff_addr_i),
     .test_index_addr_i(flash_mel_index_addr_i),
     .test_lut_addr_i(flash_log_lut_addr_i),

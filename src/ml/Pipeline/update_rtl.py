@@ -6,7 +6,7 @@ This script is intentionally the handoff point between training/export and RTL.
 It supports the current 24-filter and 32-filter DS-CNN variants:
 
   - copies weights.hex into rtl/dscnn/weight_sram/
-  - regenerates bias_dff/bias_DFFs.sv from bias.hex
+  - retargets bias_SRAM/bias_SRAM.sv parameters and copies bias.hex
   - retargets feature_sram.sv and weight_sram.sv depth/bank counts
   - retargets KWS/chip-core testbenches to the selected model directory
 
@@ -32,8 +32,8 @@ HERE = Path(__file__).resolve().parent
 REPO_ROOT = HERE.parents[2]  # Pipeline -> ml -> src -> repo root
 MODELS_DIR = HERE.parent / "models"
 
-BIAS_SV = REPO_ROOT / "src/rtl/dscnn/bias_dff/bias_DFFs.sv"
-BIAS_HEX_DEST = REPO_ROOT / "src/rtl/dscnn/bias_dff/bias.hex"
+BIAS_SV = REPO_ROOT / "src/rtl/dscnn/bias_SRAM/bias_SRAM.sv"
+BIAS_HEX_DEST = REPO_ROOT / "src/rtl/dscnn/bias_SRAM/bias.hex"
 FEATURE_SRAM_SV = REPO_ROOT / "src/rtl/dscnn/feature_sram/feature_sram.sv"
 FEATURE_SRAM_TEST_PY = REPO_ROOT / "src/rtl/dscnn/feature_sram/test_feature_sram.py"
 WEIGHT_SRAM_SV = REPO_ROOT / "src/rtl/dscnn/weight_sram/weight_sram.sv"
@@ -278,42 +278,24 @@ def update_bias_sv(arch: Arch, bias_path: Path, dry_run: bool) -> bool:
         print(f"ERROR: bias.hex has {len(biases)} entries, expected {arch.bias_count} for {arch.filters} filters")
         return False
 
-    lines = []
-    for l in arch.layers:
-        lines.append(f"            // {l.name} (bias_off={l.bias_off}, {l.n_biases} channels)")
-        for i in range(l.n_biases):
-            idx = l.bias_off + i
-            lines.append(f"            9'd{idx}: data = 32'sh{int(biases[idx]) & 0xFFFFFFFF:08X};")
-        lines.append("")
-    lines.append("            default: data = 32'sh00000000;")
-    body = "\n".join(lines)
-
     text = BIAS_SV.read_text()
     text = re.sub(
-        r"parameter DEPTH\s*=\s*\d+\s*,\s*//.*",
-        f"parameter DEPTH  = {arch.bias_count},   // 9x{arch.filters} channels + 7 classifier = {arch.bias_count} ({arch.filters}-filter model)",
+        r"parameter DEPTH\s*=\s*\d+\s*,",
+        f"parameter DEPTH     = {arch.bias_count},",
         text,
         count=1,
     )
+    bias_addr_w = addr_width(arch.bias_count)
     text = re.sub(
-        r"parameter ADDR_W\s*=\s*\d+\s*//.*",
-        f"parameter ADDR_W = 9      // 9-bit: supports bias offsets up to {arch.layers[-1].bias_off}",
+        r"parameter ADDR_W\s*=\s*\d+\s*,",
+        f"parameter ADDR_W    = {bias_addr_w},",
         text,
         count=1,
     )
-    new_text, n = re.subn(
-        r"(always @\(\*\) begin\s*\n\s*case \(addr\)\s*\n).*?(\n\s*endcase)",
-        r"\1" + body + r"\2",
-        text,
-        count=1,
-        flags=re.DOTALL,
-    )
-    if n != 1:
-        print(f"ERROR: could not locate case statement in {BIAS_SV}")
-        return False
 
-    changed = replace_text(BIAS_SV, new_text, dry_run)
-    print(f"  {'would update' if dry_run and changed else 'updated' if changed else 'already current'} {arch.bias_count} bias entries")
+    sram_type = "sram256x8" if bias_addr_w <= 8 else "sram512x8"
+    changed = replace_text(BIAS_SV, text, dry_run)
+    print(f"  bias_sram: depth={arch.bias_count}, ADDR_W={bias_addr_w}, macro={sram_type} ({'would update' if dry_run and changed else 'updated' if changed else 'already current'})")
     return True
 
 

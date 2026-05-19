@@ -64,6 +64,7 @@ module flash_top
     logic        meta_boot_we;
     logic [7:0]  meta_boot_addr;
     logic [7:0]  meta_boot_wdata;
+    logic [31:0] vad_threshold_unused;
 
     // DS-CNN router → weight memory
     logic        w_boot_we;
@@ -100,6 +101,8 @@ module flash_top
 
     //  Features boot router
     features_boot_router u_feat_router (
+        .clk_i             (clk),
+        .reset_i           (reset),
         .boot_i            (features_boot),
 
         .lut_boot_we_o     (lut_boot_we),
@@ -112,7 +115,8 @@ module flash_top
 
         .meta_boot_we_o    (meta_boot_we),
         .meta_boot_addr_o  (meta_boot_addr),
-        .meta_boot_wdata_o (meta_boot_wdata)
+        .meta_boot_wdata_o (meta_boot_wdata),
+        .vad_threshold_o   (vad_threshold_unused)
     );
 
     //  DS-CNN boot router

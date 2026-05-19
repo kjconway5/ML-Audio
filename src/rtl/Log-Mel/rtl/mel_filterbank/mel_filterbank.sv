@@ -91,6 +91,9 @@ module mel_filterbank #(
     logic [POWER_W+WEIGHT_W-1:0] product;
 
 
+`ifdef SIM
+    assign product = power_buf[proc_bin] * weight;
+`else
     MulUns #(
         .widthX(POWER_W),
         .widthY(WEIGHT_W),
@@ -100,6 +103,7 @@ module mel_filterbank #(
         .Y(weight),
         .P(product)
     );
+`endif
 
     // ----------------------------------------------------------------
     // Pipeline timing

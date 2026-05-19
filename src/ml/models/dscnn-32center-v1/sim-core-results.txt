@@ -14,3 +14,36 @@ Result: PASS
 RTL GAP scores: no(0)=219  off(1)=-1695  on(2)=-3042  silence(3)=-3402  unknown(4)=1601  wow(5)=616  yes(6)=3261
 RTL GAP ranking: yes(6)=3261 > unknown(4)=1601 > wow(5)=616 > no(0)=219 > off(1)=-1695 > on(2)=-3042 > silence(3)=-3402  margin=1660
 
+[2026-05-18 13:07:06 PDT] make sim-core
+Model: dscnn-32center-v1
+Filters: 32
+Manifest: /home/dnocera/ML-Audio/src/rtl/dscnn/kws_top/spectrograms/test_vectors.json
+Selected sample[6]: ce0cb033_nohash_4.wav
+WAV: /home/dnocera/ML-Audio/src/ml/Pipeline/speech_commands_v0.02/yes/ce0cb033_nohash_4.wav
+Hex: spectrograms/spectrogram_6.hex
+Golden truth class: yes (6)
+Arithmetic class: yes (6)
+PyTorch class: yes (6)
+RTL class: yes (6)
+Expected[manifest arithmetic]: yes (6)
+Result: PASS
+RTL GAP scores: no(0)=-362  off(1)=-91  on(2)=-1406  silence(3)=-3824  unknown(4)=1337  wow(5)=-1272  yes(6)=3301
+RTL GAP ranking: yes(6)=3301 > unknown(4)=1337 > off(1)=-91 > no(0)=-362 > wow(5)=-1272 > on(2)=-1406 > silence(3)=-3824  margin=1964
+
+[2026-05-18 13:19:25 PDT] make sim-core
+Model: dscnn-32center-v1
+Filters: 32
+Manifest: /home/dnocera/ML-Audio/src/rtl/dscnn/kws_top/spectrograms/test_vectors.json
+Selected sample[9]: f736ab63_nohash_4.wav
+WAV: /home/dnocera/ML-Audio/src/ml/Pipeline/speech_commands_v0.02/yes/f736ab63_nohash_4.wav
+Hex: spectrograms/spectrogram_9.hex
+Golden truth class: yes (6)
+Arithmetic class: yes (6)
+PyTorch class: yes (6)
+RTL class: no (0)
+Expected[manifest arithmetic]: yes (6)
+Result: FAIL
+RTL GAP scores: no(0)=X  off(1)=X  on(2)=X  silence(3)=X  unknown(4)=X  wow(5)=X  yes(6)=X
+RTL GAP ranking: ranking unavailable
+RTL GAP score warning: one or more debug_gap scores are X/unavailable
+

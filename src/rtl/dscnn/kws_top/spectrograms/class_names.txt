@@ -1,7 +1,0 @@
-no
-off
-on
-silence
-unknown
-wow
-yes

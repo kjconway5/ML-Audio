@@ -3,8 +3,10 @@ TOP := kws_top
 REPO_ROOT      := $(abspath ../../..)
 DSCNN_DIR      := $(abspath ..)
 SRAM_MACRO_DIR := $(abspath $(REPO_ROOT)/../gf180mcu_ocd_ip_sram/cells/gf180mcu_ocd_ip_sram__sram1024x8m8wm1)
+BIAS_SRAM_MACRO_DIR := $(abspath $(REPO_ROOT)/../gf180mcu_ocd_ip_sram/cells/gf180mcu_ocd_ip_sram__sram512x8m8wm1)
 
 SRAM_MACRO := $(SRAM_MACRO_DIR)/gf180mcu_ocd_ip_sram__sram1024x8m8wm1.v
+BIAS_SRAM_MACRO := $(BIAS_SRAM_MACRO_DIR)/gf180mcu_ocd_ip_sram__sram512x8m8wm1.v
 
 SOURCES := \
 	$(DSCNN_DIR)/kws_top.sv \
@@ -14,8 +16,9 @@ SOURCES := \
 	$(DSCNN_DIR)/feature_sram/feature_sram.sv \
 	$(DSCNN_DIR)/mac_array/mac_array.sv \
 	$(DSCNN_DIR)/requant/requant.sv \
-	$(DSCNN_DIR)/bias_dff/bias_DFFs.sv \
-	$(SRAM_MACRO)
+	$(DSCNN_DIR)/bias_SRAM/bias_SRAM.sv \
+	$(SRAM_MACRO) \
+	$(BIAS_SRAM_MACRO)
 
 # Simulation sources: exclude the GF180 SRAM macro (replaced by behavioral models)
 SIM_SOURCES := \
@@ -26,7 +29,7 @@ SIM_SOURCES := \
 	$(DSCNN_DIR)/feature_sram/feature_sram.sv \
 	$(DSCNN_DIR)/mac_array/mac_array.sv \
 	$(DSCNN_DIR)/requant/requant.sv \
-	$(DSCNN_DIR)/bias_dff/bias_DFFs.sv
+	$(DSCNN_DIR)/bias_SRAM/bias_SRAM.sv
 
 COCOTB_MODULE    ?= test_$(TOP)
 COCOTB_MAKEFILES := $(shell cocotb-config --makefiles 2>/dev/null)
@@ -39,6 +42,7 @@ gen-spect:
 .PHONY: gen-spect
 
 test-cocotb test-cocotb-icarus:
+	@ln -sf $(DSCNN_DIR)/bias_SRAM/bias.hex bias.hex
 	SIM=icarus TOPLEVEL_LANG=verilog TOPLEVEL=$(TOP) MODULE=$(COCOTB_MODULE) \
 		VERILOG_SOURCES="$(abspath $(SIM_SOURCES))" \
 		COMPILE_ARGS="-DSIM" \
@@ -46,7 +50,7 @@ test-cocotb test-cocotb-icarus:
 .PHONY: test-cocotb test-cocotb-icarus
 
 clean:
-	rm -rf sim_build build waves __pycache__ .pytest_cache results.xml *.vcd *.fst *.log
+	rm -rf sim_build build waves __pycache__ .pytest_cache results.xml *.vcd *.fst *.log bias.hex
 .PHONY: clean
 
 help:

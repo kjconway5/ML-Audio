@@ -70,6 +70,7 @@ FEAT_MEL_META  = 0x2   # 8-bit bytes
 
 DSCNN_WEIGHTS  = 0x0   # 8-bit bytes
 DSCNN_CFG      = 0x1   # 8-bit bytes
+DSCNN_BIAS     = 0x2   # 8-bit bytes, little-endian INT32
 
 CTRL_BOOT_DONE = 0x0
 
@@ -82,16 +83,17 @@ _ML        = _SRC / "ml"
 _RTL       = _SRC / "rtl"
 _KWS_DIR   = _RTL / "dscnn/kws_top"
 _LOGMEL    = _RTL / "Log-Mel/data"
-_MODEL_DIR = _ML / "models/dscnn-32center-v1"
+_MODEL_DIR = _ML / "models/dscnn-16full-v1"
 
 LOG_LUT_HEX   = _LOGMEL    / "log2_lut.hex"
 MEL_COEFF_HEX = _LOGMEL    / "mel_coeffs_sparse.hex"
 MEL_INDEX_HEX = _LOGMEL    / "mel_indices.hex"
 WEIGHTS_HEX   = _MODEL_DIR / "weights.hex"
+BIAS_HEX      = _MODEL_DIR / "bias.hex"
 SCALES_TXT    = _MODEL_DIR / "scales.txt"
 SPECT_DIR     = _KWS_DIR   / "spectrograms"
 MANIFEST_JSON = SPECT_DIR  / "test_vectors.json"
-MODEL_FILTERS = 32
+MODEL_FILTERS = 16
 RESULTS_TXT   = _MODEL_DIR / "sim-core-results.txt"
 
 
@@ -379,6 +381,7 @@ async def _boot_chip(dut, mini=False):
         mel_words    = [(i * 0x0303) & 0xFFFF for i in range(10)]
         meta_bytes   = [(i * 3)      & 0xFF   for i in range(10)]
         weight_bytes = [(i * 7)      & 0xFF   for i in range(20)]
+        bias_words   = [(i * 11)     & 0xFFFFFFFF for i in range(4)]
         cfg_fields   = [0] * 160
         cfg_mults    = [0] * 40
     else:
@@ -386,6 +389,7 @@ async def _boot_chip(dut, mini=False):
         mel_words    = _load_hex(MEL_COEFF_HEX,  signed=False, width=16)
         meta_bytes   = _load_hex(MEL_INDEX_HEX,  signed=False, width=8)
         weight_bytes = _load_hex(WEIGHTS_HEX,    signed=True,  width=8)
+        bias_words   = _load_hex(BIAS_HEX,       signed=True,  width=32)
         layer_cfgs   = load_layer_cfgs(SCALES_TXT, n_filters=MODEL_FILTERS)
         cfg_fields, cfg_mults = _pack_layer_cfgs(layer_cfgs)
 
@@ -411,6 +415,14 @@ async def _boot_chip(dut, mini=False):
     w_payload = [b & 0xFF for b in weight_bytes]
     await _send_packet(dut, _make_target(MOD_DSCNN, DSCNN_WEIGHTS), 0, w_payload)
     dut._log.info(f"  Weights loaded ({len(weight_bytes)} bytes)")
+
+    # DS-CNN biases -- INT32 words packed little-endian for byte-addressed SRAM
+    b_payload = []
+    for b in bias_words:
+        raw = b & 0xFFFFFFFF
+        b_payload += [raw & 0xFF, (raw >> 8) & 0xFF, (raw >> 16) & 0xFF, (raw >> 24) & 0xFF]
+    await _send_packet(dut, _make_target(MOD_DSCNN, DSCNN_BIAS), 0, b_payload)
+    dut._log.info(f"  Biases loaded ({len(bias_words)} INT32 values)")
 
     # DS-CNN layer config: field registers (addresses 0x00 – 0x9F)
     await _send_packet(dut, _make_target(MOD_DSCNN, DSCNN_CFG), 0x00, cfg_fields)
@@ -479,12 +491,42 @@ def _load_wav_pcm(wav_path, target_samples=16_000):
     import numpy as np
     sample_max = (1 << 13) - 1
 
+    def _load_wav_pcm_stdlib(path):
+        import wave
+
+        with wave.open(str(path), "rb") as wf:
+            rate = wf.getframerate()
+            channels = wf.getnchannels()
+            sample_width = wf.getsampwidth()
+            frames = wf.readframes(wf.getnframes())
+
+        if sample_width == 1:
+            data = np.frombuffer(frames, dtype=np.uint8)
+        elif sample_width == 2:
+            data = np.frombuffer(frames, dtype="<i2")
+        elif sample_width == 3:
+            raw = np.frombuffer(frames, dtype=np.uint8).reshape(-1, 3)
+            sign = (raw[:, 2] & 0x80) != 0
+            pad = np.where(sign, 0xFF, 0x00).astype(np.uint8)
+            data = np.column_stack((raw, pad)).reshape(-1).view("<i4")
+        elif sample_width == 4:
+            data = np.frombuffer(frames, dtype="<i4")
+        else:
+            raise ValueError(f"Unsupported WAV sample width: {sample_width} bytes")
+
+        if channels > 1:
+            data = data.reshape(-1, channels)
+        return rate, data
+
     try:
         from scipy.io import wavfile
         rate, data = wavfile.read(str(wav_path))
     except Exception:
-        import soundfile as sf
-        data, rate = sf.read(str(wav_path))
+        try:
+            import soundfile as sf
+            data, rate = sf.read(str(wav_path))
+        except Exception:
+            rate, data = _load_wav_pcm_stdlib(wav_path)
 
     data = np.asarray(data)
     if data.ndim == 2:
@@ -1027,12 +1069,12 @@ async def _monitor_kws_x_sources(dut, done_handle, log_limit=24, fail_fast=False
             if bad:
                 _report("MAC source read", cyc, bad)
 
-        if _handle_int(h['state']) == 2 or _handle_is_one(h['mac_clear']):
+        if _handle_int(h['state']) == 3 or _handle_is_one(h['mac_clear']):
             bad = [name for name in ['bias_data', 'mac_bias'] if _handle_has_x(h[name])]
             if bad:
                 _report("bias load", cyc, bad)
 
-        if _handle_int(h['state']) == 6 or _handle_is_one(h['fs_a_we']) or _handle_is_one(h['fs_b_we']):
+        if _handle_int(h['state']) == 7 or _handle_is_one(h['fs_a_we']) or _handle_is_one(h['fs_b_we']):
             writeback = ['rq_out']
             if _handle_is_one(h['fs_a_we']):
                 writeback.append('fs_a_wdata')
@@ -1064,7 +1106,7 @@ async def test_chip_core_e2e(dut):
     # Check data files
     manifest_path = _manifest_json_path()
     for p in [LOG_LUT_HEX, MEL_COEFF_HEX, MEL_INDEX_HEX,
-              WEIGHTS_HEX, SCALES_TXT, manifest_path]:
+              WEIGHTS_HEX, BIAS_HEX, SCALES_TXT, manifest_path]:
         if not Path(p).exists():
             raise FileNotFoundError(
                 f"Missing: {p}\n"

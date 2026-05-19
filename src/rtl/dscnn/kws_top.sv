@@ -22,6 +22,11 @@ module kws_top #(
     input  wire [12:0] w_waddr,
     input  wire [7:0]  w_wdata,
 
+    // Bias SRAM byte-write port (connects to UART boot)
+    input  wire        b_we,
+    input  wire [10:0] b_waddr,
+    input  wire [7:0]  b_wdata,
+
     // spect_buffer_ctrl → FSM
     input  wire        spect_done,
     input  wire        spect_write_sel,
@@ -135,6 +140,7 @@ module kws_top #(
 
     // Bias signals
     wire [8:0]           bias_addr;   // 9-bit for 32-filter model (up to 295 bias entries)
+    wire                 bias_read_high;
     wire signed [31:0]   bias_data;
 
     // Shared spectrogram read address 
@@ -181,9 +187,14 @@ module kws_top #(
         .relu_en(rq_relu_en), .out(rq_out)
     );
 
-    bias_DFFs inst_bias (
+    bias_SRAM inst_bias (
+        .clk(clk),
         .addr(bias_addr),
-        .data(bias_data)
+        .read_high(bias_read_high),
+        .data(bias_data),
+        .we(b_we),
+        .waddr(b_waddr),
+        .wdata(b_wdata)
     );
 
     FSM inst_ctrl (
@@ -203,6 +214,7 @@ module kws_top #(
         .fs_a_raddr(fs_a_raddr), .fs_a_rdata(fs_a_rdata),
         .fs_b_we(fs_b_we), .fs_b_waddr(fs_b_waddr), .fs_b_wdata(fs_b_wdata),
         .fs_b_raddr(fs_b_raddr), .fs_b_rdata(fs_b_rdata),
+        .bias_read_high(bias_read_high),
         .mac_en(mac_en), .mac_clear(mac_clear),
         .mac_ifmap(mac_ifmap), .mac_weight(mac_weight),
         .mac_bias(mac_bias), .mac_acc(mac_acc),

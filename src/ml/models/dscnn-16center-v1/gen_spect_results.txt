@@ -233,3 +233,65 @@ Golden model accuracy: 9/10
 Written: spectrograms/test_vectors.json
 Written: 10 spectrogram hex file(s) in spectrograms
 
+=== yes  (2026-05-18 11:42:35)  seed=random  pipeline=full  target_samples=16000  window=fixed  quantization=rtl-input-requant mult=5805163 shift=31 input_scale=0.36125633 ===
+
+Generating 10 test vector(s) for keyword 'yes'  [full pipeline: PDM->CIC->FIR->STFFT]
+Input config: target_samples=16000  window=fixed  quantization=rtl-input-requant mult=5805163 shift=31 input_scale=0.36125633
+#     wav                                     nz   pytorch     arith   match
+--------------------------------------------------------------------------------
+0     0ea9c8ce_nohash_4.wav                 2000       yes       yes  OK
+      GAP: yes:1899  unknown:747  off:380  no:-138  wow:-674  on:-1513  silence:-2307  margin=1152
+1     1496195a_nohash_0.wav                 2000       yes       yes  OK
+      GAP: yes:278  unknown:80  no:79  off:-91  on:-465  wow:-519  silence:-998  margin=198
+2     3b4f8f24_nohash_0.wav                 2000       yes       yes  OK
+      GAP: yes:2620  unknown:1702  no:800  wow:106  off:-1422  on:-2276  silence:-3050  margin=918
+3     3bfd30e6_nohash_3.wav                 2000       off        on  MISS (pytorch≠arith)
+      GAP: on:105  unknown:-21  no:-106  off:-147  yes:-264  wow:-526  silence:-754  margin=126
+4     4fd1443e_nohash_4.wav                 2000       yes       yes  OK
+      GAP: yes:1008  unknown:244  off:-16  no:-401  on:-629  wow:-856  silence:-954  margin=764
+5     56eb74ae_nohash_2.wav                 2000   unknown   unknown  MISS
+      GAP: unknown:922  no:650  yes:229  on:-175  wow:-591  off:-788  silence:-1834  margin=272
+6     5a98d407_nohash_2.wav                 2000       yes       yes  OK
+      GAP: yes:659  unknown:358  no:195  off:-519  wow:-607  silence:-845  on:-854  margin=301
+7     ad89eb1e_nohash_1.wav                 2000        no        no  MISS
+      GAP: no:793  unknown:664  yes:546  wow:361  off:-1123  on:-1162  silence:-1779  margin=129
+8     c25a032b_nohash_2.wav                 2000       yes       yes  OK
+      GAP: yes:1378  unknown:366  no:195  wow:25  off:-219  silence:-1690  on:-1724  margin=1012
+9     c4e00ee9_nohash_2.wav                 2000       yes       yes  OK
+      GAP: yes:307  unknown:-6  no:-110  silence:-431  wow:-434  off:-451  on:-480  margin=313
+
+Golden model accuracy: 7/10
+Written: spectrograms/test_vectors.json
+Written: 10 spectrogram hex file(s) in spectrograms
+
+=== yes  (2026-05-18 11:52:08)  seed=random  pipeline=full  target_samples=16000  window=fixed  quantization=rtl-input-requant mult=5805163 shift=31 input_scale=0.36125633 ===
+
+Generating 10 test vector(s) for keyword 'yes'  [full pipeline: PDM->CIC->FIR->STFFT]
+Input config: target_samples=16000  window=fixed  quantization=rtl-input-requant mult=5805163 shift=31 input_scale=0.36125633
+#     wav                                     nz   pytorch     arith   match
+--------------------------------------------------------------------------------
+0     0585b66d_nohash_2.wav                 2000   unknown   unknown  MISS
+      GAP: unknown:298  yes:242  no:96  off:-227  on:-363  wow:-383  silence:-1402  margin=56
+1     2275edbb_nohash_0.wav                 2000       yes       yes  OK
+      GAP: yes:4719  unknown:2504  no:481  wow:-508  off:-803  on:-3242  silence:-4508  margin=2215
+2     5ebc1cda_nohash_4.wav                 2000       yes       yes  OK
+      GAP: yes:1077  no:809  wow:433  unknown:339  off:-708  silence:-1809  on:-1837  margin=268
+3     6c0f6493_nohash_0.wav                 2000       yes       yes  OK
+      GAP: yes:1395  unknown:629  no:183  off:-366  wow:-369  on:-1339  silence:-1724  margin=766
+4     8e523821_nohash_0.wav                 2000       yes       yes  OK
+      GAP: yes:2132  unknown:1190  no:1120  wow:-465  off:-620  on:-2087  silence:-2755  margin=942
+5     c1e0e8e3_nohash_3.wav                 2000        no        no  MISS
+      GAP: no:-32  unknown:-97  silence:-185  on:-239  yes:-290  off:-397  wow:-425  margin=65
+6     ce0cb033_nohash_4.wav                 2000       yes       yes  OK
+      GAP: yes:1191  unknown:646  no:28  off:-250  on:-670  wow:-835  silence:-1664  margin=545
+7     d21fd169_nohash_2.wav                 2000       yes       yes  OK
+      GAP: yes:2223  unknown:945  no:590  wow:-236  off:-833  silence:-2054  on:-2140  margin=1278
+8     de3fe344_nohash_0.wav                 2000       yes       yes  OK
+      GAP: yes:3009  no:1521  unknown:1255  wow:349  off:-1319  silence:-2960  on:-3305  margin=1488
+9     f736ab63_nohash_4.wav                 2000       yes       yes  OK
+      GAP: yes:2833  unknown:1313  no:853  wow:-62  off:-1078  silence:-2671  on:-2688  margin=1520
+
+Golden model accuracy: 8/10
+Written: spectrograms/test_vectors.json
+Written: 10 spectrogram hex file(s) in spectrograms
+

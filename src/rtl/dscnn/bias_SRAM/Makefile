@@ -1,7 +1,10 @@
 
 
-TOP        := bias_DFFs
-SOURCES    := bias_DFFs.sv
+TOP        := bias_SRAM
+SRAM_MACRO_DIR := $(abspath ../../../../gf180mcu_ocd_ip_sram/cells/gf180mcu_ocd_ip_sram__sram512x8m8wm1)
+SRAM_MACRO := $(SRAM_MACRO_DIR)/gf180mcu_ocd_ip_sram__sram512x8m8wm1.v
+SOURCES    := bias_SRAM.sv
+SYNTH_SOURCES := $(SOURCES) $(SRAM_MACRO)
 TB_SOURCES := tb_$(TOP).sv
 
 TB_MODULE  := tb_$(TOP)
@@ -18,7 +21,7 @@ ALL_SOURCES := $(SOURCES) $(TB_SOURCES)
 
 lint:
 	$(VERILATOR) --lint-only -Wall -Wno-DECLFILENAME \
-		--top-module $(TOP) $(SOURCES)
+		--top-module $(TOP) $(SYNTH_SOURCES)
 .PHONY: lint
 
 test: $(RUN_DIR)/$(TB_MODULE).vcd
@@ -37,10 +40,12 @@ COCOTB_MAKEFILES := $(shell cocotb-config --makefiles 2>/dev/null)
 test-cocotb test-cocotb-icarus:
 	SIM=icarus TOPLEVEL_LANG=verilog TOPLEVEL=$(TOP) MODULE=$(COCOTB_MODULE) \
 		VERILOG_SOURCES="$(abspath $(SOURCES))" \
+		COMPILE_ARGS="-DSIM" \
 		$(MAKE) -f $(COCOTB_MAKEFILES)/Makefile.sim
 test-cocotb-verilator:
 	SIM=verilator TOPLEVEL_LANG=verilog TOPLEVEL=$(TOP) MODULE=$(COCOTB_MODULE) \
 		VERILOG_SOURCES="$(abspath $(SOURCES))" \
+		COMPILE_ARGS="-DSIM" \
 		$(MAKE) -f $(COCOTB_MAKEFILES)/Makefile.sim
 .PHONY: test-cocotb test-cocotb-icarus test-cocotb-verilator
 
