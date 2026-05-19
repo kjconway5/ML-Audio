@@ -185,6 +185,9 @@ module full_demo_top
     logic        w_we;
     logic [12:0] w_waddr;
     logic [7:0]  w_wdata;
+    logic        b_we;
+    logic [10:0] b_waddr;
+    logic [7:0]  b_wdata;
     logic        cfg_we;
     logic [7:0]  cfg_addr;
     logic [7:0]  cfg_wdata;
@@ -194,6 +197,9 @@ module full_demo_top
         .w_boot_we_o      (w_we),
         .w_boot_addr_o    (w_waddr),
         .w_boot_wdata_o   (w_wdata),
+        .b_boot_we_o      (b_we),
+        .b_boot_addr_o    (b_waddr),
+        .b_boot_wdata_o   (b_wdata),
         .cfg_boot_we_o    (cfg_we),
         .cfg_boot_addr_o  (cfg_addr),
         .cfg_boot_wdata_o (cfg_wdata)
@@ -249,12 +255,11 @@ module full_demo_top
 
         .flash_log_lut_we_i     (lut_we),
         .flash_log_lut_addr_i   (lut_addr),
-        .flash_log_lut_data_i   (lut_data),
-
-        .test_mode_i            (1'b0),
-        .test_coeff_addr_i      (8'd0),
-        .test_index_addr_i      (8'd0),
-        .test_lut_addr_i        (6'd0)
+        .flash_log_lut_data_i   (lut_data)
+        // test_* ports removed: the post-merge streaming-STFFT rework
+        // (b59d524) rewrote pipeline_top and dropped test-mode entirely.
+        // These four were tying test mode OFF, so removing them is
+        // behavior-preserving.
     );
 
 
@@ -332,6 +337,10 @@ module full_demo_top
         .w_waddr         (w_waddr),
         .w_wdata         (w_wdata),
 
+        .b_we            (b_we),
+        .b_waddr         (b_waddr),
+        .b_wdata         (b_wdata),
+
         .spect_done      (spect_done),
         .spect_write_sel (spect_write_sel),
 
@@ -341,7 +350,11 @@ module full_demo_top
 
         .sp_b_we         (sp_b_we),
         .sp_b_waddr      (sp_b_waddr),
-        .sp_b_wdata      (sp_b_wdata)
+        .sp_b_wdata      (sp_b_wdata),
+
+        // DFT observability disabled for the demo (debug taps are
+        // outputs, left unconnected — synth will trim them).
+        .test_mode_ml    (1'b0)
     );
 
 

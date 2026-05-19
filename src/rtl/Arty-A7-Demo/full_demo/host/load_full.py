@@ -18,6 +18,7 @@ from host_common import (  # noqa: E402
     CTRL_BOOT_DONE,
     CTRL_SESSION_RESET,
     DEFAULT_MODEL_DIR,
+    DSCNN_BIAS,
     DSCNN_CFG,
     DSCNN_WEIGHTS,
     FEAT_LOG_LUT,
@@ -59,8 +60,20 @@ def build_cfg_image(pairs: list[tuple[int, int]]) -> bytes:
     return bytes(image)
 
 
-def do_boot(ser, logmel_dir: Path, weights_path: Path, cfg_path: Path,
-            verbose: bool = True) -> bool:
+def load_bias_le(path: Path) -> bytes:
+    """bias.hex is one 32-bit INT32 per line (8 hex digits). The bias
+    SRAM is byte-addressed little-endian (boot_pkg.sv: DSCNN_BIAS), so
+    emit 4 LE bytes per word."""
+    out = bytearray()
+    for line in path.read_text().splitlines():
+        text = line.split("#", 1)[0].strip()
+        if text:
+            out += (int(text, 16) & 0xFFFFFFFF).to_bytes(4, "little")
+    return bytes(out)
+
+
+def do_boot(ser, logmel_dir: Path, weights_path: Path, bias_path: Path,
+            cfg_path: Path, verbose: bool = True) -> bool:
     loads = [
         ("log_lut", make_target(MOD_FEATURES, FEAT_LOG_LUT), 0,
          pack_16bit_le(load_hex16(logmel_dir / "log2_lut.hex"))),
@@ -70,6 +83,8 @@ def do_boot(ser, logmel_dir: Path, weights_path: Path, cfg_path: Path,
          bytes(load_hex8(logmel_dir / "mel_indices.hex"))),
         ("weights", make_target(MOD_DSCNN, DSCNN_WEIGHTS), 0,
          bytes(load_hex8(weights_path))),
+        ("bias", make_target(MOD_DSCNN, DSCNN_BIAS), 0,
+         load_bias_le(bias_path)),
         ("cfg", make_target(MOD_DSCNN, DSCNN_CFG), 0,
          build_cfg_image(load_cfg_pairs(cfg_path))),
         ("cfg_done", make_target(MOD_DSCNN, DSCNN_CFG), 0xFF, b"\x00"),
@@ -133,7 +148,7 @@ def mode_probe(ser) -> int:
 
 
 def mode_boot(ser, args) -> int:
-    return 0 if do_boot(ser, args.logmel_dir, args.weights, args.cfg) else 1
+    return 0 if do_boot(ser, args.logmel_dir, args.weights, args.bias, args.cfg) else 1
 
 
 def run_inference(ser, samples) -> int:
@@ -158,14 +173,14 @@ def run_inference(ser, samples) -> int:
 
 def mode_stream(ser, args) -> int:
     print("Booting...")
-    if not do_boot(ser, args.logmel_dir, args.weights, args.cfg):
+    if not do_boot(ser, args.logmel_dir, args.weights, args.bias, args.cfg):
         return 1
     return run_inference(ser, sine_samples(SAMPLES_STREAM, 1000.0))
 
 
 def mode_classify(ser, args) -> int:
     print("Booting...")
-    if not do_boot(ser, args.logmel_dir, args.weights, args.cfg):
+    if not do_boot(ser, args.logmel_dir, args.weights, args.bias, args.cfg):
         return 1
     return run_inference(ser, wav_samples(args.classify, n_required=SAMPLES_STREAM))
 
@@ -184,6 +199,7 @@ def main() -> int:
 
     parser.add_argument("--logmel-dir", type=Path, default=LOGMEL_DIR)
     parser.add_argument("--weights", type=Path, default=DEFAULT_MODEL_DIR / "weights.hex")
+    parser.add_argument("--bias", type=Path, default=DEFAULT_MODEL_DIR / "bias.hex")
     parser.add_argument("--cfg", type=Path, default=FULL_DEMO_HOST_DIR / "cfg.hex")
     args = parser.parse_args()
 

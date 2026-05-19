@@ -38,6 +38,7 @@ FEAT_MEL_META = 0x2
 
 DSCNN_WEIGHTS = 0x0
 DSCNN_CFG = 0x1
+DSCNN_BIAS = 0x2  # 295 x INT32, byte-addressed little-endian (boot_pkg.sv)
 
 CTRL_BOOT_DONE = 0x0
 CTRL_SESSION_RESET = 0x2

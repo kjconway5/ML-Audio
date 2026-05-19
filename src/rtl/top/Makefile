@@ -42,7 +42,6 @@ STFFT_SOURCES := \
    $(STFFT_DIR)/R2FFT/hdl/fft.sv \
    $(STFFT_DIR)/tests/models/gf180mcu_fd_ip_sram__sram128x8m8wm1.v \
    $(STFFT_DIR)/ZipCPU/ip/Window/windowfn.v \
-   $(STFFT_DIR)/rtl/fft_data_ram.sv \
    $(STFFT_DIR)/rtl/fft_twiddle_rom.sv \
    $(STFFT_DIR)/rtl/stfft.sv
 

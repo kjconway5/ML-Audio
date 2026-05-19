@@ -42,7 +42,6 @@ set sv_sources [list \
     $flash/dscnn_boot_router.sv \
     $top_dir/pipeline_top.sv \
     $stfft/rtl/stfft.sv \
-    $stfft/rtl/fft_data_ram.sv \
     $stfft/rtl/fft_twiddle_rom.sv \
     $logmel/rtl/log_top/logmel_top.sv \
     $logmel/rtl/power_calc/power_calc.sv \

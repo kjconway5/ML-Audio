@@ -240,7 +240,20 @@ logmel_top #(
     .flash_mel_index_data_i (flash_mel_index_data_i),
     .flash_log_lut_we_i     (flash_log_lut_we_i),
     .flash_log_lut_addr_i   (flash_log_lut_addr_i),
-    .flash_log_lut_data_i   (flash_log_lut_data_i)
+    .flash_log_lut_data_i   (flash_log_lut_data_i),
+
+    // Tie off logmel ports the post-merge pipeline_top doesn't drive.
+    // These were floating (relying on synth flooring to 0); make the
+    // safe-off intent explicit. VAD: threshold 0 ⇒ every frame accepted
+    // (VAD bypassed). DFT: observation disabled. test_*: test mode off.
+    .test_mode_i            (1'b0),
+    .test_coeff_addr_i      (8'd0),
+    .test_index_addr_i      (8'd0),
+    .test_lut_addr_i        ('0),
+    .vad_threshold_il       (32'd0),
+    .dft_vad_obs_en_i       (1'b0),
+    .vad_active_ol          (),
+    .vad_frame_drop_ol      ()
 );
 
 // ==========================================================================
