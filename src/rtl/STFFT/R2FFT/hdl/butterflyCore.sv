@@ -208,6 +208,5 @@ module butterflyCore
       );
    
 
-endmodule // butterflyUnit
-
+endmodule 
 

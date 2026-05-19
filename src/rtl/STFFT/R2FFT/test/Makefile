@@ -1,26 +1,22 @@
-TOP     := stfft
-STFFT_ROOT := $(abspath $(dir $(lastword $(MAKEFILE_LIST)))/..)
+TOP     := fft
+FFT_ROOT := $(abspath $(dir $(lastword $(MAKEFILE_LIST)))/..)
 
 SOURCES := \
-    $(STFFT_ROOT)/R2FFT/hdl/bfp_Shifter.sv \
-    $(STFFT_ROOT)/R2FFT/hdl/bfp_bitWidthAcc.sv \
-    $(STFFT_ROOT)/R2FFT/hdl/bfp_bitWidthDetector.sv \
-    $(STFFT_ROOT)/R2FFT/hdl/bfp_maxBitWidth.sv \
-    $(STFFT_ROOT)/R2FFT/hdl/bitReverseCounter.sv \
-    $(STFFT_ROOT)/R2FFT/hdl/ramPipelineBridge.sv \
-    $(STFFT_ROOT)/R2FFT/hdl/radix2Butterfly.sv \
-    $(STFFT_ROOT)/R2FFT/hdl/butterflyCore.sv \
-    $(STFFT_ROOT)/R2FFT/hdl/twiddleFactorRomBridge.sv \
-    $(STFFT_ROOT)/R2FFT/hdl/butterflyUnit.sv \
-    $(STFFT_ROOT)/R2FFT/hdl/fftAddressGenerator.sv \
-    $(STFFT_ROOT)/R2FFT/hdl/rwBusMux.sv \
-    $(STFFT_ROOT)/R2FFT/hdl/R2FFT.sv \
-	$(STFFT_ROOT)/R2FFT/hdl/fft.sv \
-    $(STFFT_ROOT)/tests/models/gf180mcu_fd_ip_sram__sram128x8m8wm1.v \
-    $(STFFT_ROOT)/ZipCPU/ip/Window/windowfn.v \
-    $(STFFT_ROOT)/rtl/fft_data_ram.sv \
-    $(STFFT_ROOT)/rtl/fft_twiddle_rom.sv \
-    $(STFFT_ROOT)/rtl/stfft.sv
+    $(FFT_ROOT)/hdl/bfp_Shifter.sv \
+    $(FFT_ROOT)/hdl/bfp_bitWidthAcc.sv \
+    $(FFT_ROOT)/hdl/bfp_bitWidthDetector.sv \
+    $(FFT_ROOT)/hdl/bfp_maxBitWidth.sv \
+    $(FFT_ROOT)/hdl/bitReverseCounter.sv \
+    $(FFT_ROOT)/hdl/rwBusMux.sv \
+    $(FFT_ROOT)/hdl/radix2Butterfly.sv \
+    $(FFT_ROOT)/hdl/butterflyCore.sv \
+    $(FFT_ROOT)/hdl/twiddleFactorRomBridge.sv \
+    $(FFT_ROOT)/hdl/butterflyUnit.sv \
+    $(FFT_ROOT)/hdl/fftAddressGenerator.sv \
+    $(FFT_ROOT)/hdl/R2FFT.sv \
+    $(FFT_ROOT)/hdl/fft_twiddle_rom.sv \
+	$(FFT_ROOT)/hdl/ramPipelineBridge.sv \
+    $(FFT_ROOT)/hdl/fft.sv
 
 COCOTB_MAKEFILES := $(shell cocotb-config --makefiles)
 
@@ -30,7 +26,7 @@ SIM_ARGS = --trace --trace-structs --trace-depth 2
 export COCOTB_HDL_TIMEUNIT = 1ns
 export COCOTB_HDL_TIMEPRECISION = 1ps
 
-test-stfft:
+test-fft:
 	@echo "Creating hanning.hex symlink..."
 	ln -sf $(STFFT_ROOT)/ZipCPU/hanning.hex hanning.hex
 	@echo "Running simulation with waveform generation..."

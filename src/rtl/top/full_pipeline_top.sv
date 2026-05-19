@@ -101,7 +101,7 @@ module full_pipeline_top #(
 
         // fir 
     output logic signed [FIR_OW-1:0]    FIR_audio_in,
-    output logic signed [FIR_OW-1:0]    FIR_audio_out
+    output logic signed [FIR_OW-1:0]    FIR_audio_out,
 
         // spect buff
     output logic [ADDR_W-1:0]      sp_a_waddr_test,
@@ -118,8 +118,7 @@ module full_pipeline_top #(
 
     output logic [1:0] frame_control_state, 
     output logic [$clog2(N_MELS)-1:0] mel_idx_test,
-    output logic [POWER_W:0] power_test,
-
+    output logic [POWER_W:0] power_test
 
 );
 
@@ -167,7 +166,6 @@ logic [FIR_OW-1:0] fir_result;   // 37-bit full-precision output
 logic              fir_valid_o;
 logic              fir_ready_i;
 
-assign fir_ready_i = 1'b1;  // setting to HIGH will produce NO frames
 
 compFIR #(
     .NTAPS     (FIR_NTAPS), // 14
@@ -179,10 +177,10 @@ compFIR #(
     .i_reset  (reset_i),
     .i_tdata  (cic_trunc),
     .i_tvalid (cic_valid),
-    .i_tready (fir_ready_o),         // output fix naming(in tb too) TODO from i_tready -> o_tready
+    .i_tready (fir_ready_o),      
     .o_tdata  (fir_result),
     .o_tvalid (fir_valid_o),
-    .o_tready (fir_ready_i),         // input fix naming(in tb too) TODO from o_tready -> i_tready
+    .o_tready (stfft_i_ready),       
 
     .FIR_audio_in (FIR_audio_in),
     .FIR_audio_out(FIR_audio_out)
@@ -200,47 +198,65 @@ assign fir_trunc_valid = fir_valid_o;
 
 // 5.  STFFT — 16 kHz, 16-bit signed input, 32-bit output {re[15:0],im[15:0]}
 
-logic [2*OW_STFFT-1:0] o_fft_result;
-logic                   o_fft_sync;
-logic                   win_ce_raw;
-logic signed [7:0]      bfpexp_raw;
+logic                       stfft_o_valid;
+logic [2*OW_STFFT-1:0]      stfft_o_data;
+logic                       stfft_o_last;
+logic                       stfft_i_ready;  
+logic signed [7:0]          bfpexp_raw;
 
 stfft #(
-    .IW         (IW_STFFT),    // 16
-    .OW         (OW_STFFT),    // 16
-    .FFT_SIZE   (FFT_SIZE),     // 256
-    .FFT_N      (FFT_N),
-    .HOP        (HOP),
-    .FIFO_DEPTH (FIFO_DEPTH),
-    .FIFO_AW    (FIFO_AW)
+    .IW      (IW_STFFT),
+    .OW      (OW_STFFT),
+    .FFT_SIZE(FFT_SIZE),
+    .HOP     (HOP)
 ) u_stfft (
-    .i_clk       (clk_i),
-    .i_reset     (reset_i),
-    .i_ce        (fir_trunc_valid),
-    .i_sample    (fir_trunc),
-    .o_fft_result(o_fft_result),
-    .o_fft_sync  (o_fft_sync),
-    .win_ce_o    (win_ce_raw),
-    .o_bfpexp    (bfpexp_raw)
+    .i_clk    (clk_i),
+    .i_reset  (reset_i),
+
+    .i_valid  (fir_valid_o),
+    .i_data   (fir_trunc),
+    .i_ready  (stfft_i_ready),
+
+    .o_valid  (stfft_o_valid),
+    .o_data   (stfft_o_data),
+    .o_ready  (1'b1),               // never backpressure the FFT output
+    .o_last   (stfft_o_last),
+    .o_bfpexp (bfpexp_raw)
 );
 
 
+logic stfft_o_valid_d;
+always_ff @(posedge clk_i) begin
+    if (reset_i)
+        stfft_o_valid_d <= 1'b0;
+    else
+        stfft_o_valid_d <= stfft_o_valid;
+end
+
+// 1-cycle pulse on the FIRST cycle of each frame's output stream.
+wire fft_sync_pulse = stfft_o_valid && !stfft_o_valid_d;
+
 // 2. FFT output pipeline registers + 2-cycle delayed sync
 
-logic                    fft_sync_r, fft_sync_rr;
-logic [2*OW_STFFT-1:0]   fft_result_r, fft_result_rr;
+logic                       fft_valid_r,  fft_valid_rr;
+logic [2*OW_STFFT-1:0]      fft_result_r, fft_result_rr;
+logic                       fft_sync_r,   fft_sync_rr;
 
 always_ff @(posedge clk_i) begin
     if (reset_i) begin
-        fft_sync_r    <= '0;
-        fft_sync_rr   <= '0;
+        fft_valid_r   <= 1'b0;
+        fft_valid_rr  <= 1'b0;
         fft_result_r  <= '0;
         fft_result_rr <= '0;
+        fft_sync_r    <= 1'b0;
+        fft_sync_rr   <= 1'b0;
     end else begin
-        fft_sync_r    <= o_fft_sync;
-        fft_sync_rr   <= fft_sync_r;
-        fft_result_r  <= o_fft_result;
+        fft_valid_r   <= stfft_o_valid;
+        fft_valid_rr  <= fft_valid_r;
+        fft_result_r  <= stfft_o_data;
         fft_result_rr <= fft_result_r;
+        fft_sync_r    <= fft_sync_pulse;
+        fft_sync_rr   <= fft_sync_r;
     end
 end
 
@@ -248,20 +264,13 @@ logic signed [OW_STFFT-1:0] fft_re, fft_im;
 assign fft_re = fft_result_rr[2*OW_STFFT-1 : OW_STFFT];
 assign fft_im = fft_result_rr[OW_STFFT-1   : 0];
 
-localparam int SYNC_ALIGN_DELAY = 3;  // empirically measured DMA-to-fft_result_rr gap
 
-logic [SYNC_ALIGN_DELAY-1:0] fft_sync_align_sr;
-always_ff @(posedge clk_i) begin
-    if (reset_i)
-        fft_sync_align_sr <= '0;
-    else
-        fft_sync_align_sr <= {fft_sync_align_sr[SYNC_ALIGN_DELAY-2:0], fft_sync_rr};
-end
-logic fft_sync_aligned;
-assign fft_sync_aligned = fft_sync_align_sr[SYNC_ALIGN_DELAY-1];
+// 4. Bin counter — gate fft_valid to the first N_BINS cycles of each frame
+//
+// bin_cnt_q loads on fft_sync_r (one cycle before fft_result_rr latches
+// bin 0), so fft_valid is high for exactly the 129 cycles when bins
+// 0..128 sit on fft_result_rr.
 
-
-// 3. Bin counter  (driven by the aligned sync)
 
 localparam int CNT_W = $clog2(N_BINS + 1);
 logic [CNT_W-1:0] bin_cnt_q;
@@ -269,7 +278,7 @@ logic [CNT_W-1:0] bin_cnt_q;
 always_ff @(posedge clk_i) begin
     if (reset_i)
         bin_cnt_q <= '0;
-    else if (fft_sync_aligned)
+    else if (fft_sync_r)
         bin_cnt_q <= CNT_W'(N_BINS);
     else if (bin_cnt_q > 0)
         bin_cnt_q <= bin_cnt_q - 1'b1;
@@ -287,7 +296,7 @@ logic signed [7:0] bfpexp_for_mel;
 always_ff @(posedge clk_i) begin
     if (reset_i)
         bfpexp_for_mel <= '0;
-    else if (fft_sync_aligned)
+    else if (fft_sync_r)
         bfpexp_for_mel <= bfpexp_raw;
 end
 
@@ -316,7 +325,7 @@ logmel_top #(
     .re_il                  (fft_re),
     .im_il                  (fft_im),
     .fft_valid_il           (fft_valid),
-    .fft_sync_il            (fft_sync_aligned),
+    .fft_sync_il            (fft_sync_r),
     .cnn_data_ol            (mel_data),
     .cnn_valid_ol           (mel_valid),
     .cnn_ready_il           (mel_ready),
@@ -332,7 +341,7 @@ logmel_top #(
     .vad_threshold_il       (vad_threshold_i),
     .vad_active_ol          (vad_active),
     .dft_vad_obs_en_i       (dft_vad_obs_en_i),
-    .vad_frame_drop_ol      (vad_frame_drop_ol)
+    .vad_frame_drop_ol      (vad_frame_drop_ol),
 
     // test mode
     .test_mode_i(audio_test_mode_i),
@@ -398,7 +407,7 @@ spect_buffer_ctrl #(
     .sp_b_waddr     (sp_b_waddr),
     .sp_b_wdata     (sp_b_wdata),
     .spect_done     (spect_done),
-    .spect_write_sel(spect_write_sel)
+    .spect_write_sel(spect_write_sel),
 
     // test signals 
     .sp_a_waddr_test(sp_a_waddr_test),

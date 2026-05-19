@@ -113,5 +113,4 @@ module fftAddressGenerator
       endcase
    end
    
-endmodule // butterflyUnut
-
+endmodule

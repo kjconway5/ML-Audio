@@ -55,7 +55,7 @@ module logmel_top #(
 
     // DFT / debug
     input  logic                dft_vad_obs_en_i,
-    output logic                vad_frame_drop_ol
+    output logic                vad_frame_drop_ol,
     output logic [$clog2(N_MELS)-1:0] mel_idx_test,
     output logic [(2*IW)-SHIFT:0] power_test,
     output logic [1:0] frame_control_state
@@ -90,7 +90,7 @@ module logmel_top #(
         .imag_il  (im_il),
         .valid_il (fft_valid_il),
         .power_ol (power),
-        .valid_ol (power_valid)
+        .valid_ol (power_valid),
         .power_test (power_test),
         .test_mode_audio (test_mode_i)
     );
@@ -99,22 +99,22 @@ module logmel_top #(
     logic        vad_active;
     logic        vad_done;
 
-spectral_vad #(
-    .POWER_W  (POWER_W),
-    .N_BINS   (N_BINS),
-    .THRESH_W (32)
-    ) u_vad (
-    .clk_i              (clk_i),
-    .reset_i            (reset_i),
-    .power_il           (power),
-    .power_valid_il     (power_valid),
-    .fft_sync_il        (fft_sync_il),
-    .threshold_il       (vad_threshold_il),
-    .dft_vad_obs_en_i   (dft_vad_obs_en_i), 
-    .vad_frame_drop_ol  (vad_frame_drop_ol),
-    .voice_active_ol    (vad_active),
-    .vad_done_ol        (vad_done)
-    );
+    spectral_vad #(
+        .POWER_W  (POWER_W),
+        .N_BINS   (N_BINS),
+        .THRESH_W (32)
+        ) u_vad (
+        .clk_i              (clk_i),
+        .reset_i            (reset_i),
+        .power_il           (power),
+        .power_valid_il     (power_valid),
+        .fft_sync_il        (fft_sync_il),
+        .threshold_il       (vad_threshold_il),
+        .dft_vad_obs_en_i   (dft_vad_obs_en_i), 
+        .vad_frame_drop_ol  (vad_frame_drop_ol),
+        .voice_active_ol    (vad_active),
+        .vad_done_ol        (vad_done)
+        );
 
     // mel_filterbank
     // accumulates power*weight for all 40 filters across 129 bins
