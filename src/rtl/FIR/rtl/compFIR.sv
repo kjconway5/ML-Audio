@@ -211,3 +211,8 @@ always_ff @(posedge i_clk) begin
 end
 
 endmodule
+
+// Close `default_nettype none` opened above so it doesn't leak into
+// any file compiled after compFIR.sv (Vivado rejects `input logic`
+// port decls under strict mode — bit logmel_top during full_demo).
+`default_nettype wire

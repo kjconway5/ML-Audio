@@ -257,3 +257,9 @@ module stfft #(
     /* verilator lint_on UNUSED */
 
 endmodule
+
+// Match the bookend in R2FFT/hdl/fft.sv — without this, the
+// `default_nettype none` at the top of the file leaks into every
+// file compiled after stfft.sv, and Vivado rejects `input logic ...`
+// port decls downstream (logmel_top et al. erred on this).
+`default_nettype wire
