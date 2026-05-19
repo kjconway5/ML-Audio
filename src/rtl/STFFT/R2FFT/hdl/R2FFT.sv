@@ -1,4 +1,4 @@
-/* ===========================================================================
+/*
  * Configurable Radix-2 FFT Processor with Block Floating-Point
  *
  * Variant: Ping-Pong + Single-Port RAM, with overlapped I/O and compute.
@@ -16,7 +16,6 @@
  *
  *   butterflyCore, bfp_*, bitReverseCounter, twiddleFactorRomBridge are
  *   reused unchanged from the original codebase.
- * ===========================================================================
  */
  
 module R2FFT
@@ -80,9 +79,9 @@ module R2FFT
    localparam FFT_BFPDW       = $clog2(FFT_DW) + 1;
    localparam STAGE_COUNT_BW  = $clog2(FFT_N);
  
-   // ------------------------------------------------------------------------
+  
    // Per-RAM lifecycle states
-   // ------------------------------------------------------------------------
+
    typedef enum logic [2:0] {
       RAM_IDLE          = 3'd0,
       RAM_FILLING       = 3'd1,
@@ -114,10 +113,10 @@ module R2FFT
    wire any_dmaing     = ram0_dmaing    || ram1_dmaing;
    wire any_rdma       = ram0_rdma      || ram1_rdma;
  
-   // ------------------------------------------------------------------------
+
    // Stream-arrival decision (combinational so first sample of each new
    // frame lands the same cycle we transition IDLE → FILLING).
-   // ------------------------------------------------------------------------
+
    wire start_fill_ram0 = !any_filling && sact_istream && ram0_idle &&
                           (fill_next == 1'b0 || !ram1_idle);
    wire start_fill_ram1 = !any_filling && sact_istream && ram1_idle &&
@@ -127,11 +126,11 @@ module R2FFT
    wire eff_filling_1   = ram1_filling || start_fill_ram1;
    wire any_eff_filling = eff_filling_0 || eff_filling_1;
  
-   // ------------------------------------------------------------------------
+
    // Bit-reverse input address counter
    //   Clears when nobody is filling (so each new frame starts at addr 0).
    //   Also clears explicitly on stream_done so back-to-back frames reset.
-   // ------------------------------------------------------------------------
+ 
    wire [FFT_N-1:0] istreamAddr;
    wire             streamBufferFull;
    wire             stream_done;
@@ -147,10 +146,10 @@ module R2FFT
  
    assign stream_done = sact_istream && streamBufferFull && any_eff_filling;
  
-   // ------------------------------------------------------------------------
+
    // DMA byte counter — fires dma_done when last sample's address has been
    // presented. Uses dmaact-gated increments.
-   // ------------------------------------------------------------------------
+
    reg [FFT_N-1:0] dma_counter;
    always @(posedge clk) begin
       if (rst || !any_dmaing) dma_counter <= '0;
@@ -158,11 +157,11 @@ module R2FFT
    end
    wire dma_done = dmaact && any_dmaing && (dma_counter == (FFT_LENGTH-1));
  
-   // ------------------------------------------------------------------------
+
    // BFP bit-width tracking on input stream — clears at the end of each
    // frame's stream so consecutive frames start fresh. The per-RAM init bw
    // registers latch the final (incl. last sample) max for each frame.
-   // ------------------------------------------------------------------------
+
    wire [FFT_BFPDW-1:0] istreamBw;
    bfp_bitWidthDetector #(.FFT_BFPDW(FFT_BFPDW), .FFT_DW(FFT_DW))
      uistreamBitWidthDetector
@@ -198,9 +197,9 @@ module R2FFT
       end
    end
  
-   // ------------------------------------------------------------------------
+
    // FFT sub-sequencer — runs while any RAM is COMPUTING.
-   // ------------------------------------------------------------------------
+
    wire run_fft = any_computing;
  
    typedef enum {SB_IDLE, SB_SETUP, SB_RUN, SB_WAIT_PIPELINE,
@@ -280,9 +279,9 @@ module R2FFT
    wire dma_target = (ram1_dmaing || ram1_rdma) ? 1'b1 : 1'b0;
    assign bfpexp   = dma_target ? ram1_bfpexp : ram0_bfpexp;
  
-   // ------------------------------------------------------------------------
+
    // Butterfly engine — drives whichever RAM is COMPUTING
-   // ------------------------------------------------------------------------
+
    wire                  bf_act;
    wire                  bf_we;
    wire [FFT_N-1:0]      bf_a;
@@ -319,9 +318,9 @@ module R2FFT
       .dw           (bf_dw),
       .dr           (bf_dr));
  
-   // ------------------------------------------------------------------------
+
    // RAM 0 port — combinational mux by ram0's effective state
-   // ------------------------------------------------------------------------
+
    always_comb begin
       if (eff_filling_0) begin
          act_ram0 = sact_istream;
@@ -346,9 +345,9 @@ module R2FFT
       end
    end
  
-   // ------------------------------------------------------------------------
+
    // RAM 1 port
-   // ------------------------------------------------------------------------
+
    always_comb begin
       if (eff_filling_1) begin
          act_ram1 = sact_istream;
@@ -377,13 +376,13 @@ module R2FFT
    // ram0 when idle (caller should only sample when dmaact has been high).
    assign {dmadr_imag, dmadr_real} = ram1_dmaing ? dr_ram1 : dr_ram0;
  
-   // ------------------------------------------------------------------------
+
    // Per-RAM state transitions
    //
    // Multiple transitions can fire in the same cycle (e.g. a fill finishes
    // AND a compute slot opens up), but each ram only takes one state at end
    // of cycle thanks to the priority encoder structure below.
-   // ------------------------------------------------------------------------
+
    always @(posedge clk) begin
       if (rst) begin
          ram0_state <= RAM_IDLE;
@@ -437,7 +436,7 @@ module R2FFT
       end
    end
  
-   // ------------------------------------------------------------------------
+
    // Top-level status
    //   done       — at least one RAM has a result waiting for DMA
    //   status     — { dma_active, compute_active, filling_active }
@@ -445,7 +444,7 @@ module R2FFT
    //                (i.e., already FILLING with room left, or IDLE so a new
    //                fill can start). Drops only when both RAMs are stuck
    //                downstream of FILLING with no fill in progress.
-   // ------------------------------------------------------------------------
+
    assign done    = any_rdma || any_dmaing;
    assign status  = {any_dmaing, any_computing, any_filling};
    assign s_ready = any_filling || ram0_idle || ram1_idle;

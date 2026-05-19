@@ -1,40 +1,4 @@
 `default_nettype none
-
-// =============================================================================
-// stfft  -  streaming STFT (50% overlap, single FFT engine, ready/valid I/O)
-//
-// Architecture:
-//   i_valid/i_data --->  sliding ring buffer  (FFT_SIZE x 16-bit register file)
-//                        |
-//                        v   (every HOP samples after the first FFT_SIZE-fill)
-//                        frame readout state machine
-//                            -> ring[(wp_snapshot + i) mod FFT_SIZE]
-//                            -> Hanning window (combinational multiply)
-//                            -> FFT input axis (ready/valid)
-//                        |
-//                        v
-//                        FFT  (ping-pong, back-to-back frames)
-//                        |
-//                        v
-//                        o_valid/o_data/o_last/o_bfpexp
-//
-// Frame schedule:
-//   Frame 0 : samples [0 .. FFT_SIZE-1]              (fires at the FFT_SIZE-th sample)
-//   Frame N : samples [N*HOP .. N*HOP + FFT_SIZE-1]   for N >= 1
-//
-// Why one FFT is enough now:
-//   The previous design needed two FFT instances offset by HOP, because the
-//   old FFT was bursty (one frame at a time, no overlap between filling and
-//   compute). The new wrapper has internal ping-pong RAMs and accepts
-//   back-to-back frames, so consecutive STFT windows can be serialised
-//   through a single engine.
-//
-// Backpressure:
-//   The ring buffer is always-writable (it slides regardless), and the
-//   trigger queue is 1-deep. i_ready drops only when a new sample would
-//   set a second pending trigger before the first has started its
-//   readout. Under realistic input rates this never fires.
-// =============================================================================
 module stfft #(
     parameter IW       = 16,
     parameter OW       = 16,
@@ -60,20 +24,17 @@ module stfft #(
     output wire signed [7:0]        o_bfpexp
 );
 
-    // ---------------------------------------------------------------
+
     // Hanning window ROM (unsigned 16-bit, peak ~ 0xFFFF)
-    // ---------------------------------------------------------------
     reg [IW-1:0] hanning_rom [0:FFT_SIZE-1];
     initial $readmemh("hanning.hex", hanning_rom);
 
-    // ---------------------------------------------------------------
     // Sliding-window ring buffer
     //
     // wp = next slot to write (= oldest currently-held slot). After a
     // write, that slot now holds the newest sample and wp advances.
     // The window from oldest to newest is ring[wp], ring[wp+1], ...,
     // ring[wp + FFT_SIZE - 1] (all mod FFT_SIZE).
-    // ---------------------------------------------------------------
     reg [IW-1:0]    ring [0:FFT_SIZE-1];
     reg [FFT_N-1:0] wp;
 
@@ -159,7 +120,6 @@ module stfft #(
         end
     end
 
-    // ---------------------------------------------------------------
     // Frame readout state machine
     //
     //   ST_IDLE     waits for frame_pending.
@@ -169,7 +129,6 @@ module stfft #(
     // read_addr_base latches wp_snapshot at the moment of transition,
     // so a same-cycle re-trigger that overwrites wp_snapshot doesn't
     // disturb the in-progress readout.
-    // ---------------------------------------------------------------
     localparam ST_IDLE    = 1'b0,
                ST_READOUT = 1'b1;
 
@@ -210,7 +169,7 @@ module stfft #(
         end
     end
 
-    // ---------------------------------------------------------------
+
     // Combinational ring read + Hanning window multiply
     //
     // Note: read_addr_base + read_idx wraps mod FFT_SIZE naturally
@@ -218,7 +177,6 @@ module stfft #(
     // input write to the same ring slot is benign — NBA semantics
     // mean the combinational read sees the *old* slot value, which
     // is exactly what the in-progress readout wants.
-    // ---------------------------------------------------------------
     wire [FFT_N-1:0]       read_addr   = read_addr_base + read_idx;
     wire signed [IW-1:0]   ring_sample = $signed(ring[read_addr]);
     wire signed [2*IW-1:0] product     = $signed(ring[read_addr])
@@ -227,9 +185,8 @@ module stfft #(
 
     wire fft_i_valid = (state == ST_READOUT);
 
-    // ---------------------------------------------------------------
     // FFT instance (new ready/valid wrapper)
-    // ---------------------------------------------------------------
+
     fft #(
         .IW       (IW),
         .OW       (OW),

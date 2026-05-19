@@ -1,6 +1,5 @@
 `default_nettype none
 
-// =============================================================================
 // fft  —  user-facing wrapper around R2FFT with AXI-stream-style ready/valid
 //
 // Input port (s_axis-like):
@@ -21,7 +20,7 @@
 //     pipeline doesn't lose data when the consumer momentarily de-asserts
 //     o_ready. Steady-state throughput is one sample per cycle.
 //   - The wrapper auto-restarts DMA for each new frame's done assertion.
-// =============================================================================
+
 module fft #(
     parameter IW       = 16,
     parameter OW       = 16,
@@ -46,11 +45,11 @@ module fft #(
     output wire signed [7:0]        o_bfpexp
 );
 
-    // ---------------------------------------------------------------
+
     // Input front-end: combinational handshake into R2FFT
     //   sact_istream is the "transfer happens this cycle" signal.
     //   Imaginary half is tied to zero (real-valued input stream).
-    // ---------------------------------------------------------------
+
     wire                  r2fft_s_ready;
     wire                  sact_istream = i_valid && r2fft_s_ready;
     wire signed [IW-1:0]  sdw_real     = i_data;
@@ -58,9 +57,9 @@ module fft #(
 
     assign i_ready = r2fft_s_ready;
 
-    // ---------------------------------------------------------------
+
     // R2FFT instance + RAM/ROM wires
-    // ---------------------------------------------------------------
+
     wire                  done;
     wire [2:0]            status;
     wire signed [7:0]     bfpexp;
@@ -157,7 +156,7 @@ module fft #(
         .twdr_cos (twdr_cos)
     );
 
-    // ---------------------------------------------------------------
+
     // Output DMA controller with 2-deep skid buffer
     //
     //   Pipeline timing (RAM has 1-cycle synchronous read):
@@ -172,7 +171,6 @@ module fft #(
     //   (the combinational next-state of skid), which means we only issue
     //   a new read if there will be room for its data when it lands.
     //   Steady-state throughput with a willing consumer is 1 sample/cycle.
-    // ---------------------------------------------------------------
     reg                       dma_started;
     reg                       dmaa_in_flight;     // dmadr is fresh this cycle
     reg  [FFT_N-1:0]          in_flight_addr;     // addr whose data is on dmadr
@@ -197,7 +195,7 @@ module fft #(
     reg  signed [2*OW-1:0]    skid_data_n;
     reg                       skid_last_n;
 
-    always @(*) begin
+    always_comb begin
         // Default: hold
         o_valid_n    = o_valid_r;
         o_data_n     = o_data_r;
@@ -295,7 +293,7 @@ module fft #(
 endmodule
 
 
-// =============================================================================
+
 // fft_data_ram  —  256 x 32-bit single-port (1RW) RAM
 //
 //   act = 1, we = 1  : write dw at address a
@@ -308,7 +306,7 @@ endmodule
 //         macro already has a registered Q, the extra latch makes this
 //         a 2-cycle read — the R2FFT assumes 1 cycle. Drop the latch or
 //         widen the butterfly schedule if you hit that.)
-// =============================================================================
+
 module fft_data_ram (
     input  wire        clk,
     input  wire        rst,

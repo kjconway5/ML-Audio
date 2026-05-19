@@ -68,9 +68,9 @@ module butterflyUnit
     input  wire [FFT_DW*2-1:0]        dr
     );
  
-   // ------------------------------------------------------------------------
+
    // Sequencer states
-   // ------------------------------------------------------------------------
+
    typedef enum logic [2:0] {
       S_IDLE          = 3'd0,
       S_READ_A        = 3'd1,
@@ -86,13 +86,13 @@ module butterflyUnit
    reg [FFT_N-1-1:0] bf_cnt;
    wire bf_cnt_full = (&bf_cnt);
  
-   // ------------------------------------------------------------------------
+
    // Address generation for current butterfly at current stage
    //   addrA[i] = bf_cnt[i]      if i <  stageCount
    //              0              if i == stageCount
    //              bf_cnt[i-1]    if i >  stageCount
    //   addrB same with bit stageCount = 1
-   // ------------------------------------------------------------------------
+
    reg [FFT_N-1:0] addrA, addrB;
    integer i;
    always_comb begin
@@ -112,9 +112,9 @@ module butterflyUnit
       end
    end
  
-   // ------------------------------------------------------------------------
+
    // Twiddle factor address = bit_reverse( bf_cnt >> stageCount )
-   // ------------------------------------------------------------------------
+
    wire [FFT_N-1-1:0] tw_idx = bf_cnt >> stageCount;
    wire [FFT_N-1-1:0] tw_idx_rev;
    genvar gi;
@@ -149,16 +149,16 @@ module butterflyUnit
       .twa           (twa),
       .twdr_cos      (twdr_cos));
  
-   // ------------------------------------------------------------------------
+
    // Per-butterfly latches: x[a], the two addresses, the two results
-   // ------------------------------------------------------------------------
+
    reg [FFT_DW*2-1:0]   xa_lat;
    reg [FFT_N-1:0]      addrA_lat, addrB_lat;
    reg [FFT_DW*2-1:0]   yEven_lat, yOdd_lat;
  
-   // ------------------------------------------------------------------------
+
    // butterflyCore instance
-   // ------------------------------------------------------------------------
+
    wire                   bfcore_oact;
    wire [1:0]             bfcore_octrl;
    wire [FFT_N-1-1:0]     bfcore_oMemAddr;
@@ -192,9 +192,9 @@ module butterflyUnit
       .twiddle_real (tdr_rom_real),
       .twiddle_imag (tdr_rom_imag));
  
-   // ------------------------------------------------------------------------
+
    // State machine
-   // ------------------------------------------------------------------------
+
    always_comb begin
       state_n = state_f;
       case (state_f)
@@ -235,9 +235,9 @@ module butterflyUnit
       end
    end
  
-   // ------------------------------------------------------------------------
+
    // Drive RAM port per state
-   // ------------------------------------------------------------------------
+
    always_comb begin
       act = 1'b0;
       we  = 1'b0;
@@ -252,18 +252,17 @@ module butterflyUnit
       endcase
    end
  
-   // ------------------------------------------------------------------------
+
    // Status outputs to sub-sequencer
    //   oact = high during the 2-cycle writeback window of each BF; clears
    //          once we reach S_DONE so the sub-sequencer can advance stage.
    //   iteratorDone = high once we've completed the last BF of this stage.
-   // ------------------------------------------------------------------------
+
    assign oact         = (state_f == S_WRITE_A) || (state_f == S_WRITE_B);
    assign iteratorDone = (state_f == S_DONE);
  
-   // ------------------------------------------------------------------------
+
    // BFP max tracker on write-back data
-   // ------------------------------------------------------------------------
    bfp_maxBitWidth #(.FFT_BFPDW(FFT_BFPDW)) ubfp_maxBitWidth
      (.clk    (clk),
       .rst    (rst),
