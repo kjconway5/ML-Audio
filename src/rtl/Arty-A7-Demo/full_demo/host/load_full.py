@@ -17,6 +17,8 @@ from host_common import (  # noqa: E402
     CLASS_TAG_MASK,
     CTRL_BOOT_DONE,
     CTRL_SESSION_RESET,
+    DBG_READ_SPECT_A,
+    DBG_READ_SPECT_B,
     DEFAULT_MODEL_DIR,
     DSCNN_BIAS,
     DSCNN_CFG,
@@ -27,9 +29,11 @@ from host_common import (  # noqa: E402
     FULL_DEMO_HOST_DIR,
     LOGMEL_DIR,
     MOD_CONTROL,
+    MOD_DEBUG,
     MOD_DSCNN,
     MOD_FEATURES,
     SAMPLES_STREAM,
+    frame_packet,
     make_target,
     pack_16bit_le,
     response_name,
@@ -58,6 +62,50 @@ def build_cfg_image(pairs: list[tuple[int, int]]) -> bytes:
         if 0 <= addr < len(image):
             image[addr] = value & 0xFF
     return bytes(image)
+
+
+def read_spect_bank(ser, bank: str, byte_count: int = 2000,
+                    ack_timeout_s: float = 1.0,
+                    data_timeout_s: float = 5.0) -> bytes | None:
+    """Walk one spectrogram-SRAM bank back over UART via MOD_DEBUG.
+    bank is 'a' or 'b'; byte_count defaults to N_MELS(40)*N_FRAMES(50)=2000.
+
+    Protocol: send DBG_READ_SPECT_{A,B} with len=byte_count and a
+    matching dummy payload (boot_controller's S_RD_PAYLOAD requires
+    `len` bytes). After it ACKs, spect_streamer streams `byte_count`
+    int8 spectrogram bytes back on the same TX line.
+    """
+    sub = DBG_READ_SPECT_A if bank.lower() == 'a' else DBG_READ_SPECT_B
+    target = make_target(MOD_DEBUG, sub)
+    dummy = b"\x00" * byte_count
+
+    ser.reset_input_buffer()
+    ser.write(frame_packet(target, 0, dummy))
+    ser.flush()
+
+    # 1) Wait for the boot_controller ACK
+    deadline = time.monotonic() + ack_timeout_s
+    ack = None
+    while time.monotonic() < deadline:
+        b = ser.read(1)
+        if b:
+            ack = b[0]
+            break
+    if ack != ACK_BYTE:
+        print(f"  bank {bank}: no ACK (got {ack!r}) — check baud / boot state")
+        return None
+
+    # 2) Collect byte_count data bytes from spect_streamer
+    received = bytearray()
+    deadline = time.monotonic() + data_timeout_s
+    while len(received) < byte_count and time.monotonic() < deadline:
+        chunk = ser.read(byte_count - len(received))
+        if chunk:
+            received.extend(chunk)
+    if len(received) != byte_count:
+        print(f"  bank {bank}: short read {len(received)}/{byte_count}")
+        return None
+    return bytes(received)
 
 
 def load_bias_le(path: Path) -> bytes:
@@ -185,6 +233,30 @@ def mode_classify(ser, args) -> int:
     return run_inference(ser, wav_samples(args.classify, n_required=SAMPLES_STREAM))
 
 
+def mode_read_spect(ser, args) -> int:
+    """Dump one or both spectrogram banks (int8) to stdout / file."""
+    banks = ['a', 'b'] if args.read_spect == 'both' else [args.read_spect]
+    failures = 0
+    for b in banks:
+        data = read_spect_bank(ser, b)
+        if data is None:
+            failures += 1
+            continue
+        # Reshape 2000 int8 bytes → 50 frames × 40 mels (signed)
+        import numpy as np  # local import: only this mode needs it
+        arr = np.frombuffer(data, dtype=np.int8).reshape(50, 40)
+        out = args.spect_out / f"spect_bank_{b}.npy" if args.spect_out else None
+        if out:
+            out.parent.mkdir(parents=True, exist_ok=True)
+            np.save(out, arr)
+            print(f"  bank {b}: {len(data)} bytes → {out} (shape {arr.shape}, "
+                  f"min={arr.min()} max={arr.max()})")
+        else:
+            print(f"  bank {b}: {len(data)} bytes, shape {arr.shape}, "
+                  f"min={arr.min()} max={arr.max()} mean={arr.mean():.1f}")
+    return 1 if failures else 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("-p", "--port", default="/dev/ttyUSB1")
@@ -196,11 +268,15 @@ def main() -> int:
     mode.add_argument("--boot", action="store_true")
     mode.add_argument("--stream", action="store_true")
     mode.add_argument("--classify", type=Path, metavar="WAV")
+    mode.add_argument("--read-spect", choices=['a', 'b', 'both'],
+                      help="dump spectrogram bank(s) via MOD_DEBUG (run after streaming audio)")
 
     parser.add_argument("--logmel-dir", type=Path, default=LOGMEL_DIR)
     parser.add_argument("--weights", type=Path, default=DEFAULT_MODEL_DIR / "weights.hex")
     parser.add_argument("--bias", type=Path, default=DEFAULT_MODEL_DIR / "bias.hex")
     parser.add_argument("--cfg", type=Path, default=FULL_DEMO_HOST_DIR / "cfg.hex")
+    parser.add_argument("--spect-out", type=Path, default=None,
+                        help="directory for --read-spect .npy dumps (omit = print stats only)")
     args = parser.parse_args()
 
     with serial.Serial(args.port, args.baud, timeout=0.05) as ser:
@@ -214,6 +290,8 @@ def main() -> int:
             return mode_stream(ser, args)
         if args.classify:
             return mode_classify(ser, args)
+        if args.read_spect:
+            return mode_read_spect(ser, args)
     return 1
 
 

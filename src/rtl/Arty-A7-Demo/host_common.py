@@ -30,7 +30,14 @@ ERR_BYTE = 0xE1
 MOD_FEATURES = 0x0
 MOD_DSCNN = 0x1
 MOD_AUDIO = 0x2
+MOD_DEBUG = 0x8
 MOD_CONTROL = 0xF
+
+# Debug subtargets — spect_streamer.sv snoops these and walks the
+# requested spectrogram bank back over UART after the boot_controller
+# ACKs the request packet.
+DBG_READ_SPECT_A = 0x0
+DBG_READ_SPECT_B = 0x1
 
 FEAT_LOG_LUT = 0x0
 FEAT_MEL_COEFF = 0x1

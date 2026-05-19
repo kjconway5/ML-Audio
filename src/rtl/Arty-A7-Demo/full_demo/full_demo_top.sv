@@ -71,13 +71,27 @@ module full_demo_top
     wire data_path_reset = rst_sync | sess_rst_active;
 
 
-    //  TX mux — boot_controller has priority, then class_reporter, then spect_streamer.
+    //  TX mux
+    //
+    //  Priority (high → low):
+    //    1. boot_controller  — ACK/NACK/ERR must go first; this includes
+    //       the ACK that triggers spect_streamer in the first place.
+    //    2. spect_streamer    — once busy_o asserts (after the ACK), it
+    //       OWNS the TX line until the last byte. This locks out
+    //       class_reporter so class-tag bytes can't interleave into the
+    //       spectrogram data stream (previously corrupted --read-spect).
+    //    3. class_reporter    — normal inference-result emission when
+    //       no debug read is in flight.
+    //
+    //  Note: spect_streamer.tx_valid is 0 during ST_SETUP/ST_WAIT (SRAM
+    //  read latency); the gap is held by ss_busy=1 so cr stays masked.
     logic [7:0] rx_byte;
     logic       rx_valid, rx_ready;
 
     logic [7:0] bc_tx_byte, cr_tx_byte, ss_tx_byte;
     logic       bc_tx_valid, cr_tx_valid, ss_tx_valid;
     logic       bc_tx_ready, cr_tx_ready, ss_tx_ready;
+    logic       ss_busy;   // declared & driven below at the spect_streamer inst
 
     logic [7:0] tx_byte;
     logic       tx_valid, tx_ready;
@@ -86,18 +100,23 @@ module full_demo_top
         if (bc_tx_valid) begin
             tx_byte     = bc_tx_byte;
             tx_valid    = 1'b1;
+        end else if (ss_busy) begin
+            // Spect_streamer owns the line: forward its byte (or nothing
+            // during SRAM latency cycles), do NOT fall through to cr.
+            tx_byte     = ss_tx_byte;
+            tx_valid    = ss_tx_valid;
         end else if (cr_tx_valid) begin
             tx_byte     = cr_tx_byte;
             tx_valid    = 1'b1;
         end else begin
-            tx_byte     = ss_tx_byte;
-            tx_valid    = ss_tx_valid;
+            tx_byte     = 8'h00;
+            tx_valid    = 1'b0;
         end
     end
 
     assign bc_tx_ready = bc_tx_valid & tx_ready;
-    assign cr_tx_ready = ~bc_tx_valid & cr_tx_valid & tx_ready;
-    assign ss_tx_ready = ~bc_tx_valid & ~cr_tx_valid & tx_ready;
+    assign ss_tx_ready = ~bc_tx_valid & ss_busy & tx_ready;
+    assign cr_tx_ready = ~bc_tx_valid & ~ss_busy & cr_tx_valid & tx_ready;
 
 
     //  UART
@@ -302,7 +321,8 @@ module full_demo_top
         .last_write_sel   (last_write_sel)
     );
 
-    logic ss_busy;
+    // ss_busy declared in the TX-mux block above (used by the mux to
+    // lock out class_reporter for the duration of a debug-read burst).
     spect_streamer #(.ADDR_W(ADDR_W)) u_spect_stream (
         .clk_i             (CLK100MHZ),
         .reset_i           (rst_sync),
