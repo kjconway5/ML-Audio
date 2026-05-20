@@ -23,18 +23,23 @@ from host_common import (  # noqa: E402
     DSCNN_BIAS,
     DSCNN_CFG,
     DSCNN_WEIGHTS,
+    ERR_BYTE,
     FEAT_LOG_LUT,
     FEAT_MEL_COEFF,
     FEAT_MEL_META,
     FULL_DEMO_HOST_DIR,
     LOGMEL_DIR,
+    MOD_AUDIO,
     MOD_CONTROL,
     MOD_DEBUG,
     MOD_DSCNN,
     MOD_FEATURES,
+    NACK_BYTE,
+    SAMPLE_RATE,
     SAMPLES_STREAM,
     frame_packet,
     make_target,
+    mic_samples,
     pack_16bit_le,
     response_name,
     send_packet,
@@ -44,6 +49,11 @@ from host_common import (  # noqa: E402
     load_hex8,
     wav_samples,
 )
+
+# Class label order MUST match how the trained checkpoint was labeled,
+# which is sorted() alphabetically (see run_rtl_wav.load_model:169).
+# config.yaml's class list is in a DIFFERENT order — don't use it here.
+CLASS_LABELS = ["no", "off", "on", "silence", "unknown", "wow", "yes"]
 
 
 def load_cfg_pairs(path: Path) -> list[tuple[int, int]]:
@@ -79,18 +89,34 @@ def read_spect_bank(ser, bank: str, byte_count: int = 2000,
     target = make_target(MOD_DEBUG, sub)
     dummy = b"\x00" * byte_count
 
+    # Aggressive drain: stream mode leaves stale class-tag bytes (0xC0)
+    # in the UART pipeline that beat our ACK. reset_input_buffer alone
+    # isn't enough — FT2232 USB endpoints can deliver in-flight bytes
+    # AFTER the flush. Read+discard for a settling window, then flush
+    # again, then send.
     ser.reset_input_buffer()
+    drain_deadline = time.monotonic() + 0.15
+    while time.monotonic() < drain_deadline:
+        if not ser.read(64):
+            break
+    ser.reset_input_buffer()
+
     ser.write(frame_packet(target, 0, dummy))
     ser.flush()
 
-    # 1) Wait for the boot_controller ACK
+    # 1) Wait for the boot_controller ACK. After boot_done, kws_top.start
+    # is held high, so class_reporter keeps emitting class-tag bytes that
+    # interleave on the shared TX. Skip those while waiting for ACK.
     deadline = time.monotonic() + ack_timeout_s
     ack = None
     while time.monotonic() < deadline:
         b = ser.read(1)
-        if b:
-            ack = b[0]
-            break
+        if not b:
+            continue
+        if (b[0] & CLASS_TAG_MASK) == CLASS_TAG:
+            continue  # in-band class byte from class_reporter — discard
+        ack = b[0]
+        break
     if ack != ACK_BYTE:
         print(f"  bank {bank}: no ACK (got {ack!r}) — check baud / boot state")
         return None
@@ -215,7 +241,8 @@ def run_inference(ser, samples) -> int:
     if cls is None:
         print("  no class tag received")
         return 1
-    print(f"  class_out = {cls}")
+    label = CLASS_LABELS[cls] if 0 <= cls < len(CLASS_LABELS) else "?"
+    print(f"  class_out = {cls} ({label})")
     return 0
 
 
@@ -231,6 +258,197 @@ def mode_classify(ser, args) -> int:
     if not do_boot(ser, args.logmel_dir, args.weights, args.bias, args.cfg):
         return 1
     return run_inference(ser, wav_samples(args.classify, n_required=SAMPLES_STREAM))
+
+
+def mode_mic_continuous(ser, args) -> int:
+    """Continuous live-streaming mode — what the ASIC would naturally do:
+    mic always on, audio flowing into pipeline_top, kws_top fires inference
+    on every spect_done (~every 400 ms after the initial ramp), class bytes
+    stream back. We don't wait between captures; we just keep the FPGA
+    fed and print classes as they arrive.
+
+    Threading:
+      - sounddevice callback enqueues mic chunks (16-bit mono @ 16 kHz)
+      - sender thread frames each chunk as a MOD_AUDIO packet → UART
+      - reader thread reads UART continuously; class-tag bytes → printed,
+        ACK bytes counted, NACK/ERR flagged
+    """
+    import queue
+    import threading
+    try:
+        import sounddevice as sd
+    except ImportError:
+        print("sounddevice not installed; pip install sounddevice")
+        return 1
+
+    print("Booting...")
+    if not do_boot(ser, args.logmel_dir, args.weights, args.bias, args.cfg):
+        return 1
+
+    # Clean start so the first reported class lines up with the first audio
+    print("\nSession reset...")
+    resp = send_packet(ser, make_target(MOD_CONTROL, CTRL_SESSION_RESET), 0, b"")
+    if resp != ACK_BYTE:
+        print(f"  session_reset → {response_name(resp)}")
+        return 1
+    ser.reset_input_buffer()
+
+    BLOCKSIZE   = 2048               # samples per mic chunk → packet
+    audio_q     = queue.Queue(maxsize=64)
+    stop_event  = threading.Event()
+    audio_target = make_target(MOD_AUDIO, 0)
+
+    # --- Mic capture: callback runs on sounddevice's audio thread
+    def mic_cb(indata, frames, time_info, status):
+        if status:
+            print(f"  [mic] {status}")
+        try:
+            audio_q.put_nowait(indata[:, 0].astype("<i2").tobytes())
+        except queue.Full:
+            # Drop chunks if sender can't keep up rather than block the
+            # audio thread (would cause underruns / glitchy capture).
+            print("  [mic] queue full — dropped chunk")
+
+    # --- Sender: take chunks from queue, frame as packets, write to UART
+    def sender_loop():
+        sent_chunks = 0
+        while not stop_event.is_set():
+            try:
+                payload = audio_q.get(timeout=0.5)
+            except queue.Empty:
+                continue
+            ser.write(frame_packet(audio_target, 0, payload))
+            sent_chunks += 1
+
+    # --- Reader: stream UART, surface classes, count ACKs, flag errors.
+    # kws_top re-runs inference at ~20 Hz on the same spect bank between
+    # spect_done pulses, producing long runs of identical class outputs.
+    # Default view dedupes those runs (one line per CHANGE, with the run
+    # length); --mic-verbose dumps every class byte for forensics.
+    def reader_loop():
+        ack_count = 0
+        cls_count = 0
+        nack_count = 0
+        last_cls = None
+        run_len  = 0
+        run_started = time.monotonic()
+
+        def flush_run():
+            nonlocal last_cls, run_len, run_started
+            if last_cls is None:
+                return
+            label = CLASS_LABELS[last_cls] if 0 <= last_cls < len(CLASS_LABELS) else "?"
+            held = time.monotonic() - run_started
+            ts = time.strftime("%H:%M:%S")
+            print(f"  [{ts}]  class={last_cls}  {label:<8s}"
+                  f"  ×{run_len:<3d}  ({held*1000:.0f} ms)"
+                  f"   acks={ack_count} nacks={nack_count} total_cls={cls_count}")
+
+        while not stop_event.is_set():
+            data = ser.read(64)
+            if not data:
+                # No bytes for a while: flush a stale run so the user sees
+                # something even during silence.
+                if last_cls is not None and (time.monotonic() - run_started) > 0.5:
+                    flush_run()
+                    last_cls = None; run_len = 0
+                continue
+            for b in data:
+                if (b & CLASS_TAG_MASK) == CLASS_TAG:
+                    cls_count += 1
+                    cls = b & 0x07
+                    if args.mic_verbose:
+                        label = CLASS_LABELS[cls] if 0 <= cls < len(CLASS_LABELS) else "?"
+                        ts = time.strftime("%H:%M:%S")
+                        print(f"  [{ts}]  #{cls_count:4d}  class={cls}  {label}")
+                    else:
+                        if cls == last_cls:
+                            run_len += 1
+                        else:
+                            flush_run()
+                            last_cls = cls
+                            run_len  = 1
+                            run_started = time.monotonic()
+                elif b == ACK_BYTE:
+                    ack_count += 1
+                elif b == NACK_BYTE:
+                    nack_count += 1
+                elif b == ERR_BYTE:
+                    print(f"  [uart] ERR byte (malformed packet) — host/fpga lost sync?")
+        flush_run()  # final flush on shutdown
+
+    sender_t = threading.Thread(target=sender_loop, daemon=True)
+    reader_t = threading.Thread(target=reader_loop, daemon=True)
+    sender_t.start()
+    reader_t.start()
+
+    stream = sd.InputStream(
+        samplerate=SAMPLE_RATE,
+        channels=1,
+        dtype="int16",
+        blocksize=BLOCKSIZE,
+        callback=mic_cb,
+        device=args.mic_device,
+    )
+
+    print(f"\nLive-stream mode — say keywords ({CLASS_LABELS}) anytime.")
+    print(f"  blocksize={BLOCKSIZE} samples ({BLOCKSIZE/SAMPLE_RATE*1000:.0f} ms/chunk)")
+    print(f"  expected class rate ≈ 2.5 Hz (one per ~400 ms of audio after ramp-up)")
+    print(f"  Ctrl-C to stop.\n")
+    try:
+        with stream:
+            while True:
+                time.sleep(1)
+    except KeyboardInterrupt:
+        print("\n  stopping...")
+    finally:
+        stop_event.set()
+        sender_t.join(timeout=1)
+        reader_t.join(timeout=1)
+    return 0
+
+
+def mode_mic(ser, args) -> int:
+    """One-shot mic mode: ENTER → record N seconds → infer → print.
+
+    For the chip-like continuous mode (mic always on, classes always
+    coming out), use --mic-continuous instead.
+
+    Boot once, then in a loop: record 1 s from the system mic, run
+    one FPGA inference, print the class. Ctrl-C to stop.
+    Tip: speak a keyword roughly centered in the 1 s recording window."""
+    print("Booting...")
+    if not do_boot(ser, args.logmel_dir, args.weights, args.bias, args.cfg):
+        return 1
+
+    print(f"\nLive mic mode — say one of: {CLASS_LABELS}")
+    interactive = (args.mic_loops is None)
+    if interactive:
+        print(f"  (records {args.mic_seconds:.2f}s, infers, prints class. Ctrl-C to stop.)\n")
+    else:
+        print(f"  (running {args.mic_loops} back-to-back captures of {args.mic_seconds:.2f}s each)\n")
+    try:
+        i = 0
+        while True:
+            i += 1
+            if interactive:
+                try:
+                    input(f"  [{i:3d}] press ENTER to record...")
+                except EOFError:
+                    return 0
+            else:
+                if i > args.mic_loops:
+                    return 0
+                print(f"  [{i:3d}/{args.mic_loops}] recording {args.mic_seconds:.2f}s now —")
+            samples = mic_samples(seconds=args.mic_seconds,
+                                  n_required=SAMPLES_STREAM,
+                                  device=args.mic_device)
+            peak = int(abs(samples).max())
+            print(f"        recorded peak={peak} ({peak/32768*100:.1f}% full-scale)")
+            run_inference(ser, samples)
+    except KeyboardInterrupt:
+        print("\n  stopped.")
+        return 0
 
 
 def mode_read_spect(ser, args) -> int:
@@ -270,6 +488,10 @@ def main() -> int:
     mode.add_argument("--classify", type=Path, metavar="WAV")
     mode.add_argument("--read-spect", choices=['a', 'b', 'both'],
                       help="dump spectrogram bank(s) via MOD_DEBUG (run after streaming audio)")
+    mode.add_argument("--mic", action="store_true",
+                      help="one-shot mic mode: boot once, ENTER to record+classify")
+    mode.add_argument("--mic-continuous", action="store_true",
+                      help="chip-like streaming: mic always on, classes always coming out")
 
     parser.add_argument("--logmel-dir", type=Path, default=LOGMEL_DIR)
     parser.add_argument("--weights", type=Path, default=DEFAULT_MODEL_DIR / "weights.hex")
@@ -277,6 +499,14 @@ def main() -> int:
     parser.add_argument("--cfg", type=Path, default=FULL_DEMO_HOST_DIR / "cfg.hex")
     parser.add_argument("--spect-out", type=Path, default=None,
                         help="directory for --read-spect .npy dumps (omit = print stats only)")
+    parser.add_argument("--mic-seconds", type=float, default=1.0,
+                        help="seconds to record per --mic iteration (default 1.0)")
+    parser.add_argument("--mic-device", default=None,
+                        help="sounddevice input device index or name (default = system default)")
+    parser.add_argument("--mic-loops", type=int, default=None,
+                        help="non-interactive: record N times back-to-back (default = interactive ENTER prompt)")
+    parser.add_argument("--mic-verbose", action="store_true",
+                        help="--mic-continuous: print every class byte (default dedupes runs)")
     args = parser.parse_args()
 
     with serial.Serial(args.port, args.baud, timeout=0.05) as ser:
@@ -292,6 +522,10 @@ def main() -> int:
             return mode_classify(ser, args)
         if args.read_spect:
             return mode_read_spect(ser, args)
+        if args.mic:
+            return mode_mic(ser, args)
+        if args.mic_continuous:
+            return mode_mic_continuous(ser, args)
     return 1
 
 

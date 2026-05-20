@@ -157,6 +157,24 @@ def sine_samples(n_samples: int, freq_hz: float, amp: float = 0.5) -> np.ndarray
     return (scale * np.sin(2 * np.pi * freq_hz * t)).astype(np.int16)
 
 
+def mic_samples(seconds: float = 1.0, n_required: int | None = None,
+                device: int | str | None = None) -> np.ndarray:
+    """Record from the system default microphone (or `device` index) at
+    SAMPLE_RATE mono int16. Returns a 1-D np.int16. Truncates or pads to
+    n_required if given. Blocks until recording completes."""
+    import sounddevice as sd
+    n_frames = int(round(seconds * SAMPLE_RATE))
+    buf = sd.rec(n_frames, samplerate=SAMPLE_RATE, channels=1,
+                 dtype="int16", device=device)
+    sd.wait()
+    samples = buf.flatten()
+    if n_required is None:
+        return samples
+    if len(samples) < n_required:
+        return np.pad(samples, (0, n_required - len(samples))).astype(np.int16)
+    return samples[:n_required]
+
+
 def wav_samples(path: Path, n_required: int | None = None) -> np.ndarray:
     with wave.open(str(path), "rb") as wav:
         sample_rate = wav.getframerate()
