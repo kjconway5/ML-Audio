@@ -89,6 +89,11 @@ module pipeline_top #(
     input  logic               dft_vad_obs_en_i,
     output logic               vad_frame_drop_ol,
 
+    // Per-checkpoint input requant multiplier (FEAT_INPUT_QUANT_MULT).
+    // 0 = use the INPUT_QUANT_MULT parameter default; non-zero overrides.
+    // Lets each trained model program its own quantizer scale at boot.
+    input  logic [31:0]        input_quant_mult_i,
+
     input  logic               flash_mel_coeff_we_i,
     input  logic [7:0]         flash_mel_coeff_addr_i,
     input  logic [15:0]        flash_mel_coeff_data_i,
@@ -321,7 +326,8 @@ spect_buffer_ctrl #(
     .sp_b_waddr     (sp_b_waddr),
     .sp_b_wdata     (sp_b_wdata),
     .spect_done     (spect_done),
-    .spect_write_sel(spect_write_sel)
+    .spect_write_sel(spect_write_sel),
+    .input_quant_mult_i (input_quant_mult_i)
 );
 
 endmodule

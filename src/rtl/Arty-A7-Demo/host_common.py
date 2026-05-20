@@ -42,6 +42,8 @@ DBG_READ_SPECT_B = 0x1
 FEAT_LOG_LUT = 0x0
 FEAT_MEL_COEFF = 0x1
 FEAT_MEL_META = 0x2
+FEAT_VAD_THRESH = 0x3  # 32-bit register, two 16-bit writes (low at addr=0, high at addr=1)
+FEAT_INPUT_QUANT_MULT = 0x4  # same two-write 32-bit pattern; 0 = use RTL default
 
 DSCNN_WEIGHTS = 0x0
 DSCNN_CFG = 0x1
@@ -120,6 +122,65 @@ def pack_16bit_le(words) -> bytes:
     return bytes(out)
 
 
+def vad_threshold_payload(value: int) -> bytes:
+    """4-byte FEAT_VAD_THRESH payload, sent at packet addr=0. The
+    boot_controller's write_addr_q auto-increments, so the first 16-bit
+    word lands at addr=0 (low half) and the second at addr=1 (high half),
+    matching features_boot_router's split write."""
+    value &= 0xFFFFFFFF
+    return pack_16bit_le([value & 0xFFFF, (value >> 16) & 0xFFFF])
+
+
+def parse_vad_arg(spec) -> int | None:
+    """CLI helper: 'off' / None → None (skip write, register stays 0).
+    'auto' → 0xFFFFFFFF (auto-calibration sentinel). Anything else is
+    parsed as int (decimal or 0x-prefixed hex) and clamped to 32 bits."""
+    if spec is None or spec == "off":
+        return None
+    if spec == "auto":
+        return 0xFFFFFFFF
+    value = int(spec, 0)
+    if not 0 <= value <= 0xFFFFFFFF:
+        raise ValueError(f"vad threshold {value} out of 32-bit range")
+    return value
+
+
+def read_input_quant_mult(weights_path: Path) -> int | None:
+    """Find input_quant.txt next to the given weights.hex and return
+    `input_quant_mult` (the field after the keyword on its line) as int.
+    Returns None if the file or the field isn't found — caller can fall
+    back to skipping the write (RTL default takes effect)."""
+    candidate = weights_path.parent / "input_quant.txt"
+    if not candidate.exists():
+        return None
+    for line in candidate.read_text().splitlines():
+        parts = line.split()
+        if len(parts) >= 2 and parts[0] == "input_quant_mult":
+            try:
+                return int(parts[1])
+            except ValueError:
+                return None
+    return None
+
+
+def parse_input_quant_arg(spec, weights_path: Path | None = None) -> int | None:
+    """CLI helper: 'off' / None → None (skip write, register stays 0,
+    RTL falls back to its compile-time parameter default of 5817845).
+    'auto' → read input_quant_mult from the input_quant.txt sitting
+    next to weights_path; if missing, return None. Anything else is
+    parsed as int (decimal or 0x-prefixed hex)."""
+    if spec is None or spec == "off":
+        return None
+    if spec == "auto":
+        if weights_path is None:
+            return None
+        return read_input_quant_mult(weights_path)
+    value = int(spec, 0)
+    if not 0 <= value <= 0xFFFFFFFF:
+        raise ValueError(f"input_quant_mult {value} out of 32-bit range")
+    return value
+
+
 def _hex_values(path: Path) -> list[str]:
     values: list[str] = []
     for line in path.read_text().splitlines():
@@ -173,6 +234,21 @@ def mic_samples(seconds: float = 1.0, n_required: int | None = None,
     if len(samples) < n_required:
         return np.pad(samples, (0, n_required - len(samples))).astype(np.int16)
     return samples[:n_required]
+
+
+def decode_audio_file(path: Path, sample_rate: int = SAMPLE_RATE) -> np.ndarray:
+    """Decode any ffmpeg-supported audio container (m4a / mp3 / wav / ogg / …)
+    to mono int16 at sample_rate. Returns 1-D np.int16. Used for offline
+    continuous-mode testing with arbitrary recordings — wav_samples is
+    only for the strict 16-bit / 16 kHz WAV path."""
+    import subprocess
+    proc = subprocess.run(
+        ["ffmpeg", "-v", "error", "-i", str(path),
+         "-f", "s16le", "-acodec", "pcm_s16le",
+         "-ac", "1", "-ar", str(sample_rate), "-"],
+        check=True, capture_output=True,
+    )
+    return np.frombuffer(proc.stdout, dtype="<i2").copy()
 
 
 def wav_samples(path: Path, n_required: int | None = None) -> np.ndarray:

@@ -108,9 +108,49 @@ def load_model(ckpt_path: Path) -> torch.nn.Module:
     model.eval()
     model.fuse_model()
     model.qconfig = _int8_sym_qconfig() if int8_sym else torch.quantization.get_default_qconfig(backend)
-    torch.quantization.prepare(model, inplace=True)
-    torch.quantization.convert(model, inplace=True)
-    model.load_state_dict(checkpoint["model_state_dict"])
+
+    # Two checkpoint layouts in the repo:
+    #   "post-convert": state_dict has plain weights + per-layer .scale/.zero_point
+    #                   (e.g. dscnn-24full-v2). Convert first, then load.
+    #   "pre-convert/QAT": state_dict has *_fake_quant.* observers + raw weights
+    #                     (e.g. tiny-7class-golden-24fil-*). Prepare QAT, load,
+    #                     then convert — otherwise quantized::conv2d_prepack
+    #                     blows up because the post-convert module expects
+    #                     packed weights that aren't in the file.
+    sd_keys = checkpoint["model_state_dict"].keys()
+    is_qat_state = any("fake_quant" in k for k in sd_keys)
+    if is_qat_state:
+        from torch.ao.quantization.qconfig import QConfig
+        from torch.ao.quantization.fake_quantize import FakeQuantize
+        from torch.ao.quantization.observer import (
+            MinMaxObserver, MovingAverageMinMaxObserver,
+        )
+        if int8_sym:
+            act_fq = FakeQuantize.with_args(
+                observer=MinMaxObserver,
+                dtype=torch.qint8,
+                qscheme=torch.per_tensor_symmetric,
+                reduce_range=False,
+            )
+            wt_fq = FakeQuantize.with_args(
+                observer=MinMaxObserver,
+                dtype=torch.qint8,
+                qscheme=torch.per_tensor_symmetric,
+                reduce_range=False,
+            )
+            model.qconfig = QConfig(activation=act_fq, weight=wt_fq)
+        else:
+            model.qconfig = torch.quantization.get_default_qat_qconfig(backend)
+        # prepare_qat() insists on train mode; we flip back to eval before convert.
+        model.train()
+        torch.quantization.prepare_qat(model, inplace=True)
+        model.load_state_dict(checkpoint["model_state_dict"])
+        model.eval()
+        torch.quantization.convert(model, inplace=True)
+    else:
+        torch.quantization.prepare(model, inplace=True)
+        torch.quantization.convert(model, inplace=True)
+        model.load_state_dict(checkpoint["model_state_dict"])
     model.eval()
     return model, checkpoint
 

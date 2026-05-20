@@ -191,21 +191,27 @@ module full_demo_top
     // to 0 ⇒ VAD bypassed). Persists across session_reset, same as the
     // SRAMs, because the router lives in the boot domain (rst_sync).
     logic [31:0] vad_threshold;
+    // Per-checkpoint input requant multiplier (FEAT_INPUT_QUANT_MULT).
+    // Reset to 0 means "use the RTL parameter default (5817845)" so a
+    // demo boot that doesn't program it stays compatible with the
+    // hardcoded value. Each model's input_quant.txt has its own value.
+    logic [31:0] input_quant_mult;
 
     features_boot_router u_feat_router (
-        .clk_i             (CLK100MHZ),
-        .reset_i           (rst_sync),
-        .boot_i            (features_boot),
-        .lut_boot_we_o     (lut_we),
-        .lut_boot_addr_o   (lut_addr),
-        .lut_boot_wdata_o  (lut_data),
-        .mel_boot_we_o     (mel_we),
-        .mel_boot_addr_o   (mel_addr),
-        .mel_boot_wdata_o  (mel_data),
-        .meta_boot_we_o    (meta_we),
-        .meta_boot_addr_o  (meta_addr),
-        .meta_boot_wdata_o (meta_data),
-        .vad_threshold_o   (vad_threshold)
+        .clk_i               (CLK100MHZ),
+        .reset_i             (rst_sync),
+        .boot_i              (features_boot),
+        .lut_boot_we_o       (lut_we),
+        .lut_boot_addr_o     (lut_addr),
+        .lut_boot_wdata_o    (lut_data),
+        .mel_boot_we_o       (mel_we),
+        .mel_boot_addr_o     (mel_addr),
+        .mel_boot_wdata_o    (mel_data),
+        .meta_boot_we_o      (meta_we),
+        .meta_boot_addr_o    (meta_addr),
+        .meta_boot_wdata_o   (meta_data),
+        .vad_threshold_o     (vad_threshold),
+        .input_quant_mult_o  (input_quant_mult)
     );
 
     logic        w_we;
@@ -277,6 +283,11 @@ module full_demo_top
         .vad_active_o           (),  // not exposed on the demo (could be LED)
         .dft_vad_obs_en_i       (1'b0),
         .vad_frame_drop_ol      (),  // not exposed on the demo
+
+        // Per-checkpoint input quant multiplier from features_boot_router
+        // (FEAT_INPUT_QUANT_MULT). 0 ⇒ pipeline_top falls back to its
+        // compile-time parameter default (5817845).
+        .input_quant_mult_i     (input_quant_mult),
 
         .flash_mel_coeff_we_i   (mel_we),
         .flash_mel_coeff_addr_i (mel_addr),

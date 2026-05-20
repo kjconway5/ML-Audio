@@ -29,7 +29,20 @@ package boot_pkg;
         FEAT_LOG_LUT   = 4'h0,   // 64  × 16-bit  → 2× sram256x8
         FEAT_MEL_COEFF = 4'h1,   // 256 × 16-bit  → 2× sram256x8 (sparse packing)
         FEAT_MEL_META  = 4'h2,    // 256 × 8-bit   → 1× sram256x8 (starts/ends/offsets)
-        FEAT_VAD_THRESH = 4'h3   // 1   × 16-bit  → register (spectral VAD threshold)
+        FEAT_VAD_THRESH = 4'h3,  // 1 × 32-bit register, written as two 16-bit halves
+                                  // (addr=0 → low16, addr=1 → high16). Host sends one
+                                  // packet w/ 4-byte payload starting at addr=0.
+                                  //   0x00000000      → VAD disabled
+                                  //   0xFFFFFFFF      → auto-calibrate (256-frame mean × 2)
+                                  //   any other value → fixed threshold
+
+        FEAT_INPUT_QUANT_MULT = 4'h4 // 1 × 32-bit register, two-write 16/16 protocol
+                                      // identical to FEAT_VAD_THRESH. Replaces the
+                                      // chip-bringup compile-time INPUT_QUANT_MULT
+                                      // (5817845) with the trained-checkpoint value.
+                                      //   0           → use RTL parameter default
+                                      //   non-zero N  → use N (typically from the
+                                      //                model's input_quant.txt)
     } features_subtarget_e;
 
 
@@ -87,7 +100,8 @@ package boot_pkg;
                     FEAT_LOG_LUT:   return 1'b1;   // 64  × 16-bit
                     FEAT_MEL_COEFF: return 1'b1;   // 256 × 16-bit
                     FEAT_MEL_META:  return 1'b0;   // 256 × 8-bit
-                    FEAT_VAD_THRESH: return 1'b1;  // 1   × 16-bit
+                    FEAT_VAD_THRESH:       return 1'b1;  // 32-bit reg, 2× 16-bit writes
+                    FEAT_INPUT_QUANT_MULT: return 1'b1;  // 32-bit reg, 2× 16-bit writes
                     default:        return 1'b0;
                 endcase
             MOD_DSCNN:

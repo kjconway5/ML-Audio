@@ -109,7 +109,14 @@ module spect_buffer_ctrl #(
     output logic                  spect_done,      // full selected spectrogram written
     output logic                  spect_write_sel,  // 0 = writing A / 1 = writing B
 
-    // test signals 
+    // Runtime override for the input requant multiplier (per-checkpoint
+    // calibration). 0 = use the INPUT_QUANT_MULT parameter as the
+    // compile-time default; any non-zero value takes effect immediately.
+    // Sentinel chosen so existing cocotb tests that leave this at 0 keep
+    // the legacy behavior.
+    input  logic [31:0]            input_quant_mult_i,
+
+    // test signals
     output logic [ADDR_W-1:0]      sp_a_waddr_test,
     output logic signed [7:0]      sp_a_wdata_test,
 
@@ -144,7 +151,11 @@ module spect_buffer_ctrl #(
     localparam logic [PRODUCT_W-1:0] INT8_MAX = 127;
 
     wire [IN_W-1:0] cnn_data_u = cnn_data_i[IN_W-1:0];
-    wire [31:0] input_quant_mult_u = INPUT_QUANT_MULT;
+    // Pick runtime override if non-zero; otherwise the legacy parameter
+    // (chip-bringup / cocotb path leaves this at 0).
+    wire [31:0] input_quant_mult_u = (input_quant_mult_i != 32'd0)
+                                     ? input_quant_mult_i
+                                     : INPUT_QUANT_MULT[31:0];
     wire [PRODUCT_W-1:0] input_product =
         cnn_data_u * input_quant_mult_u;
     wire [PRODUCT_W-1:0] input_requant_u =

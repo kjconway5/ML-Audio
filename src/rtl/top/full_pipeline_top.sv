@@ -409,8 +409,9 @@ spect_buffer_ctrl #(
     .sp_b_wdata     (sp_b_wdata),
     .spect_done     (spect_done),
     .spect_write_sel(spect_write_sel),
+    .input_quant_mult_i (32'd0),  // chip core uses the compile-time parameter
 
-    // test signals 
+    // test signals
     .sp_a_waddr_test(sp_a_waddr_test),
     .sp_a_wdata_test(sp_a_wdata_test),
     .sp_b_waddr_test(sp_b_waddr_test),

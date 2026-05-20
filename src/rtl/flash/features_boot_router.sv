@@ -33,15 +33,44 @@ module features_boot_router
     output logic [7:0]          meta_boot_wdata_o,
 
     // VAD threshold (32-bit registered output)
-    output logic [31:0]         vad_threshold_o
+    output logic [31:0]         vad_threshold_o,
+
+    // Per-checkpoint input requant multiplier (32-bit registered output).
+    // Mirrors the vad_threshold two-write protocol: addr=0 → low16,
+    // addr=1 → high16. Reset value = 0 = "fall back to RTL parameter
+    // default (5817845)" so a boot that never programs this still works.
+    output logic [31:0]         input_quant_mult_o
 );
 
-    // VAD threshold register latches on boot write, resets to 0 (VAD disabled)
+    // VAD threshold register — 32-bit, written as two 16-bit halves
+    // because the boot data bus is 16 bits (BOOT_DATA_W). The host
+    // sends one FEAT_VAD_THRESH packet whose payload covers both
+    // halves; boot_controller's auto-incrementing write_addr_q
+    // delivers them as (addr=0, low16) then (addr=1, high16).
+    //   threshold == 0x00000000 → VAD disabled (pass-through)
+    //   threshold == 0xFFFFFFFF → auto-calibrate (256-frame mean × 2)
+    //   any other value         → fixed threshold (frame_energy > thr ⇒ active)
     always_ff @(posedge clk_i) begin
         if (reset_i)
             vad_threshold_o <= 32'd0;
-        else if (boot_i.valid && boot_i.subtarget == FEAT_VAD_THRESH)
-            vad_threshold_o <= {16'd0, boot_i.data};  // boot_i.data is 16-bit, threshold uses lower 16
+        else if (boot_i.valid && boot_i.subtarget == FEAT_VAD_THRESH) begin
+            if (boot_i.addr[0])
+                vad_threshold_o[31:16] <= boot_i.data;
+            else
+                vad_threshold_o[15:0]  <= boot_i.data;
+        end
+    end
+
+    // Same two-write 16/16 protocol as the VAD threshold above.
+    always_ff @(posedge clk_i) begin
+        if (reset_i)
+            input_quant_mult_o <= 32'd0;
+        else if (boot_i.valid && boot_i.subtarget == FEAT_INPUT_QUANT_MULT) begin
+            if (boot_i.addr[0])
+                input_quant_mult_o[31:16] <= boot_i.data;
+            else
+                input_quant_mult_o[15:0]  <= boot_i.data;
+        end
     end
 
     always_comb begin
