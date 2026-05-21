@@ -47,11 +47,11 @@ module chip_core #(
     //   input_in[1] = PDM_VALID : strobe — one pulse per PDM bit
     // TODO: add a bidir pad for CLK output to the mic once we choose DLL/ring oscillator
 
-    // 25 MHz / (115200 * 8) = 27  (8 cycles/bit in sim for speed)
+    // 16 MHz / (115200 * 8) = 17  (8 cycles/bit in sim for speed)
 `ifdef SIM
     localparam logic [15:0] UART_PRESCALE = 16'd1;
 `else
-    localparam logic [15:0] UART_PRESCALE = 16'd27;
+    localparam logic [15:0] UART_PRESCALE = 16'd17;
 `endif
 
     assign input_pu = '0;
