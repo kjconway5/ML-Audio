@@ -34,10 +34,23 @@ module full_demo_top
     input  wire uart_txd_in,
     output wire uart_rxd_out,
 
+    // Class-indicator LEDs, named to match the Arty A7 silkscreen.
+    // led4..led7 are the 4 green monochrome LEDs along the edge.
+    // led0..led3 are the green channel of the 4 RGB LEDs.
+    //   led7 yes     led3 wow
+    //   led6 on      led2 silence
+    //   led5 off     led1 unknown
+    //   led4 no      led0 inference-done pulse (~30 ms stretch per kws_done)
+    // Class is latched on kws_done so the LED shows the most recent
+    // classification until the next inference fires.
     output wire led0,
     output wire led1,
     output wire led2,
-    output wire led3
+    output wire led3,
+    output wire led4,
+    output wire led5,
+    output wire led6,
+    output wire led7
 );
 
 
@@ -417,37 +430,41 @@ module full_demo_top
     );
 
 
-    //  Status / LEDs
-    logic [7:0] rx_count;
-    logic [7:0] infer_count;
-    logic       kws_done_q;
+    //  Class-indicator LEDs
+    //
+    // Class enum (sorted alphabetical, matches the trained checkpoint
+    // and class_reporter): 0=no, 1=off, 2=on, 3=silence, 4=unknown,
+    // 5=wow, 6=yes. `last_class` latches kws_class on every kws_done
+    // so the LEDs hold "the most recent classification" between
+    // inference firings. Reset value is silence so led2 is on at
+    // power-up — a clear "I am up and quiet" indicator.
+    logic [2:0] last_class;
     always_ff @(posedge CLK100MHZ) begin
-        if (rst_sync) begin
-            rx_count    <= '0;
-            infer_count <= '0;
-            kws_done_q  <= 1'b0;
-        end else begin
-            if (rx_valid & rx_ready) rx_count <= rx_count + 8'd1;
-            kws_done_q <= kws_done;
-            if (kws_done & ~kws_done_q)
-                infer_count <= infer_count + 8'd1;
-        end
+        if (rst_sync)        last_class <= 3'd3;        // silence
+        else if (kws_done)   last_class <= kws_class;
     end
 
-    logic err_sticky;
-    wire  bc_tx_handshake = bc_tx_valid & bc_tx_ready;
-    always_ff @(posedge CLK100MHZ) begin
-        if (rst_sync)
-            err_sticky <= 1'b0;
-        else if ((bc_tx_handshake & (bc_tx_byte == 8'hEE)) |
-                 (bc_tx_handshake & (bc_tx_byte == 8'hE1)) |
-                 rx_overrun_err | rx_frame_err)
-            err_sticky <= 1'b1;
-    end
+    assign led7 = (last_class == 3'd6);   // yes
+    assign led6 = (last_class == 3'd2);   // on
+    assign led5 = (last_class == 3'd1);   // off
+    assign led4 = (last_class == 3'd0);   // no
+    assign led3 = (last_class == 3'd5);   // wow
+    assign led2 = (last_class == 3'd3);   // silence
+    assign led1 = (last_class == 3'd4);   // unknown
 
-    assign led0 = boot_done;
-    assign led1 = infer_count[0];
-    assign led2 = rx_count[0];
-    assign led3 = err_sticky;
+    // LED0: stretched 1-shot on kws_done so each completed inference
+    // is a visible flash. 30 ms hold (3,000,000 cycles @ 100 MHz).
+    // kws_top re-fires every ~50 ms during continuous streaming, so
+    // led0 ends up at ~60% duty cycle — looks like a slow blink while
+    // inference is running, off when no audio is flowing.
+    localparam int LED0_STRETCH = 3_000_000;
+    localparam int LED0_CNT_W   = $clog2(LED0_STRETCH + 1);
+    logic [LED0_CNT_W-1:0] led0_cnt;
+    always_ff @(posedge CLK100MHZ) begin
+        if (rst_sync)              led0_cnt <= '0;
+        else if (kws_done)         led0_cnt <= LED0_CNT_W'(LED0_STRETCH);
+        else if (led0_cnt != 0)    led0_cnt <= led0_cnt - 1'b1;
+    end
+    assign led0 = (led0_cnt != 0);
 
 endmodule

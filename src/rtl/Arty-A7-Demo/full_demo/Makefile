@@ -14,7 +14,18 @@ CFG       := host/cfg.hex
 
 GEN_CFG   := host/gen_cfg_hex.py
 
-.PHONY: build flash listen probe boot stream classify cfg clean
+.PHONY: build flash listen probe boot stream classify demo cfg clean
+
+# `make demo` config — best model + matching cfg per session validation
+# (full-v2 wins on live mic over center-v1 because of random-alignment
+# training augmentation). Override any of these on the command line, e.g.
+# `make demo DEMO_MODEL_DIR=../../../ml/models/dscnn-24center-v1 DEMO_CFG=host/cfg.hex`.
+DEMO_MODEL_DIR ?= ../../../ml/models/dscnn-24full-v2
+DEMO_WEIGHTS   := $(DEMO_MODEL_DIR)/weights.hex
+DEMO_BIAS      := $(DEMO_MODEL_DIR)/bias.hex
+DEMO_CFG       ?= host/cfg-24full-v2.hex
+DEMO_VAD       ?= off       # off | auto | <int>
+DEMO_SMOOTH    ?= 1         # ignored under --mic-verbose; bump for dedup runs
 
 build: $(BIT)
 
@@ -45,6 +56,43 @@ stream: $(CFG)
 classify: $(CFG)
 	python3 host/load_full.py -p $(PORT) -b $(BAUD) --classify $(WAV) \
 	        --weights $(WEIGHTS) --bias $(BIAS) --cfg $(CFG)
+
+# Live-mic demo: flash the bitstream, then run --mic-continuous in
+# verbose (firehose) mode so the class stream looks live instead of
+# collapsing into dedup ×N lines. Speak yes/no/on/off/wow into the
+# laptop mic; classes scroll at ~20 Hz. Ctrl-C to stop.
+#
+# Does NOT trigger Vivado — fails if $(BIT) is missing.
+demo: $(DEMO_CFG)
+	@if [ ! -f "$(BIT)" ]; then \
+	    echo "ERROR: $(BIT) not found. 'make build' on a Vivado machine, or"; \
+	    echo "       drop a pre-built .bit at $(BIT)."; \
+	    exit 1; \
+	fi
+	@if [ ! -f "$(DEMO_WEIGHTS)" ] || [ ! -f "$(DEMO_BIAS)" ]; then \
+	    echo "ERROR: demo model files missing under $(DEMO_MODEL_DIR)/"; \
+	    echo "       (need weights.hex and bias.hex)"; \
+	    exit 1; \
+	fi
+	@echo "=== demo: flashing $(BIT) ==="
+	openFPGALoader -b $(BOARD) "$(BIT)"
+	@echo
+	@echo "=== demo: live mic ==="
+	@echo "  model:  $(DEMO_MODEL_DIR)"
+	@echo "  cfg:    $(DEMO_CFG)"
+	@echo "  vad:    $(DEMO_VAD)    smoothing: $(DEMO_SMOOTH)"
+	@echo "  speak:  yes / no / on / off / wow"
+	@echo "  Ctrl-C to stop."
+	@echo
+	python3 -u host/load_full.py -p $(PORT) -b $(BAUD) --mic-continuous \
+	        --weights $(DEMO_WEIGHTS) --bias $(DEMO_BIAS) --cfg $(DEMO_CFG) \
+	        --vad $(DEMO_VAD) --smoothing $(DEMO_SMOOTH) --mic-verbose
+
+# `make demo-cfg MODEL=<dir>` — regenerate a cfg-<model>.hex matched to
+# whatever model you point DEMO_MODEL_DIR at. Run once after switching
+# checkpoints; cfg-24full-v2.hex is already in tree for the default.
+$(DEMO_CFG): $(DEMO_MODEL_DIR)/scales.txt $(GEN_CFG)
+	python3 $(GEN_CFG) $(DEMO_MODEL_DIR)/scales.txt -o $(DEMO_CFG)
 
 listen:
 	python3 host/load_full.py -p $(PORT) -b $(BAUD) --listen-only
