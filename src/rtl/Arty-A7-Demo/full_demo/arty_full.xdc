@@ -12,8 +12,9 @@ set_property -dict { PACKAGE_PIN A9  IOSTANDARD LVCMOS33 } [get_ports uart_txd_i
 
 # LED pin map matches the Arty A7 silkscreen / Digilent master XDC.
 # led4..led7 = monochrome green LEDs at the board edge.
-# led0..led3 = green channel of the 4 RGB LEDs (R/B left floating).
-set_property -dict { PACKAGE_PIN F6  IOSTANDARD LVCMOS33 } [get_ports led0]   ;# LD0 green
+# led1..led3 = green channel of 3 RGB LEDs (PWM-dimmed in RTL because
+# the RGB LEDs are visibly brighter than the monochrome ones). LD0 is
+# intentionally unused — leave all 3 channels (E1/F6/G6) unconstrained.
 set_property -dict { PACKAGE_PIN J4  IOSTANDARD LVCMOS33 } [get_ports led1]   ;# LD1 green
 set_property -dict { PACKAGE_PIN J2  IOSTANDARD LVCMOS33 } [get_ports led2]   ;# LD2 green
 set_property -dict { PACKAGE_PIN H6  IOSTANDARD LVCMOS33 } [get_ports led3]   ;# LD3 green

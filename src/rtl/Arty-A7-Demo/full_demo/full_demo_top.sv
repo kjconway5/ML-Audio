@@ -36,14 +36,15 @@ module full_demo_top
 
     // Class-indicator LEDs, named to match the Arty A7 silkscreen.
     // led4..led7 are the 4 green monochrome LEDs along the edge.
-    // led0..led3 are the green channel of the 4 RGB LEDs.
+    // led1..led3 are the green channel of 3 of the 4 RGB LEDs, PWM-
+    // dimmed because the RGB LEDs are noticeably brighter than the
+    // monochrome ones at full-on. LD0 is intentionally unused.
     //   led7 yes     led3 wow
     //   led6 on      led2 silence
     //   led5 off     led1 unknown
-    //   led4 no      led0 inference-done pulse (~30 ms stretch per kws_done)
+    //   led4 no
     // Class is latched on kws_done so the LED shows the most recent
     // classification until the next inference fires.
-    output wire led0,
     output wire led1,
     output wire led2,
     output wire led3,
@@ -444,27 +445,27 @@ module full_demo_top
         else if (kws_done)   last_class <= kws_class;
     end
 
+    // Monochrome LEDs: full-on when the class matches.
     assign led7 = (last_class == 3'd6);   // yes
     assign led6 = (last_class == 3'd2);   // on
     assign led5 = (last_class == 3'd1);   // off
     assign led4 = (last_class == 3'd0);   // no
-    assign led3 = (last_class == 3'd5);   // wow
-    assign led2 = (last_class == 3'd3);   // silence
-    assign led1 = (last_class == 3'd4);   // unknown
 
-    // LED0: stretched 1-shot on kws_done so each completed inference
-    // is a visible flash. 30 ms hold (3,000,000 cycles @ 100 MHz).
-    // kws_top re-fires every ~50 ms during continuous streaming, so
-    // led0 ends up at ~60% duty cycle — looks like a slow blink while
-    // inference is running, off when no audio is flowing.
-    localparam int LED0_STRETCH = 3_000_000;
-    localparam int LED0_CNT_W   = $clog2(LED0_STRETCH + 1);
-    logic [LED0_CNT_W-1:0] led0_cnt;
+    // PWM dimmer for the RGB green channels. The RGB LEDs on this
+    // board are visibly brighter than the monochrome ones at full-on;
+    // a low-duty PWM keeps them roughly matched. 8-bit counter at
+    // 100 MHz ⇒ ~390 kHz PWM (well above flicker), 16/256 ≈ 6% duty.
+    // Bump LED_DIM_THRESH if 6% is too dim for your room.
+    localparam logic [7:0] LED_DIM_THRESH = 8'd16;
+    logic [7:0] pwm_cnt;
     always_ff @(posedge CLK100MHZ) begin
-        if (rst_sync)              led0_cnt <= '0;
-        else if (kws_done)         led0_cnt <= LED0_CNT_W'(LED0_STRETCH);
-        else if (led0_cnt != 0)    led0_cnt <= led0_cnt - 1'b1;
+        if (rst_sync) pwm_cnt <= 8'd0;
+        else          pwm_cnt <= pwm_cnt + 8'd1;
     end
-    assign led0 = (led0_cnt != 0);
+    wire dim_en = (pwm_cnt < LED_DIM_THRESH);
+
+    assign led3 = dim_en & (last_class == 3'd5);   // wow
+    assign led2 = dim_en & (last_class == 3'd3);   // silence
+    assign led1 = dim_en & (last_class == 3'd4);   // unknown
 
 endmodule
