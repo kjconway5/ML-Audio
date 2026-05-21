@@ -1,18 +1,14 @@
-/* ===========================================================================
- * rwBusMux — (DEPRECATED, kept for source-tree compatibility)
+/*
+ * rwBusMux not USED
  *
- * The new R2FFT does port arbitration inline against per-RAM lifecycle
- * states, so this module is no longer instantiated. Safe to drop from the
- * Makefile if desired.
- *
- * Original semantics, for reference: combined read/write bus mux for ONE
+ * combined read/write bus mux for ONE
  * single-port RAM, one source per cycle selected by the (now retired) main
  * FSM state.
  *   ST_INPUT_STREAM -> input stream writes
  *   ST_RUN_FFT      -> butterfly read or write
  *   ST_DONE         -> DMA reads
  *   otherwise       -> idle
- * ===========================================================================
+ *
  */
 module rwBusMux
   #(parameter FFT_N  = 10,
