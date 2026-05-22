@@ -275,7 +275,7 @@ async def run_single_inference(dut, spect_int8, sample_idx, timeout_ns, layer_cf
 async def test_kws_inference(dut):
     test_dir = get_test_dir()
 
-    MODEL_DIR     = os.path.join(test_dir, "..", "..", "..", "ml", "models", "dscnn-16full-v1")
+    MODEL_DIR     = os.path.join(test_dir, "..", "..", "..", "ml", "models", "dscnn-16center-v1")
     weights_path  = os.path.join(MODEL_DIR, "weights.hex")
     bias_path     = os.path.join(MODEL_DIR, "bias.hex")
     scales_path   = os.path.join(MODEL_DIR, "scales.txt")

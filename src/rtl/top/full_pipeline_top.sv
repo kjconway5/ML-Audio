@@ -40,7 +40,7 @@ module full_pipeline_top #(
     // Spectrogram buffer params
     parameter int SPECT_SHIFT = 9,
     parameter int USE_INPUT_REQUANT = 1,
-    parameter int INPUT_QUANT_MULT  = 5817845,
+    parameter int INPUT_QUANT_MULT  = 5805163,
     parameter int INPUT_QUANT_SHIFT = 31,
     parameter int START_FRAME = 37,
     parameter int N_FRAMES    = 50,
@@ -124,6 +124,7 @@ module full_pipeline_top #(
 );
 
 // 1.  CIC Decimator — 1.008 MHz → 16 kHz  (ratio 63, 3 stages, M=1)
+logic                       stfft_i_ready;  
 
 logic [CIC_REG_W-1:0]  cic_data;   // 34-bit internal accumulator value
 logic                  cic_valid;
@@ -202,7 +203,6 @@ assign fir_trunc_valid = fir_valid_o;
 logic                       stfft_o_valid;
 logic [2*OW_STFFT-1:0]      stfft_o_data;
 logic                       stfft_o_last;
-logic                       stfft_i_ready;  
 logic signed [7:0]          bfpexp_raw;
 
 stfft #(

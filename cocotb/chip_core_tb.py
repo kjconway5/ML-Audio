@@ -83,7 +83,7 @@ _ML        = _SRC / "ml"
 _RTL       = _SRC / "rtl"
 _KWS_DIR   = _RTL / "dscnn/kws_top"
 _LOGMEL    = _RTL / "Log-Mel/data"
-_MODEL_DIR = _ML / "models/dscnn-16full-v1"
+_MODEL_DIR = _ML / "models/dscnn-16center-v1"
 
 LOG_LUT_HEX   = _LOGMEL    / "log2_lut.hex"
 MEL_COEFF_HEX = _LOGMEL    / "mel_coeffs_sparse.hex"

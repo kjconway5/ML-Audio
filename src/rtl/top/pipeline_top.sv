@@ -51,7 +51,7 @@ module pipeline_top #(
 
     parameter int SPECT_SHIFT = 9,
     parameter int USE_INPUT_REQUANT = 1,
-    parameter int INPUT_QUANT_MULT  = 5817845,
+    parameter int INPUT_QUANT_MULT  = 5805163,
     parameter int INPUT_QUANT_SHIFT = 31,
     parameter int START_FRAME = 37,
     parameter int N_FRAMES    = 50,

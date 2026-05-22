@@ -219,6 +219,7 @@ module stfft #(
     // next write would land). At the very first readout cycle wp_off=0 and
     // read_idx=0, so this blocks for one cycle until read_idx advances —
     // benign because the input rate is far below 1/cycle.
+    reg [FFT_N-1:0]  read_addr_base;
     wire [FFT_N-1:0] wp_off       = wp - read_addr_base;
     wire             would_corrupt = in_readout && (wp_off >= read_idx_w);
 
@@ -281,7 +282,6 @@ module stfft #(
 
     reg              state;
     reg [FFT_N-1:0]  read_idx;
-    reg [FFT_N-1:0]  read_addr_base;
 
     assign start_readout = (state == ST_IDLE) && frame_pending;
     assign read_idx_w    = read_idx;

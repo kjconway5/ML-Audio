@@ -281,7 +281,7 @@ module chip_core #(
         .START_FRAME(37),
         .SPECT_SHIFT(9),
         .USE_INPUT_REQUANT(1),
-        .INPUT_QUANT_MULT (5817845),
+        .INPUT_QUANT_MULT (5805163),
         .INPUT_QUANT_SHIFT(31),
         .ADDR_W     (11),
         .LUT_FRAC   (6)
