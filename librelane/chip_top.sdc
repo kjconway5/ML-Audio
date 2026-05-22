@@ -80,3 +80,6 @@ if { [info exists ::env(OPENLANE_SDC_IDEAL_CLOCKS)] && $::env(OPENLANE_SDC_IDEAL
     set_propagated_clock [all_clocks]
 }
 
+# False paths
+set_false_path -from [get_ports analog_PAD[*]]
+set_false_path -to [get_ports analog_PAD[*]]
