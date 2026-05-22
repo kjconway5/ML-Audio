@@ -26,6 +26,17 @@ meta:
 
 DESIGN_NAME: chip_top
 VERILOG_FILES:
+# flash directory sources
+- dir::../src/rtl/flash/boot_pkg.sv
+- dir::../src/rtl/flash/boot_controller.sv
+- dir::../src/rtl/flash/features_boot_router.sv
+- dir::../src/rtl/flash/dscnn_boot_router.sv
+- dir::../src/rtl/flash/flash_top.sv
+- dir::../src/rtl/flash/simple_flash.sv
+- dir::../src/rtl/flash/uart_rx.v
+- dir::../src/rtl/flash/uart_tx.v
+- dir::../src/rtl/flash/uart.v
+# Top level
 - dir::../src/chip_top.sv
 - dir::../src/chip_core.sv
 # Pipeline and DSCNN Top Levels
@@ -82,16 +93,6 @@ VERILOG_FILES:
 - dir::../src/rtl/STFFT/R2FFT/hdl/ramPipelineBridge.sv
 - dir::../src/rtl/STFFT/R2FFT/hdl/twiddleFactorRomBridge.sv
 - dir::../src/rtl/STFFT/R2FFT/hdl/fft.sv
-# flash directory sources
-- dir::../src/rtl/flash/boot_pkg.sv
-- dir::../src/rtl/flash/boot_controller.sv
-- dir::../src/rtl/flash/features_boot_router.sv
-- dir::../src/rtl/flash/dscnn_boot_router.sv
-- dir::../src/rtl/flash/flash_top.sv
-- dir::../src/rtl/flash/simple_flash.sv
-- dir::../src/rtl/flash/uart_rx.v
-- dir::../src/rtl/flash/uart_tx.v
-- dir::../src/rtl/flash/uart.v
 # CIC
 - dir::../src/rtl/CIC/cic.sv
 # SPECT_BUFFER
@@ -177,21 +178,21 @@ ERROR_ON_MAGIC_DRC: False
 # reasonable time at that scale. These cells connect only to power /
 # ground rails, so dropping them does not affect LVS coverage.
 ############## Commenting out for now because not supported by our version of either librelane or nix-eda, but this is a fix suggested by professor
-# LVS_IGNORE_CELLS:
-# # 3.3V standard-cell library
-# - gf180mcu_as_sc_mcu7t3v3__fill_1
-# - gf180mcu_as_sc_mcu7t3v3__fill_2
-# - gf180mcu_as_sc_mcu7t3v3__fill_4
-# - gf180mcu_as_sc_mcu7t3v3__fill_8
-# - gf180mcu_as_sc_mcu7t3v3__fillcap_4
-# - gf180mcu_as_sc_mcu7t3v3__fillcap_8
-# - gf180mcu_as_sc_mcu7t3v3__fillcap_16
-# - gf180mcu_as_sc_mcu7t3v3__tap_2
-# # IO library fill cells
-# - gf180mcu_fd_io__fill1
-# - gf180mcu_fd_io__fill5
-# - gf180mcu_fd_io__fill10
-# - gf180mcu_fd_io__fillnc
+LVS_IGNORE_CELLS:
+# 3.3V standard-cell library
+- gf180mcu_as_sc_mcu7t3v3__fill_1
+- gf180mcu_as_sc_mcu7t3v3__fill_2
+- gf180mcu_as_sc_mcu7t3v3__fill_4
+- gf180mcu_as_sc_mcu7t3v3__fill_8
+- gf180mcu_as_sc_mcu7t3v3__fillcap_4
+- gf180mcu_as_sc_mcu7t3v3__fillcap_8
+- gf180mcu_as_sc_mcu7t3v3__fillcap_16
+- gf180mcu_as_sc_mcu7t3v3__tap_2
+# IO library fill cells
+- gf180mcu_fd_io__fill1
+- gf180mcu_fd_io__fill5
+- gf180mcu_fd_io__fill10
+- gf180mcu_fd_io__fillnc
 
 # Prevent false positive DRC errors in I/O cells
 MAGIC_GDS_FLATGLOB:
