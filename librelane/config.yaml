@@ -130,10 +130,16 @@ IGNORE_DISCONNECTED_MODULES:
 CLOCK_PORT: clk_PAD
 CLOCK_NET: clk_pad/Y
 CLOCK_PERIOD: 62.5 # 16 MHz
-
+  
 # Fix hold violations
-PL_RESIZER_HOLD_SLACK_MARGIN: 0.35
-GRT_RESIZER_HOLD_SLACK_MARGIN: 0.3
+MAX_FANOUT_CONSTRAINT: 16
+# Buffer insertion starts p[ateauing after 0.115]
+PL_RESIZER_HOLD_SLACK_MARGIN: 0.115
+GRT_RESIZER_HOLD_SLACK_MARGIN: 0.115
+
+# Insert more buffers for these vios
+DESIGN_REPAIR_MAX_SLEW_PCT: 40
+DESIGN_REPAIR_MAX_CAP_PCT: 40
 
 # Increase for more logic
 # on your die
@@ -291,44 +297,44 @@ MACROS:
     instances:
       # LogMel SRAMs (5× sram256x8)
       i_chip_core.pipeline_inst.u_logmel.u_mel_filterbank.u_sram.u_coeff_hi:
-        location: [1260, 500]
+        location: [1330, 550]
         orientation: N
       i_chip_core.pipeline_inst.u_logmel.u_mel_filterbank.u_sram.u_coeff_lo:
-        location: [1260, 750]
+        location: [1330, 800]
         orientation: N
       i_chip_core.pipeline_inst.u_logmel.u_mel_filterbank.u_sram.u_index:
-        location: [1260, 1000]
+        location: [1330, 1050]
         orientation: N
       i_chip_core.pipeline_inst.u_logmel.u_log_lut.u_lut_sram.u_lut_lo:
-        location: [1260, 1250]
+        location: [1330, 1300]
         orientation: N
       i_chip_core.pipeline_inst.u_logmel.u_log_lut.u_lut_sram.u_lut_hi:
-        location: [1260, 1500]
+        location: [1330, 1550]
         orientation: N
       # STFFT SRAMs (8× sram256x8 — 2 RAM instances × 4 bytes each)
       i_chip_core.pipeline_inst.u_stfft.u_fft.u_ram0.u0:
-        location: [500, 500]
+        location: [540, 550]
         orientation: N
       i_chip_core.pipeline_inst.u_stfft.u_fft.u_ram0.u1:
-        location: [500, 750]
+        location: [540, 800]
         orientation: N
       i_chip_core.pipeline_inst.u_stfft.u_fft.u_ram0.u2:
-        location: [500, 1000]
+        location: [540, 1050]
         orientation: N
       i_chip_core.pipeline_inst.u_stfft.u_fft.u_ram0.u3:
-        location: [500, 1250]
+        location: [540, 1300]
         orientation: N
       i_chip_core.pipeline_inst.u_stfft.u_fft.u_ram1.u0:
-        location: [880, 500]
+        location: [935, 550]
         orientation: N
       i_chip_core.pipeline_inst.u_stfft.u_fft.u_ram1.u1:
-        location: [880, 750]
+        location: [935, 800]
         orientation: N
       i_chip_core.pipeline_inst.u_stfft.u_fft.u_ram1.u2:
-        location: [880, 1000]
+        location: [935, 1050]
         orientation: N
       i_chip_core.pipeline_inst.u_stfft.u_fft.u_ram1.u3:
-        location: [880, 1250]
+        location: [935, 1300]
         orientation: N
 
 
@@ -355,10 +361,10 @@ MACROS:
     instances:
       # Bias SRAM (2× sram512x8)
       i_chip_core.kws_inst.inst_bias.gen_bias_bytes[0].inst_bias_sram:
-        location: [1030, 3625.0]
+        location: [1410.0, 3230.0]
         orientation: N
       i_chip_core.kws_inst.inst_bias.gen_bias_bytes[1].inst_bias_sram:
-        location: [1465, 3625.0]
+        location: [1410.0, 3615.0]
         orientation: N
 
   gf180mcu_ocd_ip_sram__sram1024x8m8wm1:
@@ -384,75 +390,75 @@ MACROS:
     instances:
       # Feature SRAMs (8 banks × 2 ping-pong = 16× sram1024x8)
       i_chip_core.kws_inst.inst_fsram.gen_feat_banks[0].inst_feature_sram:
-        location: [1875.3, 2400.0]
+        location: [1840.3, 2270.0]
         orientation: N
       i_chip_core.kws_inst.inst_fsram.gen_feat_banks[0].inst_feature_sram2:
-        location: [1875.3, 2950.0]
+        location: [1840.3, 2830.0]
         orientation: N
       i_chip_core.kws_inst.inst_fsram.gen_feat_banks[1].inst_feature_sram:
-        location: [2285.2, 2400.0]
+        location: [2260.2, 2270.0]
         orientation: N
       i_chip_core.kws_inst.inst_fsram.gen_feat_banks[1].inst_feature_sram2:
-        location: [2285.2, 2950.0]
+        location: [2260.2, 2830.0]
         orientation: N
       i_chip_core.kws_inst.inst_fsram.gen_feat_banks[2].inst_feature_sram:
-        location: [2695.1, 2400.0]
+        location: [2680.1, 2270.0]
         orientation: N
       i_chip_core.kws_inst.inst_fsram.gen_feat_banks[2].inst_feature_sram2:
-        location: [2695.1, 2950.0]
+        location: [2680.1, 2830.0]
         orientation: N
       i_chip_core.kws_inst.inst_fsram.gen_feat_banks[3].inst_feature_sram:
-        location: [3105.0, 2400.0]
+        location: [3100.0, 2270.0]
         orientation: N
       i_chip_core.kws_inst.inst_fsram.gen_feat_banks[3].inst_feature_sram2:
-        location: [3105.0, 2950.0]
+        location: [3100.0, 2830.0]
         orientation: N
       i_chip_core.kws_inst.inst_fsram.gen_feat_banks[4].inst_feature_sram:
-        location: [1875.3, 3500.0]
+        location: [1840.3, 3390.0]
         orientation: N
       i_chip_core.kws_inst.inst_fsram.gen_feat_banks[4].inst_feature_sram2:
-        location: [1875.3, 4050.0]
+        location: [1840.3, 3950.0]
         orientation: N
       i_chip_core.kws_inst.inst_fsram.gen_feat_banks[5].inst_feature_sram:
-        location: [2285.2, 3500.0]
+        location: [2260.2, 3390.0]
         orientation: N
       i_chip_core.kws_inst.inst_fsram.gen_feat_banks[5].inst_feature_sram2:
-        location: [2285.2, 4050.0]
+        location: [2260.2, 3950.0]
         orientation: N
       i_chip_core.kws_inst.inst_fsram.gen_feat_banks[6].inst_feature_sram:
-        location: [2695.1, 3500.0]
+        location: [2680.1, 3390.0]
         orientation: N
       i_chip_core.kws_inst.inst_fsram.gen_feat_banks[6].inst_feature_sram2:
-        location: [2695.1, 4050.0]
+        location: [2680.1, 3950.0]
         orientation: N
       i_chip_core.kws_inst.inst_fsram.gen_feat_banks[7].inst_feature_sram:
-        location: [3105.0, 3500.0]
+        location: [3100.0, 3390.0]
         orientation: N
       i_chip_core.kws_inst.inst_fsram.gen_feat_banks[7].inst_feature_sram2:
-        location: [3105.0, 4050.0]
+        location: [3100.0, 3950.0]
         orientation: N
       # Weight SRAMs (3× sram1024x8)
       i_chip_core.kws_inst.inst_wsram.gen_weight_banks[0].inst_weight_sram:
-        location: [600.0, 4050.0]
+        location: [960.0, 3400.0]
         orientation: N
       i_chip_core.kws_inst.inst_wsram.gen_weight_banks[1].inst_weight_sram:
-        location: [1030.0, 4050.0]
+        location: [960.0, 3950.0]
         orientation: N
       i_chip_core.kws_inst.inst_wsram.gen_weight_banks[2].inst_weight_sram:
-        location: [1465.0, 4050.0]
+        location: [1390.0, 3950.0]
         orientation: N
       # Spectrogram SRAMs (4× sram1024x8)
       i_chip_core.kws_inst.inst_specram.gen_spect_banks[0].inst_spectrogram_sram:
-        location: [1640, 1050.0]
+        location: [1725, 1100.0]
         orientation: N
       i_chip_core.kws_inst.inst_specram.gen_spect_banks[0].inst_spectrogram_sram2:
-        location: [1640, 500.0]
+        location: [1725, 550.0]
         orientation: N
       i_chip_core.kws_inst.inst_specram.gen_spect_banks[1].inst_spectrogram_sram:
-        location: [2020, 1050.0]
+        location: [2120, 1100.0]
         orientation: N
       i_chip_core.kws_inst.inst_specram.gen_spect_banks[1].inst_spectrogram_sram2:
-        location: [2020, 500.0]
+        location: [2120, 550.0]
         orientation: N
 
 
@@ -491,9 +497,6 @@ FP_MACRO_VERTICAL_HALO: 30
 PDN_HORIZONTAL_HALO: 5
 PDN_VERTICAL_HALO: 5
 
-MAX_FANOUT_CONSTRAINT: 16
-PL_RESIZER_HOLD_SLACK_MARGIN: 0.25
-GRT_RESIZER_HOLD_SLACK_MARGIN: 0.25
 PL_RESIZER_ALLOW_SETUP_VIOS: true
 GRT_RESIZER_ALLOW_SETUP_VIOS: true
 #PL_RESIZER_MAX_WIRE_LENGTH: 1200
