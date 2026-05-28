@@ -60,6 +60,7 @@ SIM_SOURCES := \
 	$(RTL)/STFFT/rtl/fft_twiddle_rom.sv \
 	$(RTL)/STFFT/rtl/fft_data_ram.sv \
 	$(RTL)/STFFT/R2FFT/hdl/R2FFT.sv \
+	$(RTL)/STFFT/R2FFT/hdl/fft.sv \
 	$(RTL)/STFFT/R2FFT/hdl/bfp_bitWidthAcc.sv \
 	$(RTL)/STFFT/R2FFT/hdl/bfp_bitWidthDetector.sv \
 	$(RTL)/STFFT/R2FFT/hdl/bfp_maxBitWidth.sv \
@@ -70,11 +71,8 @@ SIM_SOURCES := \
 	$(RTL)/STFFT/R2FFT/hdl/fftAddressGenerator.sv \
 	$(RTL)/STFFT/R2FFT/hdl/radix2Butterfly.sv \
 	$(RTL)/STFFT/R2FFT/hdl/ramPipelineBridge.sv \
-	$(RTL)/STFFT/R2FFT/hdl/readBusMux_tribuf.sv \
-	$(RTL)/STFFT/R2FFT/hdl/readBusMux.sv \
+	$(RTL)/STFFT/R2FFT/hdl/rwBusMux.sv \
 	$(RTL)/STFFT/R2FFT/hdl/twiddleFactorRomBridge.sv \
-	$(RTL)/STFFT/R2FFT/hdl/writeBusMux_tribuf.sv \
-	$(RTL)/STFFT/R2FFT/hdl/writeBusMux.sv \
 	$(RTL)/flash/boot_controller.sv \
 	$(RTL)/flash/features_boot_router.sv \
 	$(RTL)/flash/dscnn_boot_router.sv \

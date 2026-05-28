@@ -17,7 +17,7 @@
  *   butterflyCore, bfp_*, bitReverseCounter, twiddleFactorRomBridge are
  *   reused unchanged from the original codebase.
  */
- 
+
 module R2FFT
   #(
     parameter FFT_LENGTH = 256,
@@ -29,42 +29,42 @@ module R2FFT
     // system
     input  wire                       clk,
     input  wire                       rst,
- 
+
     // control (autorun=1 recommended for streaming; run/fin are legacy)
     input  wire                       autorun,
     input  wire                       run,
     input  wire                       fin,
     input  wire                       ifft,
- 
+
     // status
     output wire                       done,    // a result is queued for DMA
     output wire [2:0]                 status,
     output wire signed [7:0]          bfpexp,
     output wire                       s_ready, // 1 when the FFT can accept an input sample
- 
+
     // input stream
     input  wire                       sact_istream,
     input  wire signed [FFT_DW-1:0]   sdw_istream_real,
     input  wire signed [FFT_DW-1:0]   sdw_istream_imag,
- 
+
     // DMA bus
     input  wire                       dmaact,
     input  wire [FFT_N-1:0]           dmaa,
     output wire signed [FFT_DW-1:0]   dmadr_real,
     output wire signed [FFT_DW-1:0]   dmadr_imag,
- 
+
     // twiddle factor ROM
     output wire                       twact,
     output wire [FFT_N-1-2:0]         twa,
     input  wire [FFT_DW-1:0]          twdr_cos,
- 
+
     // Single-port RAM 0
     output reg                        act_ram0,
     output reg                        we_ram0,
     output reg  [FFT_N-1:0]           a_ram0,
     output reg  [FFT_DW*2-1:0]        dw_ram0,
     input  wire [FFT_DW*2-1:0]        dr_ram0,
- 
+
     // Single-port RAM 1
     output reg                        act_ram1,
     output reg                        we_ram1,
@@ -72,28 +72,28 @@ module R2FFT
     output reg  [FFT_DW*2-1:0]        dw_ram1,
     input  wire [FFT_DW*2-1:0]        dr_ram1
     );
- 
+
    // silence unused legacy ports (kept for interface compatibility)
    wire _unused_ok = &{1'b0, run, fin};
- 
+
    localparam FFT_BFPDW       = $clog2(FFT_DW) + 1;
    localparam STAGE_COUNT_BW  = $clog2(FFT_N);
- 
-  
-   // Per-RAM lifecycle states
 
-   typedef enum logic [2:0] {
-      RAM_IDLE          = 3'd0,
-      RAM_FILLING       = 3'd1,
-      RAM_READY_COMPUTE = 3'd2,
-      RAM_COMPUTING     = 3'd3,
-      RAM_READY_DMA     = 3'd4,
-      RAM_DMAING        = 3'd5
-   } ram_state_t;
- 
+
+   // Per-RAM lifecycle state encoding (typedef + localparam, not enum,
+   // so strict SV checkers don't require explicit casts on assignments).
+
+   typedef logic [2:0] ram_state_t;
+   localparam ram_state_t RAM_IDLE          = 3'd0;
+   localparam ram_state_t RAM_FILLING       = 3'd1;
+   localparam ram_state_t RAM_READY_COMPUTE = 3'd2;
+   localparam ram_state_t RAM_COMPUTING     = 3'd3;
+   localparam ram_state_t RAM_READY_DMA     = 3'd4;
+   localparam ram_state_t RAM_DMAING        = 3'd5;
+
    ram_state_t ram0_state, ram1_state;
    reg         fill_next;  // 0 → next stream targets ram0; 1 → ram1
- 
+
    // Convenience signals
    wire ram0_idle      = (ram0_state == RAM_IDLE);
    wire ram1_idle      = (ram1_state == RAM_IDLE);
@@ -107,12 +107,12 @@ module R2FFT
    wire ram1_rcomp     = (ram1_state == RAM_READY_COMPUTE);
    wire ram0_rdma      = (ram0_state == RAM_READY_DMA);
    wire ram1_rdma      = (ram1_state == RAM_READY_DMA);
- 
+
    wire any_filling    = ram0_filling   || ram1_filling;
    wire any_computing  = ram0_computing || ram1_computing;
    wire any_dmaing     = ram0_dmaing    || ram1_dmaing;
    wire any_rdma       = ram0_rdma      || ram1_rdma;
- 
+
 
    // Stream-arrival decision (combinational so first sample of each new
    // frame lands the same cycle we transition IDLE → FILLING).
@@ -121,20 +121,20 @@ module R2FFT
                           (fill_next == 1'b0 || !ram1_idle);
    wire start_fill_ram1 = !any_filling && sact_istream && ram1_idle &&
                           (fill_next == 1'b1 || !ram0_idle);
- 
+
    wire eff_filling_0   = ram0_filling || start_fill_ram0;
    wire eff_filling_1   = ram1_filling || start_fill_ram1;
    wire any_eff_filling = eff_filling_0 || eff_filling_1;
- 
+
 
    // Bit-reverse input address counter
    //   Clears when nobody is filling (so each new frame starts at addr 0).
    //   Also clears explicitly on stream_done so back-to-back frames reset.
- 
+
    wire [FFT_N-1:0] istreamAddr;
    wire             streamBufferFull;
    wire             stream_done;
- 
+
    bitReverseCounter #(.BIT_WIDTH(FFT_N)) ubitReverseCounter
      (.rst       (rst),
       .clk       (clk),
@@ -143,9 +143,9 @@ module R2FFT
       .iter      (istreamAddr),
       .count     (),
       .countFull (streamBufferFull));
- 
+
    assign stream_done = sact_istream && streamBufferFull && any_eff_filling;
- 
+
 
    // DMA byte counter — fires dma_done when last sample's address has been
    // presented. Uses dmaact-gated increments.
@@ -156,7 +156,7 @@ module R2FFT
       else if (dmaact)        dma_counter <= dma_counter + 1'b1;
    end
    wire dma_done = dmaact && any_dmaing && (dma_counter == (FFT_LENGTH-1));
- 
+
 
    // BFP bit-width tracking on input stream — clears at the end of each
    // frame's stream so consecutive frames start fresh. The per-RAM init bw
@@ -170,7 +170,7 @@ module R2FFT
       .operand2 ({FFT_DW{1'b0}}),
       .operand3 ({FFT_DW{1'b0}}),
       .bw       (istreamBw));
- 
+
    wire [FFT_BFPDW-1:0] istreamMaxBw;
    bfp_maxBitWidth #(.FFT_BFPDW(FFT_BFPDW)) ubfp_maxBitWidthIstream
      (.rst    (rst),
@@ -179,13 +179,13 @@ module R2FFT
       .bw_act (sact_istream && any_eff_filling),
       .bw     (istreamBw),
       .max_bw (istreamMaxBw));
- 
+
    // Combine the current cycle's bw with the running max so the LAST sample
    // of the frame is included even though the max register clears at
    // stream_done.
    wire [FFT_BFPDW-1:0] finalMaxBw =
         (istreamBw > istreamMaxBw) ? istreamBw : istreamMaxBw;
- 
+
    reg [FFT_BFPDW-1:0] ram0_init_bw, ram1_init_bw;
    always @(posedge clk) begin
       if (rst) begin
@@ -196,34 +196,43 @@ module R2FFT
          if (eff_filling_1) ram1_init_bw <= finalMaxBw;
       end
    end
- 
+
+
+   // FFT sub-sequencer state encoding (typedef + localparam).
+
+   typedef logic [2:0] sub_state_t;
+   localparam sub_state_t SB_IDLE          = 3'd0;
+   localparam sub_state_t SB_SETUP         = 3'd1;
+   localparam sub_state_t SB_RUN           = 3'd2;
+   localparam sub_state_t SB_WAIT_PIPELINE = 3'd3;
+   localparam sub_state_t SB_NEXT_STAGE    = 3'd4;
+   localparam sub_state_t SB_DONE          = 3'd5;
+
+   sub_state_t sb_state_f, sb_state_n;
+
 
    // FFT sub-sequencer — runs while any RAM is COMPUTING.
 
    wire run_fft = any_computing;
- 
-   typedef enum {SB_IDLE, SB_SETUP, SB_RUN, SB_WAIT_PIPELINE,
-                 SB_NEXT_STAGE, SB_DONE} sub_state_t;
-   sub_state_t sb_state_f, sb_state_n;
- 
+
    wire fin_fft = (sb_state_f == SB_DONE);
- 
+
    localparam MAX_FFT_STAGE = FFT_N - 1;
- 
+
    reg  [STAGE_COUNT_BW-1:0] fftStageCount;
    wire fftStageCountFull = (fftStageCount == MAX_FFT_STAGE);
- 
+
    wire [FFT_BFPDW-1:0] currentBfpBw, nextBfpBw;
    wire signed [7:0]    currentBfpExp;
    wire                 iteratorDone;
    wire                 oactFftUnit;
- 
+
    // Initial bw fed into the BFP accumulator at SB_SETUP — comes from whichever
    // RAM just entered COMPUTING.
    wire compute_target = ram1_computing ? 1'b1 : 1'b0;
    wire [FFT_BFPDW-1:0] initBwForCompute =
         compute_target ? ram1_init_bw : ram0_init_bw;
- 
+
    bfp_bitWidthAcc #(.FFT_BFPDW(FFT_BFPDW), .FFT_DW(FFT_DW)) ubfpacc
      (.clk          (clk),
       .rst          (rst),
@@ -233,7 +242,7 @@ module R2FFT
       .bw_new       (nextBfpBw),
       .bfp_bw       (currentBfpBw),
       .bfp_exponent (currentBfpExp));
- 
+
    always_comb begin
       if (!run_fft) sb_state_n = SB_IDLE;
       else case (sb_state_f)
@@ -246,12 +255,12 @@ module R2FFT
         default:           sb_state_n = SB_IDLE;
       endcase
    end
- 
+
    always @(posedge clk) begin
       if (rst) sb_state_f <= SB_IDLE;
       else     sb_state_f <= sb_state_n;
    end
- 
+
    always @(posedge clk) begin
       if (rst)
          fftStageCount <= '0;
@@ -261,7 +270,7 @@ module R2FFT
         default: ;
       endcase
    end
- 
+
    // Per-RAM final BFP exponent — captured at compute-done for the RAM that
    // just finished. The top-level bfpexp output reflects whichever RAM is
    // queued for DMA (READY_DMA or DMAING).
@@ -275,10 +284,10 @@ module R2FFT
          if (ram1_computing) ram1_bfpexp <= currentBfpExp;
       end
    end
- 
+
    wire dma_target = (ram1_dmaing || ram1_rdma) ? 1'b1 : 1'b0;
    assign bfpexp   = dma_target ? ram1_bfpexp : ram0_bfpexp;
- 
+
 
    // Butterfly engine — drives whichever RAM is COMPUTING
 
@@ -287,7 +296,7 @@ module R2FFT
    wire [FFT_N-1:0]      bf_a;
    wire [FFT_DW*2-1:0]   bf_dw;
    wire [FFT_DW*2-1:0]   bf_dr = compute_target ? dr_ram1 : dr_ram0;
- 
+
    butterflyUnit
      #(.FFT_N         (FFT_N),
        .FFT_DW        (FFT_DW),
@@ -297,27 +306,27 @@ module R2FFT
    ubutterflyUnit
      (.clk          (clk),
       .rst          (rst),
- 
+
       .clr_bfp      (sb_state_f == SB_NEXT_STAGE),
       .ibfp         (currentBfpBw),
       .obfp         (nextBfpBw),
- 
+
       .run          (sb_state_f == SB_RUN),
       .stageCount   (fftStageCount),
       .iteratorDone (iteratorDone),
       .oact         (oactFftUnit),
       .ifft         (ifft),
- 
+
       .twact        (twact),
       .twa          (twa),
       .twdr_cos     (twdr_cos),
- 
+
       .act          (bf_act),
       .we           (bf_we),
       .a            (bf_a),
       .dw           (bf_dw),
       .dr           (bf_dr));
- 
+
 
    // RAM 0 port — combinational mux by ram0's effective state
 
@@ -344,7 +353,7 @@ module R2FFT
          dw_ram0  = '0;
       end
    end
- 
+
 
    // RAM 1 port
 
@@ -371,11 +380,11 @@ module R2FFT
          dw_ram1  = '0;
       end
    end
- 
+
    // DMA read data — from whichever RAM is currently DMAING. Falls back to
    // ram0 when idle (caller should only sample when dmaact has been high).
    assign {dmadr_imag, dmadr_real} = ram1_dmaing ? dr_ram1 : dr_ram0;
- 
+
 
    // Per-RAM state transitions
    //
@@ -406,7 +415,7 @@ module R2FFT
               if (dma_done)       ram0_state <= RAM_IDLE;
            default:                ram0_state <= RAM_IDLE;
          endcase
- 
+
          // ---------- ram 1 ----------
          case (ram1_state)
            RAM_IDLE:
@@ -428,14 +437,14 @@ module R2FFT
               if (dma_done)       ram1_state <= RAM_IDLE;
            default:                ram1_state <= RAM_IDLE;
          endcase
- 
+
          // Toggle fill_next when a fill is starting so the next new frame
          // goes to the other RAM.
          if (start_fill_ram0) fill_next <= 1'b1;
          if (start_fill_ram1) fill_next <= 1'b0;
       end
    end
- 
+
 
    // Top-level status
    //   done       — at least one RAM has a result waiting for DMA
@@ -448,5 +457,5 @@ module R2FFT
    assign done    = any_rdma || any_dmaing;
    assign status  = {any_dmaing, any_computing, any_filling};
    assign s_ready = any_filling || ram0_idle || ram1_idle;
- 
+
 endmodule // R2FFT

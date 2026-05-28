@@ -44,22 +44,22 @@ module butterflyUnit
    (
     input  wire                       clk,
     input  wire                       rst,
- 
+
     input  wire                       clr_bfp,
     input  wire [FFT_BFPDW-1:0]       ibfp,
     output wire [FFT_BFPDW-1:0]       obfp,
- 
+
     input  wire                       run,
     input  wire [STAGE_COUNT_BW-1:0]  stageCount,
     output wire                       iteratorDone,
     output wire                       oact,
     input  wire                       ifft,
- 
+
     // twiddle ROM
     output wire                       twact,
     output wire [FFT_N-1-2:0]         twa,
     input  wire [FFT_DW-1:0]          twdr_cos,
- 
+
     // single-port RAM
     output reg                        act,
     output reg                        we,
@@ -67,25 +67,26 @@ module butterflyUnit
     output reg [FFT_DW*2-1:0]         dw,
     input  wire [FFT_DW*2-1:0]        dr
     );
- 
 
-   // Sequencer states
 
-   typedef enum logic [2:0] {
-      S_IDLE          = 3'd0,
-      S_READ_A        = 3'd1,
-      S_READ_B        = 3'd2,
-      S_LAUNCH        = 3'd3,
-      S_WAIT_COMPUTE  = 3'd4,
-      S_WRITE_A       = 3'd5,
-      S_WRITE_B       = 3'd6,
-      S_DONE          = 3'd7
-   } seq_t;
- 
+   // Sequencer state encoding — typedef + localparam instead of typedef
+   // enum, so strict SV checkers (sv2v, slang) don't demand an explicit
+   // cast on every literal assignment.
+
+   typedef logic [2:0] seq_t;
+   localparam seq_t S_IDLE          = 3'd0;
+   localparam seq_t S_READ_A        = 3'd1;
+   localparam seq_t S_READ_B        = 3'd2;
+   localparam seq_t S_LAUNCH        = 3'd3;
+   localparam seq_t S_WAIT_COMPUTE  = 3'd4;
+   localparam seq_t S_WRITE_A       = 3'd5;
+   localparam seq_t S_WRITE_B       = 3'd6;
+   localparam seq_t S_DONE          = 3'd7;
+
    seq_t state_f, state_n;
    reg [FFT_N-1-1:0] bf_cnt;
    wire bf_cnt_full = (&bf_cnt);
- 
+
 
    // Address generation for current butterfly at current stage
    //   addrA[i] = bf_cnt[i]      if i <  stageCount
@@ -111,7 +112,7 @@ module butterflyUnit
          end
       end
    end
- 
+
 
    // Twiddle factor address = bit_reverse( bf_cnt >> stageCount )
 
@@ -123,7 +124,7 @@ module butterflyUnit
          assign tw_idx_rev[gi] = tw_idx[FFT_N-1-1-gi];
       end
    endgenerate
- 
+
    wire [FFT_DW:0] tdr_rom_real, tdr_rom_imag;
    // Twiddle launch is asserted one cycle BEFORE bfcore_iact. Reason:
    //   - ramPipelineBridge has 2 register stages (actPipe -> oact_f), so
@@ -148,14 +149,14 @@ module butterflyUnit
       .twact         (twact),
       .twa           (twa),
       .twdr_cos      (twdr_cos));
- 
+
 
    // Per-butterfly latches: x[a], the two addresses, the two results
 
    reg [FFT_DW*2-1:0]   xa_lat;
    reg [FFT_N-1:0]      addrA_lat, addrB_lat;
    reg [FFT_DW*2-1:0]   yEven_lat, yOdd_lat;
- 
+
 
    // butterflyCore instance
 
@@ -165,9 +166,9 @@ module butterflyUnit
    wire [FFT_DW*2-1:0]    bfcore_oEven;
    wire [FFT_DW*2-1:0]    bfcore_oOdd;
    wire [FFT_BFPDW-1:0]   bw_ramwrite;
- 
+
    wire bfcore_iact = (state_f == S_LAUNCH);
- 
+
    butterflyCore
      #(.FFT_N    (FFT_N),
        .FFT_DW   (FFT_DW),
@@ -191,7 +192,7 @@ module butterflyUnit
       .oOddData     (bfcore_oOdd),
       .twiddle_real (tdr_rom_real),
       .twiddle_imag (tdr_rom_imag));
- 
+
 
    // State machine
 
@@ -209,32 +210,32 @@ module butterflyUnit
         default:         state_n = S_IDLE;
       endcase
    end
- 
+
    always @(posedge clk) begin
       if (rst || !run) state_f <= S_IDLE;
       else             state_f <= state_n;
    end
- 
+
    // bf_cnt advances at the end of each butterfly (S_WRITE_B)
    always @(posedge clk) begin
       if (rst || !run) bf_cnt <= '0;
       else if ((state_f == S_WRITE_B) && !bf_cnt_full)
          bf_cnt <= bf_cnt + 1'b1;
    end
- 
+
    // Latch x[a] and addresses during the read phases
    always @(posedge clk) begin
       if (state_f == S_READ_B) xa_lat <= dr;
       if (state_f == S_READ_A) addrA_lat <= addrA;
       if (state_f == S_READ_B) addrB_lat <= addrB;
- 
+
       // Capture compute results when butterflyCore signals done
       if (bfcore_oact) begin
          yEven_lat <= bfcore_oEven;
          yOdd_lat  <= bfcore_oOdd;
       end
    end
- 
+
 
    // Drive RAM port per state
 
@@ -251,7 +252,7 @@ module butterflyUnit
         default: ;
       endcase
    end
- 
+
 
    // Status outputs to sub-sequencer
    //   oact = high during the 2-cycle writeback window of each BF; clears
@@ -260,7 +261,7 @@ module butterflyUnit
 
    assign oact         = (state_f == S_WRITE_A) || (state_f == S_WRITE_B);
    assign iteratorDone = (state_f == S_DONE);
- 
+
 
    // BFP max tracker on write-back data
    bfp_maxBitWidth #(.FFT_BFPDW(FFT_BFPDW)) ubfp_maxBitWidth
@@ -270,6 +271,5 @@ module butterflyUnit
       .bw_act (oact),
       .bw     (bw_ramwrite),
       .max_bw (obfp));
- 
+
 endmodule // butterflyUnit
- 
