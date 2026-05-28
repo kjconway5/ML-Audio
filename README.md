@@ -22,35 +22,50 @@ src/
 │   ├── Pipeline/                    # training scripts and Python reference model
 │   └── models/                      # trained model checkpoints
 │
-├── nngen/                           # NNGen CNN hardware generation
-│   ├── 24fil-7class/                # 24 filter 7 class configuration
-│   ├── ds-cnn-7-24/                 # DS-CNN NNGen project
-│   ├── test/                        # NNGen test outputs
-│   └── untrained/                   # untrained model baseline
-│
 └── rtl/                             # synthesizable RTL
     ├── CIC/                         # CIC decimation filter IP
-    ├── FIFO/                        # 1R1W FIFO with handshake
-    ├── FIR/                         # FIR anti-aliasing filter
-    ├── STFFT/                       # STFT core
-    │   └── ip/
-    │       ├── FFT/                 # ZipCPU FFT IP
-    │       │   ├── bench/cpp/       # C++ testbench
-    │       │   └── bench/formal/    # formal verification
-    │       └── Window/              # windowing logic
+    ├── FIR/                         # FIR directory
+    │   ├── rtl/                     # FIR compensation/anti-aliasing filter
+    │   ├── tests/                   # FIR testbench
+    │   └── scripts/                 # FIR filter coefficients and verilog generator    
+    ├── STFFT/                       # STFFT directory
+    │   ├── R2FFT/
+    │   |   ├── hdl/                 # R2FFT ip with custom memory controller
+    │   |   └── test/                # R2FFT ip testbenchs and modified 256 point 16 bit R2FFT testbench
+    |   ├── scripts/                 # Filter coefficients generators
+    |   └── tests/                   # STFFT testbench
     ├── dscnn/                       # DS-CNN inference engine RTL
-    └── Log-Mel/                     # log-mel filterbank
-        ├── ip/                      # PULP arithmetic IP cores
-        ├── data/                    # generated hex files (gitignored)
-        ├── scripts/                 # mel coefficient generation
-        └── rtl/
-            ├── power_calc/          # Power Calculation - Re^2 + Im^2
-            ├── mac_unit/            # Multiply-Accumulate
-            ├── mel_filterbank/      # Filterbank
-            ├── frame_control/       # Data pipeline FSM
-            ├── log_lut/             # Log2 Compression
-            ├── output_buffer/       # Mel Bin Output Buffer
-            └── log_top/             # top-level integration test
+    │   ├── bias_SRAM/               # Bias memory
+    │   ├── feature_sram/            # Feature memory
+    │   ├── fsm/                     # CNN controller
+    │   ├── kws_top/                 # CNN testbench and helper files
+    │   ├── mac_array/               # Multiply Accumalate array
+    │   ├── requant/                 # Quantization
+    │   ├── spectrogram_sram/        # Spectrogram memory
+    │   └── weight_sram/             # Weight memory
+    ├── Log-Mel/                     # log-mel filterbank
+    │   ├── ip/                      # PULP arithmetic IP cores
+    │   ├── data/                    # generated hex files (gitignored)
+    │   ├── scripts/                 # mel coefficient generation
+    │   └── rtl/
+    │       ├── power_calc/          # Power Calculation - Re^2 + Im^2
+    │       ├── mac_unit/            # Multiply-Accumulate
+    │       ├── mel_filterbank/      # Filterbank
+    │       ├── frame_control/       # Data pipeline FSM
+    │       ├── log_lut/             # Log2 Compression
+    │       ├── output_buffer/       # Mel Bin Output Buffer
+    │       └── log_top/             # top-level integration test
+    ├── SPECT_BUFFER/                # Spectrogram buffer RTL and testbench
+    ├── Arty-A7-Demo/                # Arty A7 FPGA Demo
+    │   ├── feature_stage2/          # TODO
+    │   ├── full_demo/               # TODO
+    │       ├── host/                # TODO
+    ├── flash/                       # SRAM loading/boot controller
+    └── top/                         # Audio Preprocessing and Feature extraction (pre-CNN) RTL and testbench
+        ├── data/                    # Memory files for simulation
+        ├── scripts/                 # debugging scripts
+        └── speech_data/             # Google speech dataset
+
 ```
 
 ### Makefile Targets
