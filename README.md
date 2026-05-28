@@ -59,7 +59,7 @@ src/
     ├── Arty-A7-Demo/                # Arty A7 FPGA Demo
     │   ├── feature_stage2/          # TODO
     │   ├── full_demo/               # TODO
-    │       ├── host/                # TODO
+    │       └── host/                # TODO
     ├── flash/                       # SRAM loading/boot controller
     └── top/                         # Audio Preprocessing and Feature extraction (pre-CNN) RTL and testbench
         ├── data/                    # Memory files for simulation
