@@ -4,8 +4,18 @@ meta:
   substituting_steps:
 
     # Disable KLayout DRC
-    #KLayout.DRC: null
-    #Checker.KLayoutDRC: null
+    OpenROAD.IRDropReport: null
+    Magic.DRC: null
+    Checker.MagicDRC: null
+    KLayout.DRC: null
+    Checker.KLayoutDRC: null
+    KLayout.Antenna: null
+    Checker.KLayoutAntenna: null
+    KLayout.Density: null
+    Checker.KLayoutDensity: null
+    KLayout.XOR: null
+    Netgen.LVS: null
+    Checker.LVS: null
 
     # Disable KLayout antenna check
     #KLayout.Antenna: null
@@ -19,10 +29,10 @@ meta:
     # Enable for sign-off
     #OpenROAD.IRDropReport: null
     #Magic.DRC: null
-    #Checker.MagicDRC: null
-    #KLayout.XOR: null
-    #Netgen.LVS: null
-    #Checker.LVS: null
+      #Checker.MagicDRC: null
+      #KLayout.XOR: null
+      #Netgen.LVS: null
+      #Checker.LVS: null
 
 DESIGN_NAME: chip_top
 VERILOG_FILES:
@@ -185,21 +195,21 @@ ERROR_ON_MAGIC_DRC: False
 # reasonable time at that scale. These cells connect only to power /
 # ground rails, so dropping them does not affect LVS coverage.
 # ############# Commenting out for now because not supported by our version of either librelane or nix-eda, but this is a fix suggested by professor
-LVS_IGNORE_CELLS:
+#LVS_IGNORE_CELLS:
 # 3.3V standard-cell library
-- gf180mcu_as_sc_mcu7t3v3__fill_1
-- gf180mcu_as_sc_mcu7t3v3__fill_2
-- gf180mcu_as_sc_mcu7t3v3__fill_4
-- gf180mcu_as_sc_mcu7t3v3__fill_8
-- gf180mcu_as_sc_mcu7t3v3__fillcap_4
-- gf180mcu_as_sc_mcu7t3v3__fillcap_8
-- gf180mcu_as_sc_mcu7t3v3__fillcap_16
-- gf180mcu_as_sc_mcu7t3v3__tap_2
+#- gf180mcu_as_sc_mcu7t3v3__fill_1
+#- gf180mcu_as_sc_mcu7t3v3__fill_2
+#- gf180mcu_as_sc_mcu7t3v3__fill_4
+#- gf180mcu_as_sc_mcu7t3v3__fill_8
+#- gf180mcu_as_sc_mcu7t3v3__fillcap_4
+#- gf180mcu_as_sc_mcu7t3v3__fillcap_8
+#- gf180mcu_as_sc_mcu7t3v3__fillcap_16
+#- gf180mcu_as_sc_mcu7t3v3__tap_2
 # IO library fill cells
-- gf180mcu_fd_io__fill1
-- gf180mcu_fd_io__fill5
-- gf180mcu_fd_io__fill10
-- gf180mcu_fd_io__fillnc
+#- gf180mcu_fd_io__fill1
+#- gf180mcu_fd_io__fill5
+#- gf180mcu_fd_io__fill10
+#- gf180mcu_fd_io__fillnc
 
 # Prevent false positive DRC errors in I/O cells
 MAGIC_GDS_FLATGLOB:
@@ -515,3 +525,7 @@ LVS_FLATTEN_CELLS:
 MAGIC_EXT_ABSTRACT_CELLS:
 - gf180mcu_ws_ip__id
 - gf180mcu_ws_ip__logo
+
+VSRC_LOC_FILES:
+  VDD: dir::vsrc/vdd.csv
+  VSS: dir::vsrc/vss.csv

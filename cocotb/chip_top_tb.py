@@ -17,7 +17,7 @@ sim = os.getenv("SIM", "icarus")
 pdk_root = os.getenv("PDK_ROOT", Path("~/.ciel").expanduser())
 pdk = os.getenv("PDK", "gf180mcuD")
 scl = os.getenv("SCL", "gf180mcu_fd_sc_mcu7t5v0")
-gl = os.getenv("GL", False)
+gl = os.getenv("GL", "0").lower() in ("1", "true", "yes")
 slot = os.getenv("SLOT", "1x1")
 
 hdl_toplevel = "chip_top"
@@ -310,7 +310,7 @@ def _resolve_wav_path(wav_path):
         if candidate.exists():
             return candidate
 
-    candidate = repo_root / path
+    candidate = _KWS_DIR / path
     if candidate.exists():
         return candidate
 
@@ -593,6 +593,75 @@ def _append_sim_top_result(**kwargs):
         f.write("\n".join(lines))
         f.write("\n\n")
 
+@cocotb.test(skip=os.getenv("RUN_POWER", "0") != "1")
+async def test_chip_top_power_window(dut):
+    """
+    Stripped-down workload optimized for SAIF generation on a small machine.
+    
+    Skips UART boot entirely — back-doors boot_done so the pipeline runs
+    without flashing SRAMs. The chip won't produce meaningful KWS output,
+    but switching activity through CIC / FIR / STFFT / LogMel / MAC array
+    is representative for power analysis.
+    
+    Run with: RUN_POWER=1 GL=1 make sim
+    """
+    await start_up(dut)
+    
+    dut._log.info("=== Power-window test: skipping UART boot, forcing boot_done ===")
+    
+    # boot_done was flattened during synthesis. Its hierarchical name became
+    # the escaped Verilog identifier "\i_chip_core.boot_done " (the trailing
+    # space is part of the escape, not optional).
+    try:
+        boot_done_handle = getattr(dut.u_chip_top, r"\i_chip_core.boot_done ")
+        boot_done_handle.value = 1
+        dut._log.info("  boot_done forced high via flattened escape name")
+    except (AttributeError, ValueError) as e:
+        children = [n for n in dir(dut.u_chip_top) if not n.startswith("_")][:50]
+        raise AssertionError(
+            f"Could not force boot_done: {e}\n"
+            f"  Sample children of u_chip_top: {children}"
+        )
+    
+    await ClockCycles(dut.clk_PAD, 100)
+    
+    # Short synthetic chirp — ~200 PCM samples = ~12.5 ms of audio.
+    # Long enough for a few STFFT frames in steady state.
+    import numpy as np
+    n = 200
+    t = np.arange(n) / 16_000
+    chirp = np.sin(2*np.pi*(500*t + 3000/2*t**2)) * 16000
+    pcm = np.clip(chirp.astype(np.int32), -32768, 32767)
+    pdm_bits = _pcm_to_pdm(pcm)
+    
+    dut._log.info(f"  Driving {len(pdm_bits)} PDM bits (~{len(pdm_bits)*62.5/1e6:.1f}ms sim)")
+    
+    # The wrapper IS the top in GL mode, so power_dump_en lives at dut.power_dump_en.
+    # Begin VCD dump just before we start the audio stimulus.
+    try:
+        dut.power_dump_en.value = 1
+        dut._log.info("  power_dump_en asserted — VCD dump started")
+    except AttributeError:
+        dut._log.warning("  power_dump_en not found at top — VCD dump may not trigger")
+    
+    await ClockCycles(dut.clk_PAD, 10)
+    
+    for bit in pdm_bits:
+        dut.input_PAD.value = 0b10 | (bit & 1)
+        await RisingEdge(dut.clk_PAD)
+    dut.input_PAD.value = 0
+    
+    # Let the pipeline drain — a few mel-spectrogram frames should propagate
+    # through during this window so we capture downstream KWS activity too.
+    await ClockCycles(dut.clk_PAD, 50_000)
+    
+    try:
+        dut.power_dump_en.value = 0
+    except AttributeError:
+        pass
+    
+    dut._log.info("=== Power-window test complete ===")
+
 
 @cocotb.test()
 async def test_chip_top_e2e(dut):
@@ -845,65 +914,65 @@ def rtl_sources(proj_path):
 
 
 def chip_top_runner():
-
     proj_path = Path(__file__).resolve().parent
 
+    top_module = hdl_toplevel
     sources = []
     defines = {f"SLOT_{slot.upper()}": True, "SIM": True}
     includes = [proj_path / "../src/"]
+    build_args = []                              # ← add this back
 
     if gl:
-        # SCL models
-        sources.append(Path(pdk_root) / pdk / "libs.ref" / scl / "verilog" / f"{scl}.v")
-        sources.append(Path(pdk_root) / pdk / "libs.ref" / scl / "verilog" / "primitives.v")
-
-        # We use the powered netlist
-        sources.append(proj_path / f"../final/pnl/{hdl_toplevel}.pnl.v")
-
+        sim_dir = proj_path / "sim"
+        sources += [
+            sim_dir / "gf180mcu_as_sc_mcu7t3v3.v",
+            sim_dir / "gf180mcu_as_sc_mcu7t3v3_missing_cells.v",
+            sim_dir / "gf180mcu_fd_io.v",
+            sim_dir / "gf180mcu_ws_io.v",
+            sim_dir / "gf180mcu_ocd_ip_sram_models.v",
+            proj_path / f"../final/pnl/{hdl_toplevel}.pnl.v",
+            sim_dir / "chip_top_sdf_wrapper.sv",
+        ]
+        top_module = "chip_top_sdf_wrapper"
         defines = {"FUNCTIONAL": True, "USE_POWER_PINS": True}
     else:
-        # boot_pkg.sv must be first so Icarus can resolve boot_bus_t before chip_core.sv.
         sources.extend(rtl_sources(proj_path))
 
-    sources += [
-        # IO pad models
-        Path(pdk_root) / pdk / "libs.ref/gf180mcu_fd_io/verilog/gf180mcu_fd_io.v",
-        Path(pdk_root) / pdk / "libs.ref/gf180mcu_fd_io/verilog/gf180mcu_ws_io.v",
+    if not gl:
+        sources += [
+            Path(pdk_root) / pdk / "libs.ref/gf180mcu_fd_io/verilog/gf180mcu_fd_io.v",
+            Path(pdk_root) / pdk / "libs.ref/gf180mcu_fd_io/verilog/gf180mcu_ws_io.v",
+        ]
 
-        # Custom IP
+    sources += [
         proj_path / "../ip/gf180mcu_ws_ip__id/vh/gf180mcu_ws_ip__id.v",
         proj_path / "../ip/gf180mcu_ws_ip__logo/vh/gf180mcu_ws_ip__logo.v",
     ]
 
-    build_args = []
-
-    if sim == "icarus":
-        # For debugging
-        # build_args = ["-Winfloop", "-pfileline=1"]
-        pass
+    # Icarus needs -g2012 to parse the .sv wrapper file in GLS mode
+    if sim == "icarus" and gl:
+        build_args += ["-g2012"]
 
     if sim == "verilator":
-        build_args = ["--timing"]
+        build_args += ["--timing"]
 
     runner = get_runner(sim)
     runner.build(
         sources=sources,
-        hdl_toplevel=hdl_toplevel,
+        hdl_toplevel=top_module,
         defines=defines,
         always=True,
         includes=includes,
         build_args=build_args,
-        waves=False,
+        waves=True,
     )
     link_readmemh_files(proj_path)
 
-    plusargs = []
-
     runner.test(
-        hdl_toplevel=hdl_toplevel,
+        hdl_toplevel=top_module,
         test_module="chip_top_tb,",
-        plusargs=plusargs,
-        waves=False,
+        plusargs=[],
+        waves=True,
     )
 
 
