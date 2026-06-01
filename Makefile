@@ -5,7 +5,7 @@ TOP = chip_top
 
 PDK_ROOT ?= $(MAKEFILE_DIR)/gf180mcu
 PDK ?= gf180mcuD
-PDK_TAG ?= 1.6.6
+PDK_TAG ?= 1.8.0
 SCL ?= gf180mcu_as_sc_mcu7t3v3
 
 AVAILABLE_SLOTS = 1x1 0p5x1 1x0p5 0p5x0p5
@@ -43,7 +43,6 @@ install-3v3-scl: ## Install the 3.3V standard cell library into the PDK
 	cp -r $(MAKEFILE_DIR)/gf180mcu_as_sc_mcu7t3v3/pdk/libs.ref/gf180mcu_as_sc_mcu7t3v3 $(PDK_ROOT)/$(PDK)/libs.ref/
 	cp -r $(MAKEFILE_DIR)/gf180mcu_as_sc_mcu7t3v3/pdk/libs.tech/librelane $(PDK_ROOT)/$(PDK)/libs.tech/
 	cp -r $(MAKEFILE_DIR)/gf180mcu_as_sc_mcu7t3v3/pdk/libs.tech/magic $(PDK_ROOT)/$(PDK)/libs.tech/
-	cp $(MAKEFILE_DIR)/librelane/gf180mcu_as_sc_mcu7t3v3_config.tcl $(PDK_ROOT)/$(PDK)/libs.tech/librelane/gf180mcu_as_sc_mcu7t3v3/config.tcl
 .PHONY: install-3v3-scl
 
 librelane: ## Run LibreLane flow (synthesis, PnR, verification)
