@@ -87,7 +87,16 @@ module mel_coeff_sram #(
         .A    (coeff_addr), .D  (flash_coeff_data_i[7:0]),  .Q (coeff_lo)
     );
 
-    assign coeff_data_o = {coeff_hi, coeff_lo};
+    // Real GF180 sram256x8 has asynchronous (combinatorial) read output.
+    // Register Q here to give 1-cycle read latency matching the SIM model.
+    reg [7:0] coeff_hi_r, coeff_lo_r;
+    always_ff @(posedge clk_i)
+        if (coeff_gwen) begin  // coeff_gwen=1 = read cycle
+            coeff_hi_r <= coeff_hi;
+            coeff_lo_r <= coeff_lo;
+        end
+
+    assign coeff_data_o = {coeff_hi_r, coeff_lo_r};
 
     // Index SRAM: 256 x 8-bit, one sram256x8
     // Layout: [0:39] = start_bin, [40:79] = end_bin, [80:119] = coeff_offset
@@ -101,7 +110,13 @@ module mel_coeff_sram #(
         .GWEN (index_gwen), .WEN (index_wen),
         .A    (index_addr), .D  (flash_index_data_i), .Q (index_q)
     );
-    assign index_data_o = index_q;
+
+    reg [7:0] index_q_r;
+    always_ff @(posedge clk_i)
+        if (index_gwen)  // index_gwen=1 = read cycle
+            index_q_r <= index_q;
+
+    assign index_data_o = index_q_r;
 
 `endif
 endmodule

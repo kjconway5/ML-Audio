@@ -84,6 +84,16 @@ SIM_SOURCES := \
 	$(RTL)/FIR/rtl/compFIR.sv
 
 COCOTB_MAKEFILES := $(shell cocotb-config --makefiles)
+PYTHON ?= python3
+
+# In nix-shell, ctypes.util.find_library resolves libpython via the system
+# ldconfig and returns the Ubuntu system Python. That system Python's
+# dependencies (libexpat.so.1) are not on nix's LD_LIBRARY_PATH, so the
+# dlopen inside cocotb's VPI plugin fails. Force cocotb to use the nix
+# Python shared library instead by computing its path from sysconfig.
+LIBPYTHON_LOC ?= $(shell $(PYTHON) -c \
+  "import sysconfig, os; d=sysconfig.get_config_var('LIBDIR'); l=sysconfig.get_config_var('LDLIBRARY'); \
+   print(os.path.join(d,l) if d and l else '')" 2>/dev/null)
 
 link-hex:
 	@for f in $(READMEMH_HEX_FILES); do ln -sf $$f . 2>/dev/null || true; done
@@ -96,6 +106,28 @@ sim-core: link-hex
 		COMPILE_ARGS="-DSIM -DSLOT_$(SLOT_UPPER) -I$(abspath $(SRC)) -Pchip_core.NUM_INPUT_PADS=12 -Pchip_core.NUM_BIDIR_PADS=40 -Pchip_core.NUM_ANALOG_PADS=2" \
 		$(MAKE) -f $(COCOTB_MAKEFILES)/Makefile.sim
 .PHONY: sim-core
+
+# RTL chip_top simulation (pad-level, uses chip_top_tb.py runner)
+sim-top: link-hex
+	KWS_KEYWORD="$(KWS_KEYWORD)" KWS_SAMPLE_INDEX="$(KWS_SAMPLE_INDEX)" KWS_SAMPLE_MATCH="$(KWS_SAMPLE_MATCH)" KWS_MANIFEST_JSON="$(KWS_MANIFEST_JSON)" \
+		SIM=icarus SLOT=$(SLOT) LIBPYTHON_LOC=$(LIBPYTHON_LOC) $(PYTHON) chip_top_tb.py
+.PHONY: sim-top
+
+# Gate-level simulation using final/pnl/chip_top.pnl.v (functional, no SDF timing)
+# Run just the smoke test:  make sim-gl TESTS=test_chip_top_pad_smoke
+# Run full e2e test:        make sim-gl  (slow — UART boot at hardware prescale 17)
+sim-gl: link-hex
+	KWS_KEYWORD="$(KWS_KEYWORD)" KWS_SAMPLE_INDEX="$(KWS_SAMPLE_INDEX)" KWS_SAMPLE_MATCH="$(KWS_SAMPLE_MATCH)" KWS_MANIFEST_JSON="$(KWS_MANIFEST_JSON)" \
+		COCOTB_TEST_FILTER="$(TESTS)" SIM=icarus SLOT=$(SLOT) GL=1 LIBPYTHON_LOC=$(LIBPYTHON_LOC) $(PYTHON) chip_top_tb.py 2>&1 | stdbuf -oL tee $(REPO_ROOT)/sim_gl.log
+.PHONY: sim-gl
+
+# SDF gate-level simulation with back-annotated timing delays.
+# Override corner with: make sim-gl-sdf SDF_CORNER=max_ff_n40C_3v60
+SDF_CORNER ?= nom_tt_025C_3v30
+sim-gl-sdf: link-hex
+	KWS_KEYWORD="$(KWS_KEYWORD)" KWS_SAMPLE_INDEX="$(KWS_SAMPLE_INDEX)" KWS_SAMPLE_MATCH="$(KWS_SAMPLE_MATCH)" KWS_MANIFEST_JSON="$(KWS_MANIFEST_JSON)" \
+		COCOTB_TEST_FILTER="$(TESTS)" SIM=icarus SLOT=$(SLOT) GL=1 SDF_CORNER=$(SDF_CORNER) LIBPYTHON_LOC=$(LIBPYTHON_LOC) $(PYTHON) chip_top_tb.py 2>&1 | stdbuf -oL tee $(REPO_ROOT)/sim_gl_sdf.log
+.PHONY: sim-gl-sdf
 
 clean:
 	rm -rf sim_build __pycache__ results.xml *.vcd *.fst *.log hanning.hex mel_coeffs_sparse.hex mel_indices.hex log2_lut.hex

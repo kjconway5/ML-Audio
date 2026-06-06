@@ -26,8 +26,6 @@ module log_lut_sram #(
     wire       gwen = flash_write_enable_i ? 1'b0 : 1'b1;
     wire [7:0] wen  = flash_write_enable_i ? 8'h00 : 8'hFF;
 
-    wire [7:0] q_lo, q_hi;
-
 `ifdef SIM
     reg [7:0] mem_lo [0:255];
     reg [7:0] mem_hi [0:255];
@@ -56,9 +54,11 @@ module log_lut_sram #(
         end
     end
 
-    assign q_lo = q_lo_r;
-    assign q_hi = q_hi_r;
+    assign rd_data_o = {q_hi_r, q_lo_r};
+
 `else
+    wire [7:0] q_lo, q_hi;
+
     gf180mcu_ocd_ip_sram__sram256x8m8wm1 u_lut_lo (
         .CLK  (clk_i),
         .CEN  (1'b0),
@@ -78,8 +78,18 @@ module log_lut_sram #(
         .D    (flash_write_data_i[15:8]),
         .Q    (q_hi)
     );
-`endif
 
-    assign rd_data_o = {q_hi, q_lo};
+    // Real GF180 sram256x8 has asynchronous (combinatorial) read output.
+    // Register Q here to give 1-cycle read latency matching the SIM model.
+    reg [7:0] q_lo_r, q_hi_r;
+    always_ff @(posedge clk_i)
+        if (gwen) begin  // gwen=1 = read cycle
+            q_lo_r <= q_lo;
+            q_hi_r <= q_hi;
+        end
+
+    assign rd_data_o = {q_hi_r, q_lo_r};
+
+`endif
 
 endmodule

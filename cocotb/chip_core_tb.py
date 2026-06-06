@@ -337,6 +337,84 @@ async def _uart_rx_byte(dut, timeout_cycles=800_000):
     return byte_val
 
 
+SCORE_HEADER = 0xDA
+SCORE_PKT_TIMEOUT = 20_000   # cycles; at BIT_CYCLES=8, 29B×10bits×8cyc = 2320 cycles
+
+
+async def _uart_read_score_packet(dut, class_names):
+    """Read the 29-byte score TX packet from chip_core's UART output.
+
+    Packet (chip_core.sv score TX sequencer):
+      byte  0   : 0xDA header
+      bytes 1-4 : class-0 GAP score, big-endian signed INT32
+      ...
+      bytes 25-28 : class-6 GAP score
+
+    Returns (scores, warning) where scores is list of (idx, name, int32).
+    Returns (None, message) on failure.
+    """
+    log = dut._log
+    log.info("  [score_pkt] waiting for 0xDA header on UART TX...")
+
+    def _probe_score_tx():
+        def _g(path):
+            try:
+                obj = dut
+                for p in path.split('.'):
+                    obj = getattr(obj, p)
+                v = obj.value
+                return int(v) if (not hasattr(v, 'is_resolvable') or v.is_resolvable) else 'X'
+            except Exception:
+                return '?'
+        return (
+            f"score_tx_active={_g('score_tx_active')} "
+            f"kws_done_r={_g('kws_done_r')} "
+            f"tx_ready={_g('tx_ready')} "
+            f"score_idx={_g('score_idx')} "
+            f"score_tx_byte={_g('score_tx_byte')} "
+            f"uart_txd={_g('uart_txd')} "
+            f"tx_busy={_g('tx_busy')} "
+            f"u_uart_tx.s_axis_tready_reg={_g('u_uart_tx.s_axis_tready_reg')} "
+            f"u_uart_tx.txd_reg={_g('u_uart_tx.txd_reg')}"
+        )
+
+    # Sample once before the UART byte starts so we can see score TX arm.
+    # Do NOT loop here — the start bit fires at cyc+3 and consuming clock cycles
+    # before _uart_rx_byte causes a framing error (wrong sampling point).
+    await RisingEdge(dut.clk)
+    log.info(f"  [score_tx_state] pre-byte: {_probe_score_tx()}")
+
+    try:
+        header = await _uart_rx_byte(dut, timeout_cycles=SCORE_PKT_TIMEOUT)
+    except AssertionError as exc:
+        return None, f"header wait failed: {exc}"
+
+    # Post-header state: confirms FSM is active and advancing.
+    log.info(f"  [score_tx_state] post-header: {_probe_score_tx()}")
+
+    if header != SCORE_HEADER:
+        return None, f"bad header: got 0x{header:02X}, expected 0x{SCORE_HEADER:02X}"
+
+    scores = []
+    for idx, name in enumerate(class_names[:7]):
+        raw = 0
+        for _ in range(4):
+            try:
+                b = await _uart_rx_byte(dut, timeout_cycles=SCORE_PKT_TIMEOUT)
+            except AssertionError as exc:
+                return None, f"byte read failed at class {idx}: {exc}"
+            raw = (raw << 8) | b
+        if raw >= 0x80000000:
+            raw -= 0x100000000
+        scores.append((idx, name, raw))
+
+    log.info(
+        "  [score_pkt] received: "
+        + "  ".join(f"{name}({idx})={score}" for idx, name, score in scores)
+    )
+    return scores, None
+
+
 def _build_packet(target, addr, payload):
     """Return flat byte list: [AA, 55, target, addr_hi, addr_lo, len_hi, len_lo, ...payload..., cksum]."""
     payload = list(payload)
@@ -1360,6 +1438,15 @@ async def test_chip_core_e2e(dut):
         f"kws_done never asserted within {kws_timeout_cycles:,} cycles  " \
         f"(real time: {time.time()-t0_real:.0f}s)"
 
+    # Read the 29-byte score TX packet emitted by chip_core after kws_done.
+    # This exercises the score_tx_active FSM path that was failing in GL sim.
+    uart_scores, uart_score_warning = await _uart_read_score_packet(dut, class_names)
+    if uart_scores is None:
+        dut._log.warning(f"  [score_pkt] FAILED: {uart_score_warning}")
+    else:
+        dut._log.info(f"  [score_pkt] PASSED: {_format_kws_scores(uart_scores)}")
+        dut._log.info(f"  [score_pkt] ranking: {_format_kws_score_ranking(uart_scores)}")
+
     rtl_name = class_names[rtl_class] if rtl_class < len(class_names) else f"cls{rtl_class}"
     expected_class = arith_class if arith_class is not None else gt_class
     expected_name = (
@@ -1369,7 +1456,11 @@ async def test_chip_core_e2e(dut):
     expected_source = "manifest arithmetic" if arith_class is not None else "dataset label"
     passed = (rtl_class == expected_class)
     label_match = (rtl_class == gt_class)
-    scores, score_warning = _read_kws_scores(dut, class_names)
+    # Prefer UART packet scores (exercises the GL path) over hierarchy probe
+    if uart_scores is not None:
+        scores, score_warning = uart_scores, uart_score_warning
+    else:
+        scores, score_warning = _read_kws_scores(dut, class_names)
 
     dut._log.info(
         f"  Selected sample[{sample_idx}] {Path(wav_path).name}  hex={hex_file}"

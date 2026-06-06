@@ -1,297 +1,381 @@
-=== yes  (2026-05-08 18:31:56)  seed=random  pipeline=full  target_samples=16000  window=fixed  quantization=rtl-input-requant mult=5805163 shift=31 input_scale=0.36125633 ===
+/home/dnocera/ML-Audio/src/rtl/dscnn/kws_top/generate_spect_full.py:171: DeprecationWarning: torch.ao.quantization is deprecated and will be removed in 2.10. 
+For migrations of users: 
+1. Eager mode quantization (torch.ao.quantization.quantize, torch.ao.quantization.quantize_dynamic), please migrate to use torchao eager mode quantize_ API instead 
+2. FX graph mode quantization (torch.ao.quantization.quantize_fx.prepare_fx,torch.ao.quantization.quantize_fx.convert_fx, please migrate to use torchao pt2e quantization API instead (prepare_pt2e, convert_pt2e) 
+3. pt2e quantization has been migrated to torchao (https://github.com/pytorch/ao/tree/main/torchao/quantization/pt2e) 
+see https://github.com/pytorch/ao/issues/2259 for more details
+  torch.quantization.prepare(model, inplace=True)
+/home/dnocera/ML-Audio/src/rtl/dscnn/kws_top/generate_spect_full.py:172: DeprecationWarning: torch.ao.quantization is deprecated and will be removed in 2.10. 
+For migrations of users: 
+1. Eager mode quantization (torch.ao.quantization.quantize, torch.ao.quantization.quantize_dynamic), please migrate to use torchao eager mode quantize_ API instead 
+2. FX graph mode quantization (torch.ao.quantization.quantize_fx.prepare_fx,torch.ao.quantization.quantize_fx.convert_fx, please migrate to use torchao pt2e quantization API instead (prepare_pt2e, convert_pt2e) 
+3. pt2e quantization has been migrated to torchao (https://github.com/pytorch/ao/tree/main/torchao/quantization/pt2e) 
+see https://github.com/pytorch/ao/issues/2259 for more details
+  torch.quantization.convert(model, inplace=True)
+/home/dnocera/ML-Audio/.venv/lib/python3.12/site-packages/torch/ao/quantization/observer.py:368: UserWarning: must run observer before calling calculate_qparams. Returning default values.
+  if not check_min_max_valid(min_val, max_val):
+Loading model      : /home/dnocera/ML-Audio/src/ml/models/dscnn-16center-v1/best_qat_checkpoint.pt
+Traceback (most recent call last):
+  File "/home/dnocera/ML-Audio/src/rtl/dscnn/kws_top/generate_spect_full.py", line 413, in <module>
+    main()
+  File "/home/dnocera/ML-Audio/src/rtl/dscnn/kws_top/generate_spect_full.py", line 231, in main
+    model = load_model(args.ckpt)
+            ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/dnocera/ML-Audio/src/rtl/dscnn/kws_top/generate_spect_full.py", line 173, in load_model
+    model.load_state_dict(checkpoint["model_state_dict"])
+  File "/home/dnocera/ML-Audio/.venv/lib/python3.12/site-packages/torch/nn/modules/module.py", line 2619, in load_state_dict
+    load(self, state_dict)
+  File "/home/dnocera/ML-Audio/.venv/lib/python3.12/site-packages/torch/nn/modules/module.py", line 2606, in load
+    load(child, child_state_dict, child_prefix)  # noqa: F821
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/dnocera/ML-Audio/.venv/lib/python3.12/site-packages/torch/nn/modules/module.py", line 2589, in load
+    module._load_from_state_dict(
+  File "/home/dnocera/ML-Audio/.venv/lib/python3.12/site-packages/torch/ao/nn/quantized/modules/conv.py", line 202, in _load_from_state_dict
+    self.set_weight_bias(state_dict[prefix + "weight"], state_dict[prefix + "bias"])
+  File "/home/dnocera/ML-Audio/.venv/lib/python3.12/site-packages/torch/ao/nn/quantized/modules/conv.py", line 567, in set_weight_bias
+    self._packed_params = torch.ops.quantized.conv2d_prepack(
+                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/dnocera/ML-Audio/.venv/lib/python3.12/site-packages/torch/_ops.py", line 1269, in __call__
+    return self._op(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+NotImplementedError: Could not run 'quantized::conv2d_prepack' with arguments from the 'CPU' backend. This could be because the operator doesn't exist for this backend, or was omitted during the selective/custom build process (if using custom build). If you are a Facebook employee using PyTorch on mobile, please visit https://fburl.com/ptmfixes for possible resolutions. 'quantized::conv2d_prepack' is only available for these backends: [Meta, QuantizedCPU, QuantizedCUDA, BackendSelect, Python, FuncTorchDynamicLayerBackMode, Functionalize, Named, Conjugate, Negative, ZeroTensor, ADInplaceOrView, AutogradOther, AutogradCPU, AutogradCUDA, AutogradXLA, AutogradMPS, AutogradXPU, AutogradHPU, AutogradLazy, AutogradMTIA, AutogradMAIA, AutogradPrivateUse1, AutogradMeta, Tracer, AutocastCPU, AutocastMTIA, AutocastMAIA, AutocastXPU, AutocastMPS, AutocastCUDA, FuncTorchBatched, BatchedNestedTensor, FuncTorchVmapMode, Batched, VmapMode, FuncTorchGradWrapper, PythonTLSSnapshot, FuncTorchDynamicLayerFrontMode, PreDispatch, PythonDispatcher].
 
-Generating 20 test vector(s) for keyword 'yes'  [full pipeline: PDM->CIC->FIR->STFFT]
-Input config: target_samples=16000  window=fixed  quantization=rtl-input-requant mult=5805163 shift=31 input_scale=0.36125633
-#     wav                                     nz   pytorch     arith   match
---------------------------------------------------------------------------------
-0     07089da9_nohash_2.wav                 2000        no       off  MISS (pytorch≠arith)
-      GAP: off:-14  on:-69  no:-173  wow:-256  unknown:-304  yes:-466  silence:-546  margin=55
-1     0717b9f6_nohash_2.wav                 2000       yes       yes  OK
-      GAP: yes:2009  unknown:1027  no:460  off:-351  wow:-1003  on:-1454  silence:-2146  margin=982
-2     105a0eea_nohash_2.wav                 2000       yes       yes  OK
-      GAP: yes:2450  unknown:815  no:702  wow:-291  off:-555  silence:-2084  on:-2511  margin=1635
-3     1eddce1d_nohash_1.wav                 2000       yes       yes  OK
-      GAP: yes:1170  no:846  unknown:652  wow:399  off:-1180  silence:-1746  on:-1779  margin=324
-4     24694eb6_nohash_1.wav                 2000       yes       yes  OK
-      GAP: yes:2896  no:1822  unknown:1812  wow:-262  off:-1172  on:-3154  silence:-3412  margin=1074
-5     3a929277_nohash_1.wav                 2000       yes       yes  OK
-      GAP: yes:335  off:-36  unknown:-43  no:-76  wow:-457  on:-683  silence:-702  margin=371
-6     3c4aa5ef_nohash_4.wav                 2000       yes       yes  OK
-      GAP: yes:2172  no:1084  unknown:786  wow:134  off:-743  silence:-2323  on:-2631  margin=1088
-7     5e3b7a84_nohash_0.wav                 2000       yes       yes  OK
-      GAP: yes:2524  unknown:1854  no:741  wow:-48  off:-1540  on:-1784  silence:-3205  margin=670
-8     611d2b50_nohash_3.wav                 2000        no        no  MISS
-      GAP: no:385  unknown:-12  wow:-202  yes:-205  off:-419  on:-486  silence:-764  margin=397
-9     6f9088d7_nohash_0.wav                 2000       yes       yes  OK
-      GAP: yes:111  unknown:-70  off:-185  no:-275  on:-314  wow:-462  silence:-488  margin=181
-10    7096522d_nohash_0.wav                 2000       yes       yes  OK
-      GAP: yes:3131  unknown:1063  no:398  wow:-297  off:-671  silence:-2182  on:-2907  margin=2068
-11    8f4c551f_nohash_3.wav                 2000       yes       yes  OK
-      GAP: yes:4300  unknown:2098  no:352  off:-423  wow:-423  on:-3194  silence:-4138  margin=2202
-12    9db2bfe9_nohash_3.wav                 2000       yes       yes  OK
-      GAP: yes:3285  unknown:1449  no:83  wow:-339  off:-368  on:-2306  silence:-3297  margin=1836
-13    a1cf7fd8_nohash_1.wav                 2000       yes       yes  OK
-      GAP: yes:594  unknown:408  no:111  on:-506  off:-542  wow:-693  silence:-954  margin=186
-14    b4ea0d9a_nohash_7.wav                 2000       yes       yes  OK
-      GAP: yes:3501  unknown:1366  off:-145  no:-182  wow:-886  on:-2302  silence:-2809  margin=2135
-15    b5552931_nohash_0.wav                 2000       yes       yes  OK
-      GAP: yes:292  off:22  unknown:21  no:10  wow:-376  on:-539  silence:-1122  margin=270
-16    bd8412df_nohash_0.wav                 2000       yes       yes  OK
-      GAP: yes:1054  unknown:307  off:-45  no:-331  on:-675  wow:-837  silence:-1011  margin=747
-17    d4d898d7_nohash_0.wav                 2000        no       off  MISS (pytorch≠arith)
-      GAP: off:278  no:12  on:-141  unknown:-181  wow:-309  yes:-404  silence:-1008  margin=266
-18    da040491_nohash_1.wav                 2000       yes       yes  OK
-      GAP: yes:2464  unknown:1003  no:432  off:-521  wow:-603  on:-2024  silence:-2227  margin=1461
-19    fe5c4a7a_nohash_0.wav                 2000   unknown        on  MISS (pytorch≠arith)
-      GAP: on:-119  no:-131  unknown:-184  off:-250  yes:-266  silence:-344  wow:-403  margin=12
+Meta: registered at /pytorch/aten/src/ATen/core/MetaFallbackKernel.cpp:23 [backend fallback]
+QuantizedCPU: registered at /pytorch/aten/src/ATen/native/quantized/cpu/qconv_prepack.cpp:846 [kernel]
+QuantizedCUDA: registered at /pytorch/aten/src/ATen/native/quantized/cudnn/ConvPrepack.cpp:200 [kernel]
+BackendSelect: fallthrough registered at /pytorch/aten/src/ATen/core/BackendSelectFallbackKernel.cpp:3 [backend fallback]
+Python: registered at /pytorch/aten/src/ATen/core/PythonFallbackKernel.cpp:198 [backend fallback]
+FuncTorchDynamicLayerBackMode: registered at /pytorch/aten/src/ATen/functorch/DynamicLayer.cpp:477 [backend fallback]
+Functionalize: registered at /pytorch/aten/src/ATen/FunctionalizeFallbackKernel.cpp:384 [backend fallback]
+Named: registered at /pytorch/aten/src/ATen/core/NamedRegistrations.cpp:5 [backend fallback]
+Conjugate: registered at /pytorch/aten/src/ATen/ConjugateFallback.cpp:17 [backend fallback]
+Negative: registered at /pytorch/aten/src/ATen/native/NegateFallback.cpp:18 [backend fallback]
+ZeroTensor: registered at /pytorch/aten/src/ATen/ZeroTensorFallback.cpp:115 [backend fallback]
+ADInplaceOrView: fallthrough registered at /pytorch/aten/src/ATen/core/VariableFallbackKernel.cpp:103 [backend fallback]
+AutogradOther: registered at /pytorch/aten/src/ATen/core/VariableFallbackKernel.cpp:62 [backend fallback]
+AutogradCPU: registered at /pytorch/aten/src/ATen/core/VariableFallbackKernel.cpp:66 [backend fallback]
+AutogradCUDA: registered at /pytorch/aten/src/ATen/core/VariableFallbackKernel.cpp:74 [backend fallback]
+AutogradXLA: registered at /pytorch/aten/src/ATen/core/VariableFallbackKernel.cpp:86 [backend fallback]
+AutogradMPS: registered at /pytorch/aten/src/ATen/core/VariableFallbackKernel.cpp:94 [backend fallback]
+AutogradXPU: registered at /pytorch/aten/src/ATen/core/VariableFallbackKernel.cpp:70 [backend fallback]
+AutogradHPU: registered at /pytorch/aten/src/ATen/core/VariableFallbackKernel.cpp:107 [backend fallback]
+AutogradLazy: registered at /pytorch/aten/src/ATen/core/VariableFallbackKernel.cpp:90 [backend fallback]
+AutogradMTIA: registered at /pytorch/aten/src/ATen/core/VariableFallbackKernel.cpp:78 [backend fallback]
+AutogradMAIA: registered at /pytorch/aten/src/ATen/core/VariableFallbackKernel.cpp:82 [backend fallback]
+AutogradPrivateUse1: registered at /pytorch/aten/src/ATen/core/VariableFallbackKernel.cpp:111 [backend fallback]
+AutogradMeta: registered at /pytorch/aten/src/ATen/core/VariableFallbackKernel.cpp:98 [backend fallback]
+Tracer: registered at /pytorch/torch/csrc/autograd/TraceTypeManual.cpp:296 [backend fallback]
+AutocastCPU: fallthrough registered at /pytorch/aten/src/ATen/autocast_mode.cpp:336 [backend fallback]
+AutocastMTIA: fallthrough registered at /pytorch/aten/src/ATen/autocast_mode.cpp:480 [backend fallback]
+AutocastMAIA: fallthrough registered at /pytorch/aten/src/ATen/autocast_mode.cpp:518 [backend fallback]
+AutocastXPU: fallthrough registered at /pytorch/aten/src/ATen/autocast_mode.cpp:556 [backend fallback]
+AutocastMPS: fallthrough registered at /pytorch/aten/src/ATen/autocast_mode.cpp:221 [backend fallback]
+AutocastCUDA: fallthrough registered at /pytorch/aten/src/ATen/autocast_mode.cpp:177 [backend fallback]
+FuncTorchBatched: registered at /pytorch/aten/src/ATen/functorch/LegacyBatchingRegistrations.cpp:727 [backend fallback]
+BatchedNestedTensor: registered at /pytorch/aten/src/ATen/functorch/LegacyBatchingRegistrations.cpp:754 [backend fallback]
+FuncTorchVmapMode: fallthrough registered at /pytorch/aten/src/ATen/functorch/VmapModeRegistrations.cpp:22 [backend fallback]
+Batched: registered at /pytorch/aten/src/ATen/LegacyBatchingRegistrations.cpp:1072 [backend fallback]
+VmapMode: fallthrough registered at /pytorch/aten/src/ATen/VmapModeRegistrations.cpp:32 [backend fallback]
+FuncTorchGradWrapper: registered at /pytorch/aten/src/ATen/functorch/TensorWrapper.cpp:210 [backend fallback]
+PythonTLSSnapshot: registered at /pytorch/aten/src/ATen/core/PythonFallbackKernel.cpp:206 [backend fallback]
+FuncTorchDynamicLayerFrontMode: registered at /pytorch/aten/src/ATen/functorch/DynamicLayer.cpp:473 [backend fallback]
+PreDispatch: registered at /pytorch/aten/src/ATen/core/PythonFallbackKernel.cpp:210 [backend fallback]
+PythonDispatcher: registered at /pytorch/aten/src/ATen/core/PythonFallbackKernel.cpp:202 [backend fallback]
 
-Golden model accuracy: 16/20
-Written: spectrograms/test_vectors.json
-Written: 20 spectrogram hex file(s) in spectrograms
+/home/dnocera/ML-Audio/src/rtl/dscnn/kws_top/generate_spect_full.py:171: DeprecationWarning: torch.ao.quantization is deprecated and will be removed in 2.10. 
+For migrations of users: 
+1. Eager mode quantization (torch.ao.quantization.quantize, torch.ao.quantization.quantize_dynamic), please migrate to use torchao eager mode quantize_ API instead 
+2. FX graph mode quantization (torch.ao.quantization.quantize_fx.prepare_fx,torch.ao.quantization.quantize_fx.convert_fx, please migrate to use torchao pt2e quantization API instead (prepare_pt2e, convert_pt2e) 
+3. pt2e quantization has been migrated to torchao (https://github.com/pytorch/ao/tree/main/torchao/quantization/pt2e) 
+see https://github.com/pytorch/ao/issues/2259 for more details
+  torch.quantization.prepare(model, inplace=True)
+/home/dnocera/ML-Audio/src/rtl/dscnn/kws_top/generate_spect_full.py:172: DeprecationWarning: torch.ao.quantization is deprecated and will be removed in 2.10. 
+For migrations of users: 
+1. Eager mode quantization (torch.ao.quantization.quantize, torch.ao.quantization.quantize_dynamic), please migrate to use torchao eager mode quantize_ API instead 
+2. FX graph mode quantization (torch.ao.quantization.quantize_fx.prepare_fx,torch.ao.quantization.quantize_fx.convert_fx, please migrate to use torchao pt2e quantization API instead (prepare_pt2e, convert_pt2e) 
+3. pt2e quantization has been migrated to torchao (https://github.com/pytorch/ao/tree/main/torchao/quantization/pt2e) 
+see https://github.com/pytorch/ao/issues/2259 for more details
+  torch.quantization.convert(model, inplace=True)
+/home/dnocera/ML-Audio/.venv/lib/python3.12/site-packages/torch/ao/quantization/observer.py:368: UserWarning: must run observer before calling calculate_qparams. Returning default values.
+  if not check_min_max_valid(min_val, max_val):
+Loading model      : /home/dnocera/ML-Audio/src/ml/models/dscnn-16center-v1/best_qat_checkpoint.pt
+Traceback (most recent call last):
+  File "/home/dnocera/ML-Audio/src/rtl/dscnn/kws_top/generate_spect_full.py", line 413, in <module>
+    main()
+  File "/home/dnocera/ML-Audio/src/rtl/dscnn/kws_top/generate_spect_full.py", line 231, in main
+    model = load_model(args.ckpt)
+            ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/dnocera/ML-Audio/src/rtl/dscnn/kws_top/generate_spect_full.py", line 173, in load_model
+    model.load_state_dict(checkpoint["model_state_dict"])
+  File "/home/dnocera/ML-Audio/.venv/lib/python3.12/site-packages/torch/nn/modules/module.py", line 2619, in load_state_dict
+    load(self, state_dict)
+  File "/home/dnocera/ML-Audio/.venv/lib/python3.12/site-packages/torch/nn/modules/module.py", line 2606, in load
+    load(child, child_state_dict, child_prefix)  # noqa: F821
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/dnocera/ML-Audio/.venv/lib/python3.12/site-packages/torch/nn/modules/module.py", line 2589, in load
+    module._load_from_state_dict(
+  File "/home/dnocera/ML-Audio/.venv/lib/python3.12/site-packages/torch/ao/nn/quantized/modules/conv.py", line 202, in _load_from_state_dict
+    self.set_weight_bias(state_dict[prefix + "weight"], state_dict[prefix + "bias"])
+  File "/home/dnocera/ML-Audio/.venv/lib/python3.12/site-packages/torch/ao/nn/quantized/modules/conv.py", line 567, in set_weight_bias
+    self._packed_params = torch.ops.quantized.conv2d_prepack(
+                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/dnocera/ML-Audio/.venv/lib/python3.12/site-packages/torch/_ops.py", line 1269, in __call__
+    return self._op(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+NotImplementedError: Could not run 'quantized::conv2d_prepack' with arguments from the 'CPU' backend. This could be because the operator doesn't exist for this backend, or was omitted during the selective/custom build process (if using custom build). If you are a Facebook employee using PyTorch on mobile, please visit https://fburl.com/ptmfixes for possible resolutions. 'quantized::conv2d_prepack' is only available for these backends: [Meta, QuantizedCPU, QuantizedCUDA, BackendSelect, Python, FuncTorchDynamicLayerBackMode, Functionalize, Named, Conjugate, Negative, ZeroTensor, ADInplaceOrView, AutogradOther, AutogradCPU, AutogradCUDA, AutogradXLA, AutogradMPS, AutogradXPU, AutogradHPU, AutogradLazy, AutogradMTIA, AutogradMAIA, AutogradPrivateUse1, AutogradMeta, Tracer, AutocastCPU, AutocastMTIA, AutocastMAIA, AutocastXPU, AutocastMPS, AutocastCUDA, FuncTorchBatched, BatchedNestedTensor, FuncTorchVmapMode, Batched, VmapMode, FuncTorchGradWrapper, PythonTLSSnapshot, FuncTorchDynamicLayerFrontMode, PreDispatch, PythonDispatcher].
 
-=== no  (2026-05-08 23:21:32)  seed=random  pipeline=full  target_samples=16000  window=fixed  quantization=rtl-input-requant mult=5805163 shift=31 input_scale=0.36125633 ===
+Meta: registered at /pytorch/aten/src/ATen/core/MetaFallbackKernel.cpp:23 [backend fallback]
+QuantizedCPU: registered at /pytorch/aten/src/ATen/native/quantized/cpu/qconv_prepack.cpp:846 [kernel]
+QuantizedCUDA: registered at /pytorch/aten/src/ATen/native/quantized/cudnn/ConvPrepack.cpp:200 [kernel]
+BackendSelect: fallthrough registered at /pytorch/aten/src/ATen/core/BackendSelectFallbackKernel.cpp:3 [backend fallback]
+Python: registered at /pytorch/aten/src/ATen/core/PythonFallbackKernel.cpp:198 [backend fallback]
+FuncTorchDynamicLayerBackMode: registered at /pytorch/aten/src/ATen/functorch/DynamicLayer.cpp:477 [backend fallback]
+Functionalize: registered at /pytorch/aten/src/ATen/FunctionalizeFallbackKernel.cpp:384 [backend fallback]
+Named: registered at /pytorch/aten/src/ATen/core/NamedRegistrations.cpp:5 [backend fallback]
+Conjugate: registered at /pytorch/aten/src/ATen/ConjugateFallback.cpp:17 [backend fallback]
+Negative: registered at /pytorch/aten/src/ATen/native/NegateFallback.cpp:18 [backend fallback]
+ZeroTensor: registered at /pytorch/aten/src/ATen/ZeroTensorFallback.cpp:115 [backend fallback]
+ADInplaceOrView: fallthrough registered at /pytorch/aten/src/ATen/core/VariableFallbackKernel.cpp:103 [backend fallback]
+AutogradOther: registered at /pytorch/aten/src/ATen/core/VariableFallbackKernel.cpp:62 [backend fallback]
+AutogradCPU: registered at /pytorch/aten/src/ATen/core/VariableFallbackKernel.cpp:66 [backend fallback]
+AutogradCUDA: registered at /pytorch/aten/src/ATen/core/VariableFallbackKernel.cpp:74 [backend fallback]
+AutogradXLA: registered at /pytorch/aten/src/ATen/core/VariableFallbackKernel.cpp:86 [backend fallback]
+AutogradMPS: registered at /pytorch/aten/src/ATen/core/VariableFallbackKernel.cpp:94 [backend fallback]
+AutogradXPU: registered at /pytorch/aten/src/ATen/core/VariableFallbackKernel.cpp:70 [backend fallback]
+AutogradHPU: registered at /pytorch/aten/src/ATen/core/VariableFallbackKernel.cpp:107 [backend fallback]
+AutogradLazy: registered at /pytorch/aten/src/ATen/core/VariableFallbackKernel.cpp:90 [backend fallback]
+AutogradMTIA: registered at /pytorch/aten/src/ATen/core/VariableFallbackKernel.cpp:78 [backend fallback]
+AutogradMAIA: registered at /pytorch/aten/src/ATen/core/VariableFallbackKernel.cpp:82 [backend fallback]
+AutogradPrivateUse1: registered at /pytorch/aten/src/ATen/core/VariableFallbackKernel.cpp:111 [backend fallback]
+AutogradMeta: registered at /pytorch/aten/src/ATen/core/VariableFallbackKernel.cpp:98 [backend fallback]
+Tracer: registered at /pytorch/torch/csrc/autograd/TraceTypeManual.cpp:296 [backend fallback]
+AutocastCPU: fallthrough registered at /pytorch/aten/src/ATen/autocast_mode.cpp:336 [backend fallback]
+AutocastMTIA: fallthrough registered at /pytorch/aten/src/ATen/autocast_mode.cpp:480 [backend fallback]
+AutocastMAIA: fallthrough registered at /pytorch/aten/src/ATen/autocast_mode.cpp:518 [backend fallback]
+AutocastXPU: fallthrough registered at /pytorch/aten/src/ATen/autocast_mode.cpp:556 [backend fallback]
+AutocastMPS: fallthrough registered at /pytorch/aten/src/ATen/autocast_mode.cpp:221 [backend fallback]
+AutocastCUDA: fallthrough registered at /pytorch/aten/src/ATen/autocast_mode.cpp:177 [backend fallback]
+FuncTorchBatched: registered at /pytorch/aten/src/ATen/functorch/LegacyBatchingRegistrations.cpp:727 [backend fallback]
+BatchedNestedTensor: registered at /pytorch/aten/src/ATen/functorch/LegacyBatchingRegistrations.cpp:754 [backend fallback]
+FuncTorchVmapMode: fallthrough registered at /pytorch/aten/src/ATen/functorch/VmapModeRegistrations.cpp:22 [backend fallback]
+Batched: registered at /pytorch/aten/src/ATen/LegacyBatchingRegistrations.cpp:1072 [backend fallback]
+VmapMode: fallthrough registered at /pytorch/aten/src/ATen/VmapModeRegistrations.cpp:32 [backend fallback]
+FuncTorchGradWrapper: registered at /pytorch/aten/src/ATen/functorch/TensorWrapper.cpp:210 [backend fallback]
+PythonTLSSnapshot: registered at /pytorch/aten/src/ATen/core/PythonFallbackKernel.cpp:206 [backend fallback]
+FuncTorchDynamicLayerFrontMode: registered at /pytorch/aten/src/ATen/functorch/DynamicLayer.cpp:473 [backend fallback]
+PreDispatch: registered at /pytorch/aten/src/ATen/core/PythonFallbackKernel.cpp:210 [backend fallback]
+PythonDispatcher: registered at /pytorch/aten/src/ATen/core/PythonFallbackKernel.cpp:202 [backend fallback]
+
+Traceback (most recent call last):
+  File "/home/dnocera/ML-Audio/src/rtl/dscnn/kws_top/generate_spect_full.py", line 32, in <module>
+    import torch
+ModuleNotFoundError: No module named 'torch'
+/home/dnocera/ML-Audio/src/rtl/dscnn/kws_top/generate_spect_full.py:171: DeprecationWarning: torch.ao.quantization is deprecated and will be removed in 2.10. 
+For migrations of users: 
+1. Eager mode quantization (torch.ao.quantization.quantize, torch.ao.quantization.quantize_dynamic), please migrate to use torchao eager mode quantize_ API instead 
+2. FX graph mode quantization (torch.ao.quantization.quantize_fx.prepare_fx,torch.ao.quantization.quantize_fx.convert_fx, please migrate to use torchao pt2e quantization API instead (prepare_pt2e, convert_pt2e) 
+3. pt2e quantization has been migrated to torchao (https://github.com/pytorch/ao/tree/main/torchao/quantization/pt2e) 
+see https://github.com/pytorch/ao/issues/2259 for more details
+  torch.quantization.prepare(model, inplace=True)
+/home/dnocera/ML-Audio/src/rtl/dscnn/kws_top/generate_spect_full.py:172: DeprecationWarning: torch.ao.quantization is deprecated and will be removed in 2.10. 
+For migrations of users: 
+1. Eager mode quantization (torch.ao.quantization.quantize, torch.ao.quantization.quantize_dynamic), please migrate to use torchao eager mode quantize_ API instead 
+2. FX graph mode quantization (torch.ao.quantization.quantize_fx.prepare_fx,torch.ao.quantization.quantize_fx.convert_fx, please migrate to use torchao pt2e quantization API instead (prepare_pt2e, convert_pt2e) 
+3. pt2e quantization has been migrated to torchao (https://github.com/pytorch/ao/tree/main/torchao/quantization/pt2e) 
+see https://github.com/pytorch/ao/issues/2259 for more details
+  torch.quantization.convert(model, inplace=True)
+/home/dnocera/ML-Audio/.venv/lib/python3.12/site-packages/torch/ao/quantization/observer.py:368: UserWarning: must run observer before calling calculate_qparams. Returning default values.
+  if not check_min_max_valid(min_val, max_val):
+Loading model      : /home/dnocera/ML-Audio/src/ml/models/dscnn-16center-v1/best_qat_checkpoint.pt
+Traceback (most recent call last):
+  File "/home/dnocera/ML-Audio/src/rtl/dscnn/kws_top/generate_spect_full.py", line 413, in <module>
+    main()
+  File "/home/dnocera/ML-Audio/src/rtl/dscnn/kws_top/generate_spect_full.py", line 231, in main
+    model = load_model(args.ckpt)
+            ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/dnocera/ML-Audio/src/rtl/dscnn/kws_top/generate_spect_full.py", line 173, in load_model
+    model.load_state_dict(checkpoint["model_state_dict"])
+  File "/home/dnocera/ML-Audio/.venv/lib/python3.12/site-packages/torch/nn/modules/module.py", line 2619, in load_state_dict
+    load(self, state_dict)
+  File "/home/dnocera/ML-Audio/.venv/lib/python3.12/site-packages/torch/nn/modules/module.py", line 2606, in load
+    load(child, child_state_dict, child_prefix)  # noqa: F821
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/dnocera/ML-Audio/.venv/lib/python3.12/site-packages/torch/nn/modules/module.py", line 2589, in load
+    module._load_from_state_dict(
+  File "/home/dnocera/ML-Audio/.venv/lib/python3.12/site-packages/torch/ao/nn/quantized/modules/conv.py", line 202, in _load_from_state_dict
+    self.set_weight_bias(state_dict[prefix + "weight"], state_dict[prefix + "bias"])
+  File "/home/dnocera/ML-Audio/.venv/lib/python3.12/site-packages/torch/ao/nn/quantized/modules/conv.py", line 567, in set_weight_bias
+    self._packed_params = torch.ops.quantized.conv2d_prepack(
+                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/dnocera/ML-Audio/.venv/lib/python3.12/site-packages/torch/_ops.py", line 1269, in __call__
+    return self._op(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+NotImplementedError: Could not run 'quantized::conv2d_prepack' with arguments from the 'CPU' backend. This could be because the operator doesn't exist for this backend, or was omitted during the selective/custom build process (if using custom build). If you are a Facebook employee using PyTorch on mobile, please visit https://fburl.com/ptmfixes for possible resolutions. 'quantized::conv2d_prepack' is only available for these backends: [Meta, QuantizedCPU, QuantizedCUDA, BackendSelect, Python, FuncTorchDynamicLayerBackMode, Functionalize, Named, Conjugate, Negative, ZeroTensor, ADInplaceOrView, AutogradOther, AutogradCPU, AutogradCUDA, AutogradXLA, AutogradMPS, AutogradXPU, AutogradHPU, AutogradLazy, AutogradMTIA, AutogradMAIA, AutogradPrivateUse1, AutogradMeta, Tracer, AutocastCPU, AutocastMTIA, AutocastMAIA, AutocastXPU, AutocastMPS, AutocastCUDA, FuncTorchBatched, BatchedNestedTensor, FuncTorchVmapMode, Batched, VmapMode, FuncTorchGradWrapper, PythonTLSSnapshot, FuncTorchDynamicLayerFrontMode, PreDispatch, PythonDispatcher].
+
+Meta: registered at /pytorch/aten/src/ATen/core/MetaFallbackKernel.cpp:23 [backend fallback]
+QuantizedCPU: registered at /pytorch/aten/src/ATen/native/quantized/cpu/qconv_prepack.cpp:846 [kernel]
+QuantizedCUDA: registered at /pytorch/aten/src/ATen/native/quantized/cudnn/ConvPrepack.cpp:200 [kernel]
+BackendSelect: fallthrough registered at /pytorch/aten/src/ATen/core/BackendSelectFallbackKernel.cpp:3 [backend fallback]
+Python: registered at /pytorch/aten/src/ATen/core/PythonFallbackKernel.cpp:198 [backend fallback]
+FuncTorchDynamicLayerBackMode: registered at /pytorch/aten/src/ATen/functorch/DynamicLayer.cpp:477 [backend fallback]
+Functionalize: registered at /pytorch/aten/src/ATen/FunctionalizeFallbackKernel.cpp:384 [backend fallback]
+Named: registered at /pytorch/aten/src/ATen/core/NamedRegistrations.cpp:5 [backend fallback]
+Conjugate: registered at /pytorch/aten/src/ATen/ConjugateFallback.cpp:17 [backend fallback]
+Negative: registered at /pytorch/aten/src/ATen/native/NegateFallback.cpp:18 [backend fallback]
+ZeroTensor: registered at /pytorch/aten/src/ATen/ZeroTensorFallback.cpp:115 [backend fallback]
+ADInplaceOrView: fallthrough registered at /pytorch/aten/src/ATen/core/VariableFallbackKernel.cpp:103 [backend fallback]
+AutogradOther: registered at /pytorch/aten/src/ATen/core/VariableFallbackKernel.cpp:62 [backend fallback]
+AutogradCPU: registered at /pytorch/aten/src/ATen/core/VariableFallbackKernel.cpp:66 [backend fallback]
+AutogradCUDA: registered at /pytorch/aten/src/ATen/core/VariableFallbackKernel.cpp:74 [backend fallback]
+AutogradXLA: registered at /pytorch/aten/src/ATen/core/VariableFallbackKernel.cpp:86 [backend fallback]
+AutogradMPS: registered at /pytorch/aten/src/ATen/core/VariableFallbackKernel.cpp:94 [backend fallback]
+AutogradXPU: registered at /pytorch/aten/src/ATen/core/VariableFallbackKernel.cpp:70 [backend fallback]
+AutogradHPU: registered at /pytorch/aten/src/ATen/core/VariableFallbackKernel.cpp:107 [backend fallback]
+AutogradLazy: registered at /pytorch/aten/src/ATen/core/VariableFallbackKernel.cpp:90 [backend fallback]
+AutogradMTIA: registered at /pytorch/aten/src/ATen/core/VariableFallbackKernel.cpp:78 [backend fallback]
+AutogradMAIA: registered at /pytorch/aten/src/ATen/core/VariableFallbackKernel.cpp:82 [backend fallback]
+AutogradPrivateUse1: registered at /pytorch/aten/src/ATen/core/VariableFallbackKernel.cpp:111 [backend fallback]
+AutogradMeta: registered at /pytorch/aten/src/ATen/core/VariableFallbackKernel.cpp:98 [backend fallback]
+Tracer: registered at /pytorch/torch/csrc/autograd/TraceTypeManual.cpp:296 [backend fallback]
+AutocastCPU: fallthrough registered at /pytorch/aten/src/ATen/autocast_mode.cpp:336 [backend fallback]
+AutocastMTIA: fallthrough registered at /pytorch/aten/src/ATen/autocast_mode.cpp:480 [backend fallback]
+AutocastMAIA: fallthrough registered at /pytorch/aten/src/ATen/autocast_mode.cpp:518 [backend fallback]
+AutocastXPU: fallthrough registered at /pytorch/aten/src/ATen/autocast_mode.cpp:556 [backend fallback]
+AutocastMPS: fallthrough registered at /pytorch/aten/src/ATen/autocast_mode.cpp:221 [backend fallback]
+AutocastCUDA: fallthrough registered at /pytorch/aten/src/ATen/autocast_mode.cpp:177 [backend fallback]
+FuncTorchBatched: registered at /pytorch/aten/src/ATen/functorch/LegacyBatchingRegistrations.cpp:727 [backend fallback]
+BatchedNestedTensor: registered at /pytorch/aten/src/ATen/functorch/LegacyBatchingRegistrations.cpp:754 [backend fallback]
+FuncTorchVmapMode: fallthrough registered at /pytorch/aten/src/ATen/functorch/VmapModeRegistrations.cpp:22 [backend fallback]
+Batched: registered at /pytorch/aten/src/ATen/LegacyBatchingRegistrations.cpp:1072 [backend fallback]
+VmapMode: fallthrough registered at /pytorch/aten/src/ATen/VmapModeRegistrations.cpp:32 [backend fallback]
+FuncTorchGradWrapper: registered at /pytorch/aten/src/ATen/functorch/TensorWrapper.cpp:210 [backend fallback]
+PythonTLSSnapshot: registered at /pytorch/aten/src/ATen/core/PythonFallbackKernel.cpp:206 [backend fallback]
+FuncTorchDynamicLayerFrontMode: registered at /pytorch/aten/src/ATen/functorch/DynamicLayer.cpp:473 [backend fallback]
+PreDispatch: registered at /pytorch/aten/src/ATen/core/PythonFallbackKernel.cpp:210 [backend fallback]
+PythonDispatcher: registered at /pytorch/aten/src/ATen/core/PythonFallbackKernel.cpp:202 [backend fallback]
+
+/home/dnocera/ML-Audio/.venv/lib/python3.12/site-packages/torch/_utils.py:455: UserWarning: TypedStorage is deprecated. It will be removed in the future and UntypedStorage will be the only storage class. This should only matter to you if you are using storages directly.  To access UntypedStorage directly, use tensor.untyped_storage() instead of tensor.storage()
+  device=storage.device,
+/home/dnocera/ML-Audio/src/rtl/dscnn/kws_top/generate_spect_full.py:171: DeprecationWarning: torch.ao.quantization is deprecated and will be removed in 2.10. 
+For migrations of users: 
+1. Eager mode quantization (torch.ao.quantization.quantize, torch.ao.quantization.quantize_dynamic), please migrate to use torchao eager mode quantize_ API instead 
+2. FX graph mode quantization (torch.ao.quantization.quantize_fx.prepare_fx,torch.ao.quantization.quantize_fx.convert_fx, please migrate to use torchao pt2e quantization API instead (prepare_pt2e, convert_pt2e) 
+3. pt2e quantization has been migrated to torchao (https://github.com/pytorch/ao/tree/main/torchao/quantization/pt2e) 
+see https://github.com/pytorch/ao/issues/2259 for more details
+  torch.quantization.prepare(model, inplace=True)
+/home/dnocera/ML-Audio/src/rtl/dscnn/kws_top/generate_spect_full.py:172: DeprecationWarning: torch.ao.quantization is deprecated and will be removed in 2.10. 
+For migrations of users: 
+1. Eager mode quantization (torch.ao.quantization.quantize, torch.ao.quantization.quantize_dynamic), please migrate to use torchao eager mode quantize_ API instead 
+2. FX graph mode quantization (torch.ao.quantization.quantize_fx.prepare_fx,torch.ao.quantization.quantize_fx.convert_fx, please migrate to use torchao pt2e quantization API instead (prepare_pt2e, convert_pt2e) 
+3. pt2e quantization has been migrated to torchao (https://github.com/pytorch/ao/tree/main/torchao/quantization/pt2e) 
+see https://github.com/pytorch/ao/issues/2259 for more details
+  torch.quantization.convert(model, inplace=True)
+/home/dnocera/ML-Audio/.venv/lib/python3.12/site-packages/torch/ao/quantization/observer.py:368: UserWarning: must run observer before calling calculate_qparams. Returning default values.
+  if not check_min_max_valid(min_val, max_val):
+=== no  (2026-06-05 13:09:50)  seed=42  pipeline=full  target_samples=16000  window=fixed  quantization=rtl-input-requant mult=5805163 shift=31 input_scale=0.36125633 ===
 
 Generating 20 test vector(s) for keyword 'no'  [full pipeline: PDM->CIC->FIR->STFFT]
 Input config: target_samples=16000  window=fixed  quantization=rtl-input-requant mult=5805163 shift=31 input_scale=0.36125633
 #     wav                                     nz   pytorch     arith   match
 --------------------------------------------------------------------------------
-0     079d1020_nohash_0.wav                 2000        no        no  OK
-      GAP: no:1373  unknown:297  wow:180  yes:-520  on:-745  off:-1047  silence:-1265  margin=1076
-1     17f0e206_nohash_0.wav                 2000        no        no  OK
-      GAP: no:2278  yes:1610  unknown:1176  wow:805  off:-2183  silence:-2260  on:-2996  margin=668
-2     1995cf9e_nohash_0.wav                 2000        no        no  OK
-      GAP: no:1511  unknown:711  wow:97  yes:-159  silence:-924  on:-1039  off:-1811  margin=800
-3     29dce108_nohash_2.wav                 2000        no        no  OK
-      GAP: no:295  unknown:65  on:-221  silence:-317  wow:-357  yes:-416  off:-713  margin=230
-4     2a1f4853_nohash_2.wav                 2000        no        no  OK
-      GAP: no:783  yes:465  unknown:399  wow:-31  off:-762  on:-1119  silence:-1419  margin=318
-5     2fee065a_nohash_3.wav                 2000        no   unknown  MISS (pytorch≠arith)
-      GAP: unknown:706  no:591  wow:309  on:-474  yes:-561  silence:-1032  off:-1272  margin=115
-6     3bc21161_nohash_0.wav                 2000        no        no  OK
-      GAP: no:668  unknown:182  wow:-3  on:-411  yes:-443  off:-733  silence:-969  margin=486
-7     49f30eed_nohash_0.wav                 2000        no        no  OK
-      GAP: no:629  unknown:568  yes:-22  on:-378  wow:-482  silence:-935  off:-1020  margin=61
-8     4a1e736b_nohash_3.wav                 2000        no        no  OK
-      GAP: no:954  unknown:954  on:407  yes:-560  wow:-568  off:-758  silence:-2116  margin=0
-9     53578f4e_nohash_0.wav                 2000        no        no  OK
-      GAP: no:925  wow:288  unknown:273  yes:-207  silence:-776  on:-964  off:-1245  margin=637
-10    6021f08b_nohash_0.wav                 2000        no        no  OK
-      GAP: no:1809  unknown:794  wow:467  on:-278  yes:-1047  off:-1537  silence:-1934  margin=1015
-11    65d14087_nohash_0.wav                 2000        no   silence  MISS (pytorch≠arith)
-      GAP: silence:118  on:-105  off:-256  wow:-306  unknown:-316  no:-325  yes:-528  margin=223
-12    68dd409e_nohash_0.wav                 2000        no        no  OK
-      GAP: no:956  wow:303  unknown:251  yes:-59  off:-494  on:-1302  silence:-1405  margin=653
-13    86f3558f_nohash_0.wav                 2000   silence   silence  MISS
-      GAP: silence:1229  on:12  wow:-294  unknown:-425  off:-455  no:-633  yes:-1094  margin=1217
-14    9d32f10a_nohash_0.wav                 2000       off       wow  MISS (pytorch≠arith)
-      GAP: wow:210  off:186  no:-195  unknown:-301  yes:-427  silence:-529  on:-725  margin=24
-15    a97017df_nohash_0.wav                 2000        no        no  OK
-      GAP: no:3111  unknown:1343  yes:1205  wow:584  silence:-2156  on:-2768  off:-2860  margin=1768
-16    c24d96eb_nohash_0.wav                 2000        no        no  OK
-      GAP: no:1615  unknown:815  yes:343  wow:70  silence:-1251  on:-1329  off:-1883  margin=800
-17    c634a189_nohash_1.wav                 2000        no        no  OK
-      GAP: no:2199  yes:1229  unknown:1055  wow:280  off:-1943  silence:-2102  on:-2266  margin=970
-18    d264f7b6_nohash_1.wav                 2000        no        no  OK
-      GAP: no:3002  unknown:1095  wow:708  yes:114  on:-1947  off:-2211  silence:-2415  margin=1907
-19    f2e59fea_nohash_2.wav                 2000        no        no  OK
-      GAP: no:1519  wow:686  unknown:629  yes:-482  on:-952  off:-1145  silence:-2009  margin=833
+0     08ab8082_nohash_1.wav                 2000        no        no  OK
+      GAP: no:1222  wow:1145  unknown:620  yes:384  on:-1670  off:-1688  silence:-1802  margin=77
+1     0a396ff2_nohash_0.wav                 2000        no        no  OK
+      GAP: no:1347  unknown:702  wow:414  yes:319  off:-1488  silence:-1500  on:-1502  margin=645
+2     0b77ee66_nohash_0.wav                 2000   unknown   unknown  MISS
+      GAP: unknown:1709  no:1410  yes:307  on:-364  wow:-526  off:-1897  silence:-2229  margin=299
+3     195c120a_nohash_0.wav                 2000        no        no  OK
+      GAP: no:1900  unknown:786  wow:759  yes:-773  on:-800  off:-1272  silence:-2360  margin=1114
+4     1a73dcd1_nohash_1.wav                 2000   silence   silence  MISS
+      GAP: silence:564  on:-244  unknown:-346  wow:-379  no:-409  yes:-425  off:-466  margin=808
+5     1c3f50ad_nohash_0.wav                 2000        no        no  OK
+      GAP: no:3567  unknown:1423  wow:1084  yes:195  off:-2570  on:-2571  silence:-2775  margin=2144
+6     1ecfb537_nohash_0.wav                 2000        no        no  OK
+      GAP: no:2348  unknown:830  wow:406  yes:130  off:-1705  on:-1730  silence:-1975  margin=1518
+7     257251e0_nohash_0.wav                 2000        no       off  MISS (pytorch≠arith)
+      GAP: off:145  no:-29  on:-86  wow:-240  unknown:-253  yes:-537  silence:-804  margin=174
+8     3b3d2f59_nohash_0.wav                 2000        no        no  OK
+      GAP: no:2678  unknown:1416  yes:1350  wow:331  silence:-2329  on:-2403  off:-2595  margin=1262
+9     3f170018_nohash_0.wav                 2000        no        no  OK
+      GAP: no:1918  unknown:1120  yes:613  wow:-256  on:-1416  silence:-1559  off:-1957  margin=798
+10    4bb1244f_nohash_1.wav                 2000        no        no  OK
+      GAP: no:2208  unknown:1268  yes:432  wow:-67  on:-1337  silence:-1959  off:-2109  margin=940
+11    7211390b_nohash_2.wav                 2000        no        no  OK
+      GAP: no:1092  unknown:490  wow:20  yes:-253  on:-432  off:-529  silence:-2104  margin=602
+12    96a48d28_nohash_2.wav                 2000        no        no  OK
+      GAP: no:735  unknown:345  on:73  wow:-401  yes:-562  off:-634  silence:-1246  margin=390
+13    a24cf51c_nohash_0.wav                 2000        no       wow  MISS (pytorch≠arith)
+      GAP: wow:1223  no:1132  unknown:695  yes:69  silence:-1086  on:-1597  off:-2154  margin=91
+14    af790082_nohash_3.wav                 2000       off       off  MISS
+      GAP: off:397  yes:181  no:-43  unknown:-142  wow:-286  silence:-856  on:-916  margin=216
+15    b80d6c5e_nohash_0.wav                 2000        no        no  OK
+      GAP: no:690  unknown:292  wow:57  yes:-196  on:-681  off:-914  silence:-931  margin=398
+16    c50f55b8_nohash_0.wav                 2000        no        no  OK
+      GAP: no:2841  unknown:1571  yes:963  wow:-173  on:-1911  off:-2165  silence:-2614  margin=1270
+17    c50f55b8_nohash_9.wav                 2000        no        no  OK
+      GAP: no:1528  unknown:816  yes:4  wow:-170  on:-841  off:-1094  silence:-1861  margin=712
+18    c5570933_nohash_1.wav                 2000        no        no  OK
+      GAP: no:1692  unknown:872  yes:622  wow:-296  on:-1398  silence:-1495  off:-1532  margin=820
+19    ee202358_nohash_0.wav                 2000        no        no  OK
+      GAP: no:2125  wow:1050  unknown:749  yes:503  silence:-1477  on:-2237  off:-2399  margin=1075
 
-Golden model accuracy: 16/20
+Golden model accuracy: 15/20
 Written: spectrograms/test_vectors.json
 Written: 20 spectrogram hex file(s) in spectrograms
 
-=== wow  (2026-05-09 00:21:48)  seed=random  pipeline=full  target_samples=16000  window=fixed  quantization=rtl-input-requant mult=5805163 shift=31 input_scale=0.36125633 ===
+Loading model      : /home/dnocera/ML-Audio/src/ml/models/dscnn-16center-v1/dscnn-16center-v1.pt
+Class labels       : ['no', 'off', 'on', 'silence', 'unknown', 'wow', 'yes']
+QuantStub scale    : 0.36125633  (SPECT_SHIFT=9)
+Audio scaling      : float32 [-1,1] -> int14 [±8191]
+Input window       : target_samples=16000  window=fixed  quantization=rtl-input-requant mult=5805163 shift=31 input_scale=0.36125633
+Building FullPipelineGoldenExtractor (PDM -> CIC -> compFIR -> STFFT)...
+RTL arithmetic     : 2352 weights, 151 biases
 
-Generating 20 test vector(s) for keyword 'wow'  [full pipeline: PDM->CIC->FIR->STFFT]
+Generating 20 test vector(s) for keyword 'no'  [full pipeline: PDM->CIC->FIR->STFFT]
 Input config: target_samples=16000  window=fixed  quantization=rtl-input-requant mult=5805163 shift=31 input_scale=0.36125633
 #     wav                                     nz   pytorch     arith   match
 --------------------------------------------------------------------------------
-0     0a7c2a8d_nohash_3.wav                 2000       wow       wow  OK
-      GAP: wow:2523  no:702  unknown:494  yes:-565  on:-1494  silence:-1668  off:-1943  margin=1821
-1     0d6d7360_nohash_0.wav                 2000       wow       wow  OK
-      GAP: wow:1944  no:209  unknown:160  yes:-398  silence:-808  off:-1385  on:-1572  margin=1735
-2     21cbe292_nohash_3.wav                 2000        no       wow  OK (pytorch≠arith)
-      GAP: wow:659  no:555  unknown:54  on:-127  off:-498  silence:-1216  yes:-1285  margin=104
-3     4b3a7ad5_nohash_1.wav                 2000        no        no  MISS
-      GAP: no:1346  wow:1141  yes:775  unknown:472  silence:-1399  off:-1786  on:-2276  margin=205
-4     4cb874bb_nohash_1.wav                 2000       wow       wow  OK
-      GAP: wow:3243  no:1612  unknown:877  yes:-116  silence:-2225  on:-2466  off:-2860  margin=1631
-5     626e323f_nohash_0.wav                 2000       wow       wow  OK
-      GAP: wow:1143  no:239  unknown:-68  on:-602  silence:-646  off:-881  yes:-1061  margin=904
-6     726382d6_nohash_0.wav                 2000       wow       wow  OK
-      GAP: wow:987  no:279  unknown:-294  off:-585  on:-601  silence:-628  yes:-1046  margin=708
-7     72d75d96_nohash_1.wav                 2000        no   unknown  MISS (pytorch≠arith)
-      GAP: unknown:168  off:4  no:-93  wow:-131  yes:-267  on:-370  silence:-992  margin=164
-8     aac5b7c1_nohash_0.wav                 2000       wow       wow  OK
-      GAP: wow:1415  no:431  unknown:-21  on:-585  silence:-907  off:-919  yes:-1272  margin=984
-9     acb9db68_nohash_0.wav                 2000       wow       wow  OK
-      GAP: wow:1217  unknown:520  no:472  yes:-125  off:-989  on:-1081  silence:-1860  margin=697
-10    b00c4c53_nohash_3.wav                 2000       wow       wow  OK
-      GAP: wow:2138  no:944  unknown:770  yes:285  off:-1722  on:-1997  silence:-2302  margin=1194
-11    b25b6065_nohash_0.wav                 2000       wow       wow  OK
-      GAP: wow:1452  unknown:171  no:97  yes:-580  on:-869  silence:-1050  off:-1095  margin=1281
-12    b4aa9fef_nohash_0.wav                 2000       wow       wow  OK
-      GAP: wow:2412  yes:715  no:515  unknown:472  off:-1668  silence:-1830  on:-2497  margin=1697
-13    bca56796_nohash_0.wav                 2000       wow   silence  MISS (pytorch≠arith)
-      GAP: silence:301  wow:208  on:-161  unknown:-233  off:-570  no:-588  yes:-741  margin=93
-14    bdb26021_nohash_0.wav                 2000   unknown       wow  OK (pytorch≠arith)
-      GAP: wow:1485  unknown:833  no:589  yes:301  on:-1465  silence:-1604  off:-1928  margin=652
-15    bf90a57a_nohash_1.wav                 2000   unknown        no  MISS (pytorch≠arith)
-      GAP: no:-25  unknown:-65  on:-69  off:-229  wow:-281  yes:-444  silence:-639  margin=40
-16    bfb10243_nohash_0.wav                 2000       wow       wow  OK
-      GAP: wow:2113  no:862  unknown:814  yes:-399  on:-1433  silence:-1824  off:-2021  margin=1251
-17    c1b7c224_nohash_0.wav                 2000       wow       wow  OK
-      GAP: wow:2985  no:683  unknown:243  on:-1257  silence:-1342  yes:-1477  off:-1845  margin=2302
-18    cd85758f_nohash_0.wav                 2000       wow       wow  OK
-      GAP: wow:2206  no:705  unknown:519  yes:233  off:-1137  on:-2168  silence:-2240  margin=1501
-19    d84829e0_nohash_0.wav                 2000       wow       wow  OK
-      GAP: wow:1118  yes:286  unknown:161  no:145  off:-955  silence:-1051  on:-1494  margin=832
+0     08ab8082_nohash_1.wav                 2000        no        no  OK
+      GAP: no:1222  wow:1145  unknown:620  yes:384  on:-1670  off:-1688  silence:-1802  margin=77
+1     0a396ff2_nohash_0.wav                 2000        no        no  OK
+      GAP: no:1347  unknown:702  wow:414  yes:319  off:-1488  silence:-1500  on:-1502  margin=645
+2     0b77ee66_nohash_0.wav                 2000   unknown   unknown  MISS
+      GAP: unknown:1709  no:1410  yes:307  on:-364  wow:-526  off:-1897  silence:-2229  margin=299
+3     195c120a_nohash_0.wav                 2000        no        no  OK
+      GAP: no:1900  unknown:786  wow:759  yes:-773  on:-800  off:-1272  silence:-2360  margin=1114
+4     1a73dcd1_nohash_1.wav                 2000   silence   silence  MISS
+      GAP: silence:564  on:-244  unknown:-346  wow:-379  no:-409  yes:-425  off:-466  margin=808
+5     1c3f50ad_nohash_0.wav                 2000        no        no  OK
+      GAP: no:3567  unknown:1423  wow:1084  yes:195  off:-2570  on:-2571  silence:-2775  margin=2144
+6     1ecfb537_nohash_0.wav                 2000        no        no  OK
+      GAP: no:2348  unknown:830  wow:406  yes:130  off:-1705  on:-1730  silence:-1975  margin=1518
+7     257251e0_nohash_0.wav                 2000        no       off  MISS (pytorch≠arith)
+      GAP: off:145  no:-29  on:-86  wow:-240  unknown:-253  yes:-537  silence:-804  margin=174
+8     3b3d2f59_nohash_0.wav                 2000        no        no  OK
+      GAP: no:2678  unknown:1416  yes:1350  wow:331  silence:-2329  on:-2403  off:-2595  margin=1262
+9     3f170018_nohash_0.wav                 2000        no        no  OK
+      GAP: no:1918  unknown:1120  yes:613  wow:-256  on:-1416  silence:-1559  off:-1957  margin=798
+10    4bb1244f_nohash_1.wav                 2000        no        no  OK
+      GAP: no:2208  unknown:1268  yes:432  wow:-67  on:-1337  silence:-1959  off:-2109  margin=940
+11    7211390b_nohash_2.wav                 2000        no        no  OK
+      GAP: no:1092  unknown:490  wow:20  yes:-253  on:-432  off:-529  silence:-2104  margin=602
+12    96a48d28_nohash_2.wav                 2000        no        no  OK
+      GAP: no:735  unknown:345  on:73  wow:-401  yes:-562  off:-634  silence:-1246  margin=390
+13    a24cf51c_nohash_0.wav                 2000        no       wow  MISS (pytorch≠arith)
+      GAP: wow:1223  no:1132  unknown:695  yes:69  silence:-1086  on:-1597  off:-2154  margin=91
+14    af790082_nohash_3.wav                 2000       off       off  MISS
+      GAP: off:397  yes:181  no:-43  unknown:-142  wow:-286  silence:-856  on:-916  margin=216
+15    b80d6c5e_nohash_0.wav                 2000        no        no  OK
+      GAP: no:690  unknown:292  wow:57  yes:-196  on:-681  off:-914  silence:-931  margin=398
+16    c50f55b8_nohash_0.wav                 2000        no        no  OK
+      GAP: no:2841  unknown:1571  yes:963  wow:-173  on:-1911  off:-2165  silence:-2614  margin=1270
+17    c50f55b8_nohash_9.wav                 2000        no        no  OK
+      GAP: no:1528  unknown:816  yes:4  wow:-170  on:-841  off:-1094  silence:-1861  margin=712
+18    c5570933_nohash_1.wav                 2000        no        no  OK
+      GAP: no:1692  unknown:872  yes:622  wow:-296  on:-1398  silence:-1495  off:-1532  margin=820
+19    ee202358_nohash_0.wav                 2000        no        no  OK
+      GAP: no:2125  wow:1050  unknown:749  yes:503  silence:-1477  on:-2237  off:-2399  margin=1075
 
-Golden model accuracy: 16/20
+Golden model accuracy: 15/20
 Written: spectrograms/test_vectors.json
 Written: 20 spectrogram hex file(s) in spectrograms
-
-=== off  (2026-05-09 17:11:17)  seed=random  pipeline=full  target_samples=16000  window=fixed  quantization=rtl-input-requant mult=5805163 shift=31 input_scale=0.36125633 ===
-
-Generating 20 test vector(s) for keyword 'off'  [full pipeline: PDM->CIC->FIR->STFFT]
-Input config: target_samples=16000  window=fixed  quantization=rtl-input-requant mult=5805163 shift=31 input_scale=0.36125633
-#     wav                                     nz   pytorch     arith   match
---------------------------------------------------------------------------------
-0     1b459024_nohash_0.wav                 2000       off       off  OK
-      GAP: off:908  on:710  unknown:48  wow:-198  yes:-1001  no:-1112  silence:-1217  margin=198
-1     1c76f5f3_nohash_1.wav                 2000       off   silence  MISS (pytorch≠arith)
-      GAP: silence:356  off:-245  on:-247  wow:-316  yes:-377  unknown:-387  no:-522  margin=601
-2     1ed0b13d_nohash_1.wav                 2000       off       off  OK
-      GAP: off:2139  on:658  unknown:398  yes:-503  wow:-719  no:-1807  silence:-1973  margin=1481
-3     324210dd_nohash_0.wav                 2000        no        no  MISS
-      GAP: no:742  unknown:618  on:218  wow:-59  off:-645  yes:-924  silence:-1649  margin=124
-4     3b3d2f59_nohash_1.wav                 2000       off       off  OK
-      GAP: off:337  wow:164  unknown:-158  no:-328  yes:-366  on:-447  silence:-987  margin=173
-5     44c201dd_nohash_1.wav                 2000        on       off  OK (pytorch≠arith)
-      GAP: off:426  on:393  unknown:-118  wow:-194  no:-523  yes:-792  silence:-1078  margin=33
-6     51055bda_nohash_3.wav                 2000       off       off  OK
-      GAP: off:1702  on:1403  unknown:341  wow:-386  yes:-1243  no:-1750  silence:-1975  margin=299
-7     6727b579_nohash_1.wav                 2000        on        on  MISS
-      GAP: on:841  off:655  unknown:100  wow:-386  no:-725  yes:-1079  silence:-1228  margin=186
-8     70a00e98_nohash_3.wav                 2000       off       off  OK
-      GAP: off:2016  on:1529  unknown:255  wow:-17  yes:-1783  no:-1871  silence:-2064  margin=487
-9     9efe5140_nohash_0.wav                 2000       off        on  MISS (pytorch≠arith)
-      GAP: on:1352  off:1219  unknown:169  wow:-347  yes:-1325  no:-1333  silence:-1605  margin=133
-10    a05a90c1_nohash_3.wav                 2000       off        on  MISS (pytorch≠arith)
-      GAP: on:1071  off:795  unknown:137  wow:-172  silence:-1155  yes:-1256  no:-1311  margin=276
-11    a6f2fd71_nohash_3.wav                 2000       off       off  OK
-      GAP: off:437  yes:-16  unknown:-216  no:-346  wow:-349  on:-387  silence:-843  margin=453
-12    b414c653_nohash_4.wav                 2000        no       off  OK (pytorch≠arith)
-      GAP: off:231  no:218  unknown:51  on:-162  wow:-341  yes:-404  silence:-1327  margin=13
-13    cce17a61_nohash_0.wav                 2000       off       off  OK
-      GAP: off:1679  on:930  unknown:436  wow:-680  yes:-705  no:-1651  silence:-1825  margin=749
-14    cce7416f_nohash_1.wav                 2000       off        on  MISS (pytorch≠arith)
-      GAP: on:390  off:103  unknown:60  wow:-320  no:-491  yes:-743  silence:-769  margin=287
-15    cce7416f_nohash_6.wav                 2000       off       off  OK
-      GAP: off:1249  on:839  unknown:303  wow:-552  yes:-788  no:-1396  silence:-1484  margin=410
-16    d1dd03ed_nohash_1.wav                 2000       off       off  OK
-      GAP: off:1725  on:763  unknown:297  wow:-519  yes:-841  no:-1243  silence:-2047  margin=962
-17    d21fd169_nohash_0.wav                 2000       off       off  OK
-      GAP: off:546  yes:-40  unknown:-62  no:-293  on:-359  wow:-460  silence:-1047  margin=586
-18    ef2578c0_nohash_0.wav                 2000       off       off  OK
-      GAP: off:663  on:108  unknown:-176  wow:-242  yes:-629  no:-678  silence:-834  margin=555
-19    f5733968_nohash_1.wav                 2000       off       off  OK
-      GAP: off:1012  unknown:18  yes:-91  on:-389  wow:-407  no:-596  silence:-1312  margin=994
-
-Golden model accuracy: 14/20
-Written: spectrograms/test_vectors.json
-Written: 20 spectrogram hex file(s) in spectrograms
-
-=== yes  (2026-05-12 13:07:25)  seed=random  pipeline=full  target_samples=16000  window=center  quantization=rtl-input-requant mult=5805163 shift=31 input_scale=0.36125633 ===
-
-Generating 10 test vector(s) for keyword 'yes'  [full pipeline: PDM->CIC->FIR->STFFT]
-Input config: target_samples=16000  window=center  quantization=rtl-input-requant mult=5805163 shift=31 input_scale=0.36125633
-#     wav                                     nz   pytorch     arith   match
---------------------------------------------------------------------------------
-0     15c563d7_nohash_4.wav                 2000       yes       yes  OK
-      GAP: yes:2534  unknown:835  no:213  off:-323  wow:-629  silence:-1866  on:-2217  margin=1699
-1     18e910f4_nohash_0.wav                 2000       yes        no  MISS (pytorch≠arith)
-      GAP: no:770  yes:760  unknown:474  wow:-185  off:-800  silence:-1188  on:-1473  margin=10
-2     1ecfb537_nohash_3.wav                 1996       yes       yes  OK
-      GAP: yes:4199  unknown:1787  no:769  wow:-423  off:-952  silence:-3392  on:-3394  margin=2412
-3     434a267c_nohash_0.wav                 2000       yes       yes  OK
-      GAP: yes:632  unknown:177  off:17  no:-219  on:-562  wow:-636  silence:-1099  margin=455
-4     6e41a77e_nohash_1.wav                 1998       yes       yes  OK
-      GAP: yes:969  no:375  unknown:367  wow:-199  off:-646  on:-1136  silence:-1284  margin=594
-5     d9d6559e_nohash_0.wav                 2000       yes       yes  OK
-      GAP: yes:1825  unknown:1347  no:469  wow:-205  off:-578  on:-1695  silence:-2718  margin=478
-6     e3e0f145_nohash_0.wav                 2000       yes       yes  OK
-      GAP: yes:1474  unknown:686  off:-285  no:-294  on:-596  wow:-1203  silence:-1270  margin=788
-7     ec545975_nohash_2.wav                 2000       yes       yes  OK
-      GAP: yes:4013  unknown:2243  no:259  wow:-73  off:-746  on:-2831  silence:-4330  margin=1770
-8     f035e2ea_nohash_3.wav                 2000       yes       yes  OK
-      GAP: yes:1349  unknown:453  off:133  no:-97  on:-776  wow:-867  silence:-1760  margin=896
-9     f4386675_nohash_0.wav                 2000       yes       yes  OK
-      GAP: yes:1716  unknown:1096  no:574  off:-817  wow:-843  on:-1233  silence:-1992  margin=620
-
-Golden model accuracy: 9/10
-Written: spectrograms/test_vectors.json
-Written: 10 spectrogram hex file(s) in spectrograms
-
-=== yes  (2026-05-18 11:42:35)  seed=random  pipeline=full  target_samples=16000  window=fixed  quantization=rtl-input-requant mult=5805163 shift=31 input_scale=0.36125633 ===
-
-Generating 10 test vector(s) for keyword 'yes'  [full pipeline: PDM->CIC->FIR->STFFT]
-Input config: target_samples=16000  window=fixed  quantization=rtl-input-requant mult=5805163 shift=31 input_scale=0.36125633
-#     wav                                     nz   pytorch     arith   match
---------------------------------------------------------------------------------
-0     0ea9c8ce_nohash_4.wav                 2000       yes       yes  OK
-      GAP: yes:1899  unknown:747  off:380  no:-138  wow:-674  on:-1513  silence:-2307  margin=1152
-1     1496195a_nohash_0.wav                 2000       yes       yes  OK
-      GAP: yes:278  unknown:80  no:79  off:-91  on:-465  wow:-519  silence:-998  margin=198
-2     3b4f8f24_nohash_0.wav                 2000       yes       yes  OK
-      GAP: yes:2620  unknown:1702  no:800  wow:106  off:-1422  on:-2276  silence:-3050  margin=918
-3     3bfd30e6_nohash_3.wav                 2000       off        on  MISS (pytorch≠arith)
-      GAP: on:105  unknown:-21  no:-106  off:-147  yes:-264  wow:-526  silence:-754  margin=126
-4     4fd1443e_nohash_4.wav                 2000       yes       yes  OK
-      GAP: yes:1008  unknown:244  off:-16  no:-401  on:-629  wow:-856  silence:-954  margin=764
-5     56eb74ae_nohash_2.wav                 2000   unknown   unknown  MISS
-      GAP: unknown:922  no:650  yes:229  on:-175  wow:-591  off:-788  silence:-1834  margin=272
-6     5a98d407_nohash_2.wav                 2000       yes       yes  OK
-      GAP: yes:659  unknown:358  no:195  off:-519  wow:-607  silence:-845  on:-854  margin=301
-7     ad89eb1e_nohash_1.wav                 2000        no        no  MISS
-      GAP: no:793  unknown:664  yes:546  wow:361  off:-1123  on:-1162  silence:-1779  margin=129
-8     c25a032b_nohash_2.wav                 2000       yes       yes  OK
-      GAP: yes:1378  unknown:366  no:195  wow:25  off:-219  silence:-1690  on:-1724  margin=1012
-9     c4e00ee9_nohash_2.wav                 2000       yes       yes  OK
-      GAP: yes:307  unknown:-6  no:-110  silence:-431  wow:-434  off:-451  on:-480  margin=313
-
-Golden model accuracy: 7/10
-Written: spectrograms/test_vectors.json
-Written: 10 spectrogram hex file(s) in spectrograms
-
-=== yes  (2026-05-18 11:52:08)  seed=random  pipeline=full  target_samples=16000  window=fixed  quantization=rtl-input-requant mult=5805163 shift=31 input_scale=0.36125633 ===
-
-Generating 10 test vector(s) for keyword 'yes'  [full pipeline: PDM->CIC->FIR->STFFT]
-Input config: target_samples=16000  window=fixed  quantization=rtl-input-requant mult=5805163 shift=31 input_scale=0.36125633
-#     wav                                     nz   pytorch     arith   match
---------------------------------------------------------------------------------
-0     0585b66d_nohash_2.wav                 2000   unknown   unknown  MISS
-      GAP: unknown:298  yes:242  no:96  off:-227  on:-363  wow:-383  silence:-1402  margin=56
-1     2275edbb_nohash_0.wav                 2000       yes       yes  OK
-      GAP: yes:4719  unknown:2504  no:481  wow:-508  off:-803  on:-3242  silence:-4508  margin=2215
-2     5ebc1cda_nohash_4.wav                 2000       yes       yes  OK
-      GAP: yes:1077  no:809  wow:433  unknown:339  off:-708  silence:-1809  on:-1837  margin=268
-3     6c0f6493_nohash_0.wav                 2000       yes       yes  OK
-      GAP: yes:1395  unknown:629  no:183  off:-366  wow:-369  on:-1339  silence:-1724  margin=766
-4     8e523821_nohash_0.wav                 2000       yes       yes  OK
-      GAP: yes:2132  unknown:1190  no:1120  wow:-465  off:-620  on:-2087  silence:-2755  margin=942
-5     c1e0e8e3_nohash_3.wav                 2000        no        no  MISS
-      GAP: no:-32  unknown:-97  silence:-185  on:-239  yes:-290  off:-397  wow:-425  margin=65
-6     ce0cb033_nohash_4.wav                 2000       yes       yes  OK
-      GAP: yes:1191  unknown:646  no:28  off:-250  on:-670  wow:-835  silence:-1664  margin=545
-7     d21fd169_nohash_2.wav                 2000       yes       yes  OK
-      GAP: yes:2223  unknown:945  no:590  wow:-236  off:-833  silence:-2054  on:-2140  margin=1278
-8     de3fe344_nohash_0.wav                 2000       yes       yes  OK
-      GAP: yes:3009  no:1521  unknown:1255  wow:349  off:-1319  silence:-2960  on:-3305  margin=1488
-9     f736ab63_nohash_4.wav                 2000       yes       yes  OK
-      GAP: yes:2833  unknown:1313  no:853  wow:-62  off:-1078  silence:-2671  on:-2688  margin=1520
-
-Golden model accuracy: 8/10
-Written: spectrograms/test_vectors.json
-Written: 10 spectrogram hex file(s) in spectrograms
-
