@@ -16,23 +16,39 @@ module chip_top_sdf_wrapper (
         .rst_n_PAD (rst_n_PAD)
     );
 
-    // Uncomment for SDF
-    // initial $sdf_annotate("../final/sdf/nom_tt_025C_3v30/chip_top.sdf",
-    //                       u_chip_top, , "sdf.log", "MAXIMUM");
+`ifdef SDF_ENABLED
+    `include "sdf_annotate.v"
+`endif
 
-    // Comment this out when trying to run SDF
-
-    // Power-window VCD dumping — cocotb sets power_dump_en when entering
-    // the active workload window, clears it after.
+    // Power-window VCD dumping. Register the dump hierarchy at time 0,
+    // then capture only the cocotb-controlled power window.
     reg power_dump_en = 0;
-    always @(posedge power_dump_en) begin
-        $dumpfile("power_window.vcd");
-        $dumpvars(0, u_chip_top);              // ← everything in the chip
-        $display("[POWER] dumping VCD to power_window.vcd");
+    reg power_vcd_enabled = 0;
+    string power_vcd_path;
+
+    initial begin
+        if ($value$plusargs("power_vcd_path=%s", power_vcd_path)) begin
+            power_vcd_enabled = 1;
+            $dumpfile(power_vcd_path);
+            $dumpvars(0, chip_top_sdf_wrapper);
+            #1;
+            $dumpoff;
+            $display("[POWER] VCD armed at %0s", power_vcd_path);
+        end
     end
+
+    always @(posedge power_dump_en) begin
+        if (power_vcd_enabled) begin
+            $dumpon;
+            $display("[POWER] dumping VCD to %0s", power_vcd_path);
+        end
+    end
+
     always @(negedge power_dump_en) begin
-        $dumpoff;
-        $display("[POWER] VCD dump complete");
-        $finish;
+        if (power_vcd_enabled) begin
+            $dumpoff;
+            $dumpflush;
+            $display("[POWER] VCD dump complete");
+        end
     end
 endmodule

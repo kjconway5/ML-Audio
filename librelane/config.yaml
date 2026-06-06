@@ -88,6 +88,7 @@ VERILOG_FILES:
 - dir::../src/rtl/Log-Mel/ip/SqrSgn.sv
 # STFFT SRCS
 - dir::../src/rtl/STFFT/rtl/stfft.sv
+- dir::../src/rtl/STFFT/rtl/fft_data_ram.sv
 - dir::../src/rtl/STFFT/rtl/fft_twiddle_rom.sv
 # STFFT IP
 - dir::../src/rtl/STFFT/R2FFT/hdl/R2FFT.sv

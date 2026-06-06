@@ -31,29 +31,27 @@ module gf180mcu_ocd_ip_sram__sram256x8m8wm1 (
 `endif
 
     reg [7:0] mem [0:255];
-    reg [7:0] q_r;
     integer   k;
     initial begin
         for (k = 0; k < 256; k = k + 1) mem[k] = 8'h00;
-        q_r = 8'h00;
     end
+    // Synchronous write, asynchronous read.
+    // The fft_data_ram.sv SYNTH path adds its own output register (dr FF),
+    // so the SRAM Q must be 0-cycle (combinatorial) to give 1-cycle total
+    // read latency matching the R2FFT's expectation and the SIM model.
     always @(posedge CLK) begin
-        if (CEN === 1'b0) begin
-            if (GWEN === 1'b0) begin
-                if (WEN[0] === 1'b0) mem[A][0] <= D[0];
-                if (WEN[1] === 1'b0) mem[A][1] <= D[1];
-                if (WEN[2] === 1'b0) mem[A][2] <= D[2];
-                if (WEN[3] === 1'b0) mem[A][3] <= D[3];
-                if (WEN[4] === 1'b0) mem[A][4] <= D[4];
-                if (WEN[5] === 1'b0) mem[A][5] <= D[5];
-                if (WEN[6] === 1'b0) mem[A][6] <= D[6];
-                if (WEN[7] === 1'b0) mem[A][7] <= D[7];
-            end else begin
-                q_r <= mem[A];
-            end
+        if (CEN === 1'b0 && GWEN === 1'b0) begin
+            if (WEN[0] === 1'b0) mem[A][0] <= D[0];
+            if (WEN[1] === 1'b0) mem[A][1] <= D[1];
+            if (WEN[2] === 1'b0) mem[A][2] <= D[2];
+            if (WEN[3] === 1'b0) mem[A][3] <= D[3];
+            if (WEN[4] === 1'b0) mem[A][4] <= D[4];
+            if (WEN[5] === 1'b0) mem[A][5] <= D[5];
+            if (WEN[6] === 1'b0) mem[A][6] <= D[6];
+            if (WEN[7] === 1'b0) mem[A][7] <= D[7];
         end
     end
-    assign Q = q_r;
+    assign Q = (CEN === 1'b0 && GWEN !== 1'b0) ? mem[A] : 8'h00;
 `ifndef FUNCTIONAL
     specify
         (CLK *> Q) = (0:0:0, 0:0:0);

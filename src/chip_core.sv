@@ -129,10 +129,18 @@ module chip_core #(
         .prescale      (UART_PRESCALE)
     );
 
-    wire [7:0] tx_byte;
-    wire       tx_valid;
+    wire [7:0] boot_tx_byte;
+    wire       boot_tx_valid;
     wire       tx_ready;
     wire       tx_busy;
+
+    // Score TX sequencer drives the UART after each KWS inference.
+    // When active it takes priority over boot_controller TX.
+    logic        score_tx_active;
+    logic [7:0]  score_tx_byte;
+
+    wire [7:0] tx_byte  = score_tx_active ? score_tx_byte  : boot_tx_byte;
+    wire       tx_valid = score_tx_active ? 1'b1            : boot_tx_valid;
 
     uart_tx u_uart_tx (
         .clk           (clk),
@@ -155,8 +163,8 @@ module chip_core #(
         .rx_byte_i       (rx_byte),
         .rx_valid_i      (rx_valid),
         .rx_ready_o      (rx_ready),
-        .tx_byte_o       (tx_byte),
-        .tx_valid_o      (tx_valid),
+        .tx_byte_o       (boot_tx_byte),
+        .tx_valid_o      (boot_tx_valid),
         .tx_ready_i      (tx_ready),
         .features_boot_o (features_boot),
         .dscnn_boot_o    (dscnn_boot),
@@ -321,6 +329,10 @@ module chip_core #(
         .test_mode_audio    (1'b0)
     );
 
+    // GAP score wires from kws_top (registered, valid when kws_done is high)
+    wire signed [31:0] gap_score_0, gap_score_1, gap_score_2, gap_score_3;
+    wire signed [31:0] gap_score_4, gap_score_5, gap_score_6;
+
     kws_top kws_inst (
         .clk(clk),
         .reset(reset),
@@ -345,8 +357,75 @@ module chip_core #(
         .sp_a_wdata(sp_a_wdata),
         .sp_b_we(sp_b_we),
         .sp_b_waddr(sp_b_waddr),
-        .sp_b_wdata(sp_b_wdata)
+        .sp_b_wdata(sp_b_wdata),
+        // Enable test capture so debug_gap*_test tracks live accumulators
+        .test_mode_ml(1'b1),
+        .debug_gap0_test(gap_score_0),
+        .debug_gap1_test(gap_score_1),
+        .debug_gap2_test(gap_score_2),
+        .debug_gap3_test(gap_score_3),
+        .debug_gap4_test(gap_score_4),
+        .debug_gap5_test(gap_score_5),
+        .debug_gap6_test(gap_score_6)
     );
+
+    // ---- Score TX sequencer ------------------------------------------------
+    // On the rising edge of kws_done, latch all 7 GAP scores and stream them
+    // out via UART TX as a 29-byte packet:
+    //   byte  0     : 0xDA  (header marker)
+    //   bytes 1-4   : gap_score_0 (class 0 = "no"),      big-endian INT32
+    //   bytes 5-8   : gap_score_1 (class 1 = "off")
+    //   bytes 9-12  : gap_score_2 (class 2 = "on")
+    //   bytes 13-16 : gap_score_3 (class 3 = "silence")
+    //   bytes 17-20 : gap_score_4 (class 4 = "unknown")
+    //   bytes 21-24 : gap_score_5 (class 5 = "wow")
+    //   bytes 25-28 : gap_score_6 (class 6 = "yes")
+
+    logic [7:0]  score_buf [0:28];
+    logic [4:0]  score_idx;   // 0..28
+    logic        kws_done_r;
+
+    always_ff @(posedge clk) begin
+        if (reset) begin
+            score_tx_active <= 1'b0;
+            score_tx_byte   <= 8'h00;
+            score_idx       <= 5'd0;
+            kws_done_r      <= 1'b0;
+        end else begin
+            kws_done_r <= kws_done;
+
+            if (!score_tx_active && kws_done && !kws_done_r) begin
+                // Rising edge: latch packet. debug_gap*_test were updated at
+                // the previous posedge, so pre-clock values here are final.
+                score_buf[0]  <= 8'hDA;
+                score_buf[1]  <= gap_score_0[31:24]; score_buf[2]  <= gap_score_0[23:16];
+                score_buf[3]  <= gap_score_0[15:8];  score_buf[4]  <= gap_score_0[7:0];
+                score_buf[5]  <= gap_score_1[31:24]; score_buf[6]  <= gap_score_1[23:16];
+                score_buf[7]  <= gap_score_1[15:8];  score_buf[8]  <= gap_score_1[7:0];
+                score_buf[9]  <= gap_score_2[31:24]; score_buf[10] <= gap_score_2[23:16];
+                score_buf[11] <= gap_score_2[15:8];  score_buf[12] <= gap_score_2[7:0];
+                score_buf[13] <= gap_score_3[31:24]; score_buf[14] <= gap_score_3[23:16];
+                score_buf[15] <= gap_score_3[15:8];  score_buf[16] <= gap_score_3[7:0];
+                score_buf[17] <= gap_score_4[31:24]; score_buf[18] <= gap_score_4[23:16];
+                score_buf[19] <= gap_score_4[15:8];  score_buf[20] <= gap_score_4[7:0];
+                score_buf[21] <= gap_score_5[31:24]; score_buf[22] <= gap_score_5[23:16];
+                score_buf[23] <= gap_score_5[15:8];  score_buf[24] <= gap_score_5[7:0];
+                score_buf[25] <= gap_score_6[31:24]; score_buf[26] <= gap_score_6[23:16];
+                score_buf[27] <= gap_score_6[15:8];  score_buf[28] <= gap_score_6[7:0];
+                score_idx       <= 5'd0;
+                score_tx_active <= 1'b1;
+                score_tx_byte   <= 8'hDA;
+            end else if (score_tx_active) begin
+                score_tx_byte <= score_buf[score_idx];
+                if (tx_ready) begin
+                    if (score_idx == 5'd28)
+                        score_tx_active <= 1'b0;
+                    else
+                        score_idx <= score_idx + 1'b1;
+                end
+            end
+        end
+    end
 
 endmodule
 `default_nettype wire

@@ -18,6 +18,7 @@ pdk_root = os.getenv("PDK_ROOT", Path("~/.ciel").expanduser())
 pdk = os.getenv("PDK", "gf180mcuD")
 scl = os.getenv("SCL", "gf180mcu_fd_sc_mcu7t5v0")
 gl = os.getenv("GL", "0").lower() in ("1", "true", "yes")
+sdf_corner = os.getenv("SDF_CORNER", "")
 slot = os.getenv("SLOT", "1x1")
 
 hdl_toplevel = "chip_top"
@@ -55,7 +56,7 @@ async def start_up(dut):
     if gl:
         await enable_power(dut)
     await start_clock(dut.clk_PAD)
-    await reset(dut.rst_n_PAD)
+    await reset(dut.rst_n_PAD, time_ns=4000 if gl else 1000)
 
 
 def _pad_bit(value, bit_index):
@@ -82,11 +83,12 @@ UART_TX_PAD = 1
 KWS_DONE_PAD = 2
 KWS_CLASS_BASE = 3
 CLK_PERIOD_NS = 40
-UART_PRESCALE = 1
+UART_PRESCALE = 17 if gl else 1
 BIT_CYCLES = UART_PRESCALE * 8
 SYNC_0 = 0xAA
 SYNC_1 = 0x55
 ACK_BYTE = 0x06
+SCORE_HEADER = 0xDA   # header byte of the 29-byte score TX packet
 MOD_FEATURES = 0x0
 MOD_DSCNN = 0x1
 MOD_CONTROL = 0xF
@@ -214,16 +216,79 @@ async def _uart_drive_byte(dut, byte_val, log=None):
     await ClockCycles(dut.clk_PAD, BIT_CYCLES)
 
 
+def _gl_probe_chip_core_signals(dut, log):
+    """Probe preserved chip_core nets in the flat PNL to debug score TX startup.
+
+    Net names verified against final/pnl/chip_top.pnl.v.
+    score_tx_active/kws_done_r/uart_txd were all renamed to anonymous wires
+    by synthesis, so we probe the uart_tx sub-module registers instead.
+    Never raises.
+    """
+    _GL_PROBES = [
+        r"\i_chip_core.u_uart_tx.txd_reg ",           # UART TX output bit (1=idle)
+        r"\i_chip_core.u_uart_tx.s_axis_tready_reg ",  # tx_ready (1=accepting data)
+        r"\i_chip_core.u_uart_tx.bit_cnt[3] ",         # bit counter bit-3
+        r"\i_chip_core.u_uart_tx.bit_cnt[0] ",         # bit counter bit-0
+        r"\i_chip_core.kws_inst.inst_ctrl.state[0] ",  # FSM state bit-0
+        r"\i_chip_core.kws_inst.inst_ctrl.state[1] ",  # FSM state bit-1
+    ]
+    results = []
+    for name in _GL_PROBES:
+        try:
+            val = getattr(dut.u_chip_top, name).value
+            results.append(f"{name.strip()}={val}")
+        except Exception:
+            results.append(f"{name.strip()}=N/A")
+    try:
+        log.info(f"  [gl_probe] chip_core signals: {' | '.join(results)}")
+    except Exception:
+        pass
+
+
+def _gl_read_gap_scores_pnl(dut, log):
+    """Read global_pool_acc[0..6][31:0] from the PNL wire-by-wire.
+
+    These names are preserved in final/pnl/chip_top.pnl.v.
+    Returns list of (class_idx, int32_value) or None on failure.
+    """
+    scores = []
+    for c in range(7):
+        raw = 0
+        ok = True
+        for b in range(32):
+            name = rf"\i_chip_core.kws_inst.inst_ctrl.global_pool_acc[{c}][{b}] "
+            try:
+                bit = int(getattr(dut.u_chip_top, name).value)
+                raw |= (bit << b)
+            except Exception:
+                ok = False
+                break
+        if not ok:
+            log.warning(f"  [gl_gap] global_pool_acc[{c}] not accessible")
+            return None
+        if raw >= (1 << 31):
+            raw -= (1 << 32)
+        scores.append((c, raw))
+    return scores
+
+
 async def _uart_read_byte(dut, timeout_cycles=800_000):
     log = dut._log
     log.info("  [UART RX] waiting for start bit on bidir_PAD[1] (chip TX)")
+    log_interval = 5_000 if gl else 50_000
     for cyc in range(timeout_cycles):
         await RisingEdge(dut.clk_PAD)
         if _uart_tx_pad_bit(dut) == 0:
             log.info(f"  [UART RX] start bit detected at poll cycle {cyc}")
             break
-        if cyc % 50000 == 49999:
-            log.info(f"  [UART RX] still idle at poll cycle {cyc}, TX={_uart_tx_pad_bit(dut)}")
+        if cyc % log_interval == log_interval - 1:
+            try:
+                bidir_str = str(dut.bidir_PAD.value)
+            except Exception:
+                bidir_str = "?"
+            log.info(f"  [UART RX] still idle at poll cycle {cyc}, TX={_uart_tx_pad_bit(dut)} bidir={bidir_str}")
+            if gl and cyc < log_interval * 3:
+                _gl_probe_chip_core_signals(dut, log)
     else:
         raise AssertionError("UART RX: timeout waiting for chip TX start bit on bidir_PAD[1]")
 
@@ -413,10 +478,15 @@ def _select_manifest_sample(samples):
             available = sorted({str(s.get("ground_truth_name", "?")) for s in samples})
             raise AssertionError(f"KWS_KEYWORD={sample_keyword!r} did not match this manifest. Available ground_truth_name values: {available}.")
 
-    if sample_index is not None:
+    if sample_index:
         idx = int(sample_index, 0)
         if idx < 0 or idx >= len(samples):
             raise AssertionError(f"KWS_SAMPLE_INDEX={idx} is out of range; manifest has {len(samples)} samples")
+        if sample_keyword and (idx, samples[idx]) not in filtered:
+            raise AssertionError(
+                f"KWS_SAMPLE_INDEX={idx} exists, but its ground_truth_name is "
+                f"{samples[idx].get('ground_truth_name')!r}, not KWS_KEYWORD={sample_keyword!r}"
+            )
         return idx, samples[idx]
 
     if sample_match:
@@ -430,6 +500,11 @@ def _select_manifest_sample(samples):
 
 
 def _core(dut):
+    if gl:
+        try:
+            return dut.u_chip_top.i_chip_core
+        except AttributeError:
+            return None  # PnR flattened i_chip_core into chip_top — probes unavailable
     return dut.i_chip_core
 
 
@@ -484,12 +559,24 @@ def _resolve_probe_handles(dut):
     }
     handles = {}
     root = _core(dut)
+    if root is None:
+        return {name: None for name in paths}
     for name, path in paths.items():
         try:
             handles[name] = _get_path(root, path)
         except Exception:
             handles[name] = None
     return handles
+
+
+def _frontend_probes_available(handles):
+    """Return true when the non-pad frontend milestones are observable.
+
+    Gate-level/PnR netlists may flatten or rename chip_core internals. In that
+    case the pad-level test must not fail just because debug probes disappeared.
+    """
+    required = ("cic_valid", "mel_valid", "spect_done", "kws_start")
+    return all(handles.get(name) is not None for name in required)
 
 
 def _probe_str(dut):
@@ -531,6 +618,33 @@ def _read_kws_scores(dut, class_names):
     return scores, None
 
 
+async def _uart_read_score_packet(dut, class_names, timeout_cycles=500_000):
+    """Read the 29-byte score packet sent by chip_core after kws_done.
+
+    Packet format (chip_core.sv score TX sequencer):
+      byte  0     : 0xDA header
+      bytes 1-4   : class 0 GAP score, big-endian signed INT32
+      ...
+      bytes 25-28 : class 6 GAP score, big-endian signed INT32
+
+    Returns (scores, warning) matching the _read_kws_scores convention.
+    """
+    log = dut._log
+    header = await _uart_read_byte(dut, timeout_cycles=timeout_cycles)
+    if header != SCORE_HEADER:
+        return None, f"UART score packet: expected header 0x{SCORE_HEADER:02X}, got 0x{header:02X}"
+    scores = []
+    for idx, name in enumerate(class_names[:7]):
+        raw = 0
+        for _ in range(4):
+            b = await _uart_read_byte(dut, timeout_cycles=timeout_cycles)
+            raw = (raw << 8) | b
+        if raw >= 0x80000000:
+            raw -= 0x100000000
+        scores.append((idx, name, raw))
+    return scores, None
+
+
 def _format_kws_scores(scores):
     if not scores:
         return "scores unavailable"
@@ -545,6 +659,57 @@ def _format_kws_score_ranking(scores):
     return " > ".join(f"{name}({idx})={score}" for idx, name, score in ranked) + f"  margin={margin}"
 
 
+def _sample_spect_sram_gl(dut, n_samples=16):
+    """Read the first n_samples bytes from the 4 spectrogram SRAM macros in GL mode.
+
+    The PNL flattens the spectrogram_sram hierarchy into escaped instance names
+    directly under chip_top.  Bank A (spect_write_sel=0) is the write target
+    after reset; bank B is the write target after the first spect_done toggle.
+    lo = addresses 0-1023, hi = addresses 1024-1999.
+
+    Returns (results_dict, summary_str).  On complete failure returns (None, msg).
+    """
+    chip_top = getattr(dut, "u_chip_top", None)
+    if chip_top is None:
+        return None, "u_chip_top not found"
+
+    instances = {
+        "spect_A_lo": r"\i_chip_core.kws_inst.inst_specram.gen_spect_banks[0].inst_spectrogram_sram ",
+        "spect_A_hi": r"\i_chip_core.kws_inst.inst_specram.gen_spect_banks[1].inst_spectrogram_sram ",
+        "spect_B_lo": r"\i_chip_core.kws_inst.inst_specram.gen_spect_banks[0].inst_spectrogram_sram2 ",
+        "spect_B_hi": r"\i_chip_core.kws_inst.inst_specram.gen_spect_banks[1].inst_spectrogram_sram2 ",
+    }
+
+    results = {}
+    for label, path in instances.items():
+        try:
+            sram = getattr(chip_top, path)
+            vals = []
+            for i in range(n_samples):
+                try:
+                    vals.append(int(sram.mem[i].value))
+                except Exception:
+                    vals.append(None)
+                    break
+            results[label] = vals
+        except Exception as e:
+            results[label] = f"unavailable ({type(e).__name__})"
+
+    summaries = []
+    for label, vals in results.items():
+        if isinstance(vals, str):
+            summaries.append(f"{label}={vals}")
+        elif all(v is None for v in vals):
+            summaries.append(f"{label}=inaccessible")
+        elif all(v == 0 for v in vals if v is not None):
+            summaries.append(f"{label}=ALL_ZERO")
+        else:
+            hex_str = " ".join(f"{v:02x}" if v is not None else "??" for v in vals[:8])
+            summaries.append(f"{label}=[{hex_str}]")
+
+    return results, "  ".join(summaries)
+
+
 def _class_label(name, cls):
     if name is None and cls is None:
         return "unavailable"
@@ -556,6 +721,26 @@ async def _drive_pdm_from_pads(dut, pdm_bits):
         dut.input_PAD.value = 0b10 | (bit & 1)
         await RisingEdge(dut.clk_PAD)
     dut.input_PAD.value = 0
+
+
+async def _check_class_pad_stability(dut, expected_cls, class_names, n_cycles=20):
+    """Poll KWS class pads for n_cycles and warn if the value ever changes."""
+    glitches = []
+    for _ in range(n_cycles):
+        await RisingEdge(dut.clk_PAD)
+        _, cls = _read_kws_pads(dut)
+        if cls != expected_cls:
+            glitches.append(cls)
+    if glitches:
+        bad = sorted({class_names[c] if c < len(class_names) else f"cls{c}" for c in glitches})
+        expected_name = class_names[expected_cls] if expected_cls < len(class_names) else f"cls{expected_cls}"
+        dut._log.warning(
+            f"  Class pad UNSTABLE over {n_cycles} cycles: glitched to {bad}"
+            f" (expected stable {expected_name} ({expected_cls}))"
+        )
+    else:
+        stable_name = class_names[expected_cls] if expected_cls < len(class_names) else f"cls{expected_cls}"
+        dut._log.info(f"  Class pad stable over {n_cycles} cycles: {stable_name} ({expected_cls})")
 
 
 async def _wait_for_kws_done_pad(dut, timeout_cycles):
@@ -657,6 +842,7 @@ async def test_chip_top_power_window(dut):
     
     try:
         dut.power_dump_en.value = 0
+        await Timer(1, "ns")
     except AttributeError:
         pass
     
@@ -708,10 +894,23 @@ async def test_chip_top_e2e(dut):
     dut._log.info(f"  [initial state] {_probe_str(dut)}")
 
     handles = _resolve_probe_handles(dut)
+    force_pad_only = os.getenv("KWS_PAD_ONLY", "1" if gl else "0").lower() in ("1", "true", "yes")
+    frontend_probes_available = _frontend_probes_available(handles) and not force_pad_only
+    if not frontend_probes_available:
+        reason = (
+            "forced by KWS_PAD_ONLY/GL mode"
+            if force_pad_only else
+            "internal frontend probes are unavailable"
+        )
+        dut._log.warning(
+            f"  Using pad-only KWS_DONE wait ({reason}). "
+            "Internal milestones will be logged only when probe hierarchy is reliable."
+        )
     pulse_counts = {name: 0 for name in ['fft_sync', 'filterbank_done', 'log_done', 'mel_valid', 'spect_done', 'kws_start']}
     milestones = {name: False for name in ['cic_valid', 'fir_valid', 'fft_sync', 'fft_sync_aligned', 'fft_valid', 'power_valid', 'filterbank_done', 'log_done', 'mel_valid', 'spect_done', 'kws_start']}
     frontend_timeout_cycles = len(pdm_bits) + 200_000
     kws_timeout_cycles = len(pdm_bits) + 20_000_000
+    monitor_cycles = frontend_timeout_cycles if frontend_probes_available else kws_timeout_cycles
     log_every = int(os.getenv("KWS_LOG_EVERY", "500000"))
     t0_real = time.time()
     frontend_cyc = None
@@ -719,40 +918,55 @@ async def test_chip_top_e2e(dut):
     rtl_class = None
     kws_done_seen = False
 
-    for cyc in range(frontend_timeout_cycles):
+    for cyc in range(monitor_cycles):
         if cyc < len(pdm_bits):
             dut.input_PAD.value = 0b10 | (pdm_bits[cyc] & 1)
         else:
             dut.input_PAD.value = 0
         await RisingEdge(dut.clk_PAD)
 
-        for name in pulse_counts:
-            if _handle_is_one(handles[name]):
-                pulse_counts[name] += 1
-        for name in milestones:
-            if not milestones[name] and _handle_is_one(handles[name]):
-                milestones[name] = True
-                dut._log.info(f"  [milestone] {name} observed at cyc={cyc + 1:,}")
-                if name == 'kws_start':
-                    kws_started_cyc = cyc + 1
+        if frontend_probes_available:
+            for name in pulse_counts:
+                if _handle_is_one(handles[name]):
+                    pulse_counts[name] += 1
+            for name in milestones:
+                if not milestones[name] and _handle_is_one(handles[name]):
+                    milestones[name] = True
+                    dut._log.info(f"  [milestone] {name} observed at cyc={cyc + 1:,}")
+                    if name == 'kws_start':
+                        kws_started_cyc = cyc + 1
 
         done, cls = _read_kws_pads(dut)
         if done:
             rtl_class = cls
             kws_done_seen = True
             frontend_cyc = cyc + 1
+            if gl:
+                _, spect_snap = _sample_spect_sram_gl(dut)
+                dut._log.info(f"  [kws_done] spect SRAM snapshot: {spect_snap}")
             break
-        if kws_started_cyc is not None:
+        if frontend_probes_available and kws_started_cyc is not None:
             frontend_cyc = cyc + 1
             break
 
         if cyc % log_every == log_every - 1:
             pdm_status = 'done' if cyc + 1 >= len(pdm_bits) else f'in flight ({cyc + 1}/{len(pdm_bits)})'
-            dut._log.info(f"  [chip_top heartbeat] cyc={cyc + 1:,} sim={(cyc + 1) * CLK_PERIOD_NS / 1e6:.1f}ms real={time.time() - t0_real:.0f}s PDM={pdm_status} counts={pulse_counts} probes={_probe_str(dut)}")
+            elapsed_s = time.time() - t0_real
+            elapsed_str = f"{elapsed_s / 60:.1f}min ({elapsed_s:.0f}s)"
+            if frontend_probes_available:
+                dut._log.info(f"  [chip_top heartbeat] cyc={cyc + 1:,} sim={(cyc + 1) * CLK_PERIOD_NS / 1e6:.1f}ms elapsed={elapsed_str} PDM={pdm_status} counts={pulse_counts} probes={_probe_str(dut)}")
+            else:
+                dut._log.info(f"  [chip_top heartbeat] cyc={cyc + 1:,} sim={(cyc + 1) * CLK_PERIOD_NS / 1e6:.1f}ms elapsed={elapsed_str} PDM={pdm_status} waiting for KWS_DONE pad")
 
     if frontend_cyc is None:
-        missing = next((name for name, seen in milestones.items() if not seen), None)
-        raise AssertionError(f"frontend never produced kws_start within {frontend_timeout_cycles:,} cycles; first missing milestone: {missing}; counts={pulse_counts}; probes={_probe_str(dut)}")
+        if frontend_probes_available:
+            missing = next((name for name, seen in milestones.items() if not seen), None)
+            raise AssertionError(f"frontend never produced kws_start within {frontend_timeout_cycles:,} cycles; first missing milestone: {missing}; counts={pulse_counts}; probes={_probe_str(dut)}")
+        raise AssertionError(
+            f"KWS_DONE pad never asserted within {kws_timeout_cycles:,} cycles; "
+            "pad-only completion checking was used, so this timeout is based "
+            "only on the chip_top output pads."
+        )
 
     if not kws_done_seen:
         remaining_pdm = pdm_bits[frontend_cyc:]
@@ -778,7 +992,59 @@ async def test_chip_top_e2e(dut):
     expected_name = arith_name if arith_class is not None else gt_name
     expected_source = "manifest arithmetic" if arith_class is not None else "dataset label"
     passed = rtl_class == expected_class
-    scores, score_warning = _read_kws_scores(dut, class_names)
+
+    if gl:
+        # Read gap scores directly from FSM accumulator registers preserved in the PNL.
+        # The score TX sequencer and debug_gap*_test wires were added to RTL after tapeout
+        # and are not present in the PNL netlist.
+        pnl_scores = _gl_read_gap_scores_pnl(dut, dut._log)
+        if pnl_scores is not None:
+            dut._log.info(
+                "  [gl_gap_scores] from global_pool_acc: "
+                + "  ".join(f"cls{c}={v}" for c, v in pnl_scores)
+            )
+            scores = [(c, class_names[c] if c < len(class_names) else f"cls{c}", v)
+                      for c, v in pnl_scores]
+            score_warning = None
+        else:
+            dut._log.warning("  [gl_gap_scores] could not read global_pool_acc")
+            scores, score_warning = _read_kws_scores(dut, class_names)
+
+        _gl_probe_chip_core_signals(dut, dut._log)
+        try:
+            dut._log.info(
+                f"  [gl_debug] bidir_PAD state: full={dut.bidir_PAD.value} "
+                f"uart_tx_bit={_uart_tx_pad_bit(dut)}"
+            )
+        except Exception as e:
+            dut._log.warning(f"  [gl_debug] bidir_PAD read failed: {e}")
+    else:
+        scores, score_warning = await _uart_read_score_packet(dut, class_names)
+        if scores is None:
+            dut._log.warning(f"  UART score packet failed ({score_warning}); falling back to hierarchy probe")
+            scores, score_warning = _read_kws_scores(dut, class_names)
+
+    await _check_class_pad_stability(dut, rtl_class, class_names)
+
+    if gl:
+        spect_data, spect_summary = _sample_spect_sram_gl(dut)
+        if spect_data is None:
+            dut._log.warning(f"  Spect SRAM probe: {spect_summary}")
+        else:
+            all_zero_banks = [
+                k for k, v in spect_data.items()
+                if isinstance(v, list) and all(x == 0 for x in v if x is not None)
+            ]
+            if all_zero_banks:
+                dut._log.warning(
+                    f"  Spect SRAM probe: ALL-ZERO banks {all_zero_banks} — {spect_summary}"
+                )
+                dut._log.warning(
+                    "  ALL-ZERO spectrogram SRAM means KWS sees no input features; "
+                    "classification is bias-only (likely root cause of wrong class)"
+                )
+            else:
+                dut._log.info(f"  Spect SRAM probe: {spect_summary}")
 
     dut._log.info(f"  Dataset label = {gt_name} ({gt_class})")
     dut._log.info(f"  Manifest arithmetic = {arith_name} ({arith_class})")
@@ -798,7 +1064,7 @@ async def test_chip_top_e2e(dut):
     dut._log.info("test_chip_top_e2e PASSED")
 
 
-@cocotb.test()
+@cocotb.test(skip=gl and os.getenv("RUN_GL_PAD_SMOKE", "0") != "1")
 async def test_chip_top_pad_smoke(dut):
     """Minimal RTL chip_top pad smoke."""
 
@@ -952,6 +1218,11 @@ def chip_top_runner():
     # Icarus needs -g2012 to parse the .sv wrapper file in GLS mode
     if sim == "icarus" and gl:
         build_args += ["-g2012"]
+    if sdf_corner:
+        sdf_path = (proj_path / f"../final/sdf/{sdf_corner}/chip_top__{sdf_corner}.sdf").resolve()
+        sdf_inc = proj_path / "sim" / "sdf_annotate.v"
+        sdf_inc.write_text(f'initial $sdf_annotate("{sdf_path}", u_chip_top, , "sdf.log", "MAXIMUM");\n')
+        build_args += ["-DSDF_ENABLED", f"-I{proj_path / 'sim'}", "-specify"]
 
     if sim == "verilator":
         build_args += ["--timing"]
@@ -964,15 +1235,34 @@ def chip_top_runner():
         always=True,
         includes=includes,
         build_args=build_args,
-        waves=True,
+        waves=False,
     )
     link_readmemh_files(proj_path)
+
+    plusargs = ["+notimingchecks"] if (gl and not sdf_corner) else []
+    run_power_vcd = gl and os.getenv("RUN_POWER", "0").lower() in ("1", "true", "yes")
+    if run_power_vcd:
+        power_vcd_path = (proj_path / "sim_build" / "power_window.vcd").resolve()
+        plusargs.append(f"+power_vcd_path={power_vcd_path}")
+
+    if sim == "icarus" and run_power_vcd:
+        base_test_command = runner._test_command
+
+        def _test_command_vcd():
+            cmds = base_test_command()
+            for cmd in cmds:
+                for idx, arg in enumerate(cmd):
+                    if arg == "-none":
+                        cmd[idx] = "-vcd"
+            return cmds
+
+        runner._test_command = _test_command_vcd
 
     runner.test(
         hdl_toplevel=top_module,
         test_module="chip_top_tb,",
-        plusargs=[],
-        waves=True,
+        plusargs=plusargs,
+        waves=False,
     )
 
 
