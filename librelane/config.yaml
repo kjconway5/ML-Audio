@@ -4,18 +4,8 @@ meta:
   substituting_steps:
 
     # Disable KLayout DRC
-    OpenROAD.IRDropReport: null
-    Magic.DRC: null
-    Checker.MagicDRC: null
-    KLayout.DRC: null
-    Checker.KLayoutDRC: null
-    KLayout.Antenna: null
-    Checker.KLayoutAntenna: null
-    KLayout.Density: null
-    Checker.KLayoutDensity: null
-    KLayout.XOR: null
-    Netgen.LVS: null
-    Checker.LVS: null
+    #KLayout.DRC: null
+    #Checker.KLayoutDRC: null
 
     # Disable KLayout antenna check
     #KLayout.Antenna: null
@@ -29,10 +19,10 @@ meta:
     # Enable for sign-off
     #OpenROAD.IRDropReport: null
     #Magic.DRC: null
-      #Checker.MagicDRC: null
-      #KLayout.XOR: null
-      #Netgen.LVS: null
-      #Checker.LVS: null
+    #Checker.MagicDRC: null
+    #KLayout.XOR: null
+    #Netgen.LVS: null
+    #Checker.LVS: null
 
 DESIGN_NAME: chip_top
 VERILOG_FILES:
@@ -88,10 +78,10 @@ VERILOG_FILES:
 - dir::../src/rtl/Log-Mel/ip/SqrSgn.sv
 # STFFT SRCS
 - dir::../src/rtl/STFFT/rtl/stfft.sv
-- dir::../src/rtl/STFFT/rtl/fft_data_ram.sv
 - dir::../src/rtl/STFFT/rtl/fft_twiddle_rom.sv
 # STFFT IP
 - dir::../src/rtl/STFFT/R2FFT/hdl/R2FFT.sv
+- dir::../src/rtl/STFFT/rtl/fft_data_ram.sv
 - dir::../src/rtl/STFFT/R2FFT/hdl/bfp_bitWidthAcc.sv
 - dir::../src/rtl/STFFT/R2FFT/hdl/bfp_bitWidthDetector.sv
 - dir::../src/rtl/STFFT/R2FFT/hdl/bfp_maxBitWidth.sv
@@ -111,6 +101,14 @@ VERILOG_FILES:
 # FIR
 - dir::../src/rtl/FIR/rtl/compFIR.sv
 
+# GF180MCU IO pad fake sites. Override here in case the PDK's
+# libs.tech/librelane/gf180mcu_fd_io/config.tcl does not set PAD_FAKE_SITES.
+# Values: GF_IO_Site = 0.1µm × 355µm, GF_COR_Site = 355µm × 355µm.
+PAD_SITE_NAME: GF_IO_Site
+PAD_CORNER_SITE_NAME: GF_COR_Site
+PAD_FAKE_SITES:
+    GF_IO_Site: [0.1, 355]
+    GF_COR_Site: [355, 355]
 
 # Enable plugin for better SystemVerilog support
 USE_SLANG: True
@@ -143,15 +141,27 @@ CLOCK_NET: clk_pad/Y
 CLOCK_PERIOD: 62.5 # 16 MHz
   
 # Fix hold violations
-MAX_FANOUT_CONSTRAINT: 20
-# Buffer insertion starts p[ateauing after 0.115]
+MAX_FANOUT_CONSTRAINT: 16
+# Buffer insertion starts plateauing after 0.115]
 PL_RESIZER_HOLD_SLACK_MARGIN: 0.115
 GRT_RESIZER_HOLD_SLACK_MARGIN: 0.115
 
 # Insert more buffers for these vios
-DESIGN_REPAIR_MAX_SLEW_PCT: 50
+# DESIGN_REPAIR_MAX_WIRE_LENGTH: 300 didnt do anything?
+DESIGN_REPAIR_MAX_SLEW_PCT: 20
 DESIGN_REPAIR_MAX_CAP_PCT: 50
-PL_RESIZER_MAX_WIRE_LENGTH: 400
+CTS_SINK_BUFFER_MAX_CAP_DERATE_PCT: 50
+
+# Wire lengths
+PL_RESIZER_MAX_WIRE_LENGTH: 300 # reduced from 300 to test, 100 helped timing slightly but increased vios slightly
+CTS_CLK_MAX_WIRE_LENGTH: 100 # good at 300 testing at 200
+# Limits the physical diameter of each CTS sink cluster.
+# Smaller values keep sinks in a cluster physically closer together
+# CTS_SINK_CLUSTERING_MAX_DIAMETER: 25 increased cap vios from 177 to 427 at this value
+
+# Limits the number of sinks allowed in each CTS sink cluster
+# smaller clusters mean more leaf buffers and lower fanout/cap per
+# CTS_SINK_CLUSTERING_SIZE: 12   Increased by 20 max cap vios, worsened timing at 12, untested at other values
 
 # Increase for more logic
 # on your die
@@ -196,21 +206,21 @@ ERROR_ON_MAGIC_DRC: False
 # reasonable time at that scale. These cells connect only to power /
 # ground rails, so dropping them does not affect LVS coverage.
 # ############# Commenting out for now because not supported by our version of either librelane or nix-eda, but this is a fix suggested by professor
-#LVS_IGNORE_CELLS:
+LVS_IGNORE_CELLS:
 # 3.3V standard-cell library
-#- gf180mcu_as_sc_mcu7t3v3__fill_1
-#- gf180mcu_as_sc_mcu7t3v3__fill_2
-#- gf180mcu_as_sc_mcu7t3v3__fill_4
-#- gf180mcu_as_sc_mcu7t3v3__fill_8
-#- gf180mcu_as_sc_mcu7t3v3__fillcap_4
-#- gf180mcu_as_sc_mcu7t3v3__fillcap_8
-#- gf180mcu_as_sc_mcu7t3v3__fillcap_16
-#- gf180mcu_as_sc_mcu7t3v3__tap_2
+- gf180mcu_as_sc_mcu7t3v3__fill_1
+- gf180mcu_as_sc_mcu7t3v3__fill_2
+- gf180mcu_as_sc_mcu7t3v3__fill_4
+- gf180mcu_as_sc_mcu7t3v3__fill_8
+- gf180mcu_as_sc_mcu7t3v3__fillcap_4
+- gf180mcu_as_sc_mcu7t3v3__fillcap_8
+- gf180mcu_as_sc_mcu7t3v3__fillcap_16
+- gf180mcu_as_sc_mcu7t3v3__tap_2
 # IO library fill cells
-#- gf180mcu_fd_io__fill1
-#- gf180mcu_fd_io__fill5
-#- gf180mcu_fd_io__fill10
-#- gf180mcu_fd_io__fillnc
+- gf180mcu_fd_io__fill1
+- gf180mcu_fd_io__fill5
+- gf180mcu_fd_io__fill10
+- gf180mcu_fd_io__fillnc
 
 # Prevent false positive DRC errors in I/O cells
 MAGIC_GDS_FLATGLOB:
@@ -306,7 +316,6 @@ MACROS:
         - dir::../gf180mcu_ocd_ip_sram/cells/gf180mcu_ocd_ip_sram__sram256x8m8wm1/gf180mcu_ocd_ip_sram__sram256x8m8wm1__ff_n40C_3v60.lib
       "max_ff_n40C_3v60":
         - dir::../gf180mcu_ocd_ip_sram/cells/gf180mcu_ocd_ip_sram__sram256x8m8wm1/gf180mcu_ocd_ip_sram__sram256x8m8wm1__ff_n40C_3v60.lib
-    # moving all feature sram down 300, bias and weight srams down 1320
     instances:
       # LogMel SRAMs (5× sram256x8)
       i_chip_core.pipeline_inst.u_logmel.u_mel_filterbank.u_sram.u_coeff_hi:
@@ -508,8 +517,8 @@ PDN_MACRO_CONNECTIONS:
 
 # Halo size around macros while cutting rows.
 # Workaround for: https://github.com/The-OpenROAD-Project/OpenROAD/issues/8868
-FP_MACRO_HORIZONTAL_HALO: 30
-FP_MACRO_VERTICAL_HALO: 30
+FP_MACRO_HORIZONTAL_HALO: 20 # Better than both 30 and 10, might be worth to try something else in between but havent yet
+FP_MACRO_VERTICAL_HALO: 20
 PDN_HORIZONTAL_HALO: 5
 PDN_VERTICAL_HALO: 5
 
@@ -529,7 +538,3 @@ LVS_FLATTEN_CELLS:
 MAGIC_EXT_ABSTRACT_CELLS:
 - gf180mcu_ws_ip__id
 - gf180mcu_ws_ip__logo
-
-VSRC_LOC_FILES:
-  VDD: dir::vsrc/vdd.csv
-  VSS: dir::vsrc/vss.csv

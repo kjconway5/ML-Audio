@@ -33,6 +33,7 @@ module chip_core #(
 );
 
     import boot_pkg::*;
+    localparam int DFT_DEBUG_W = 31; // bidir[39:9]
 
     // Pad index assignments
     localparam int UART_RX_PAD    = 0;
@@ -42,6 +43,9 @@ module chip_core #(
     localparam int KWS_CLASS1_PAD = 4;
     localparam int KWS_CLASS2_PAD = 5;
     localparam int VAD_DROP_PAD   = 6;
+
+    localparam int AUDIO_TEST_MODE_PAD  = 7; 
+    localparam int ML_TEST_MODE_PAD     = 8;
     // PDM mic input pads (input_in bus)
     //   input_in[0] = PDM_DATA  : 1-bit bitstream from mic (1 = positive, 0 = negative)
     //   input_in[1] = PDM_VALID : strobe — one pulse per PDM bit
@@ -53,6 +57,15 @@ module chip_core #(
 `else
     localparam logic [15:0] UART_PRESCALE = 16'd17;
 `endif
+
+    localparam int ADDR_W = 11;
+    localparam int LUT_FRAC = 6;
+    localparam int N_MELS = 40;
+    localparam int CIC_REG_W = 16;
+    localparam int FIR_OW    = 16;
+    localparam int POWER_W   = 31;
+    localparam int DATA_W    = 8;
+    localparam int ACC_W     = 32;
 
     assign input_pu = '0;
     assign input_pd = '0;
@@ -82,18 +95,48 @@ module chip_core #(
     wire [2:0]      kws_class_out;
 
     wire pipeline_vad_frame_drop;
+    wire test_mode_audio;
+    assign test_mode_audio = bidir_in[AUDIO_TEST_MODE_PAD];
+
+    wire test_mode_ml;
+    assign test_mode_ml = bidir_in[ML_TEST_MODE_PAD];
+
+    wire [5:0] dft_sel = input_in[8:3];
+    logic [DFT_DEBUG_W-1:0] dft_debug_bus;
 
     always_comb begin
-        bidir_oe_r  = '1;
+        bidir_oe_r  = '0;
         bidir_ie_r  = '0;
         bidir_out_r = '0;
-        // UART RX pad: input
+
+        // input pads
+        bidir_ie_r[UART_RX_PAD] = 1'b1;
+        bidir_ie_r[AUDIO_TEST_MODE_PAD] = 1'b1;
+        bidir_ie_r[ML_TEST_MODE_PAD] = 1'b1;
+
         bidir_oe_r[UART_RX_PAD]  = 1'b0;
         bidir_ie_r[UART_RX_PAD]  = 1'b1;
         // UART TX pad: output
         bidir_oe_r[UART_TX_PAD]  = 1'b1;
         bidir_ie_r[UART_TX_PAD]  = 1'b0;
         bidir_out_r[UART_TX_PAD] = uart_txd;
+
+        if (test_mode_audio || test_mode_ml) begin
+            bidir_oe_r[39:9]  = '1;
+            bidir_out_r[39:9] = dft_debug_bus;
+        end else begin
+            bidir_oe_r[KWS_DONE_PAD]   = 1'b1;
+            bidir_oe_r[KWS_CLASS0_PAD] = 1'b1;
+            bidir_oe_r[KWS_CLASS1_PAD] = 1'b1;
+            bidir_oe_r[KWS_CLASS2_PAD] = 1'b1;
+            bidir_oe_r[VAD_DROP_PAD]   = 1'b1;
+
+            bidir_out_r[KWS_DONE_PAD]   = kws_done;
+            bidir_out_r[KWS_CLASS0_PAD] = kws_class_out[0];
+            bidir_out_r[KWS_CLASS1_PAD] = kws_class_out[1];
+            bidir_out_r[KWS_CLASS2_PAD] = kws_class_out[2];
+            bidir_out_r[VAD_DROP_PAD]   = pipeline_vad_frame_drop;
+        end
         // KWS output pads - prevents optimizer from removing the design
         bidir_out_r[KWS_DONE_PAD]   = kws_done;
         bidir_out_r[KWS_CLASS0_PAD] = kws_class_out[0];
@@ -105,7 +148,13 @@ module chip_core #(
 
     // Tie off unused inputs so lint stays clean
     logic _unused;
-    assign _unused = &{bidir_in, input_in[NUM_INPUT_PADS-1:3], 1'b0};
+    //assign _unused = &{bidir_in, input_in[NUM_INPUT_PADS-1:3], 1'b0};
+    assign _unused = &{
+        bidir_in[NUM_BIDIR_PADS-1:9],
+        input_in[NUM_INPUT_PADS-1:9],
+        analog,
+        1'b0
+    };
 
     // ---- Boot subsystem ----
 
@@ -446,8 +495,22 @@ module chip_core #(
         // VAD DFT Ports
         .dft_vad_obs_en_i   (input_in[2]),
         .vad_frame_drop_ol  (pipeline_vad_frame_drop),
-        // TODO: wire test_mode_audio to a real pad/scan chain when DFT is complete
-        .test_mode_audio    (1'b0)
+        // test signals 
+        .test_mode_audio(test_mode_audio),
+        .cic_audio(cic_audio),
+        .FIR_audio_in(FIR_audio_in),
+        .FIR_audio_out(FIR_audio_out),
+        .frame_control_state(frame_control_state), 
+        .mel_idx_test(mel_idx_test),
+        .power_test(power_test),
+        .test_coeff_addr_i(test_coeff_addr_i),
+        .test_index_addr_i(test_index_addr_i),
+        .test_lut_addr_i(test_lut_addr_i),
+        .sp_a_waddr_test(sp_a_waddr_test),
+        .sp_a_wdata_test(sp_a_wdata_test),
+        .sp_b_waddr_test(sp_b_waddr_test),
+        .sp_b_wdata_test(sp_b_wdata_test),
+        .spect_write_sel_test(spect_write_sel_test)
     );
 
     // GAP score wires from kws_top (registered, valid when kws_done is high)
@@ -478,17 +541,63 @@ module chip_core #(
         .sp_a_wdata(sp_a_wdata),
         .sp_b_we(sp_b_we),
         .sp_b_waddr(sp_b_waddr),
-        .sp_b_wdata(sp_b_wdata),
-        // Enable test capture so debug_gap*_test tracks live accumulators
-        .test_mode_ml(1'b1),
-        .debug_gap0_test(gap_score_0),
-        .debug_gap1_test(gap_score_1),
-        .debug_gap2_test(gap_score_2),
-        .debug_gap3_test(gap_score_3),
-        .debug_gap4_test(gap_score_4),
-        .debug_gap5_test(gap_score_5),
-        .debug_gap6_test(gap_score_6)
+        .sp_b_wdata(sp_b_wdata), 
+
+        //test signals 
+        .test_mode_ml(test_mode_ml),
+        .fsm_class_test(fsm_class_test),
+
+        .fsm_a_waddr_test(fsm_a_waddr_test),
+        .fsm_a_wdata_test(fsm_a_wdata_test),
+        .fsm_a_raddr_test(fsm_a_raddr_test),   
+        .fsm_a_rdata_test(fsm_a_rdata_test),
+        .fsm_b_waddr_test(fsm_b_waddr_test),
+        .fsm_b_wdata_test(fsm_b_wdata_test),
+        .fsm_b_raddr_test(fsm_b_raddr_test),   
+        .fsm_b_rdata_test(fsm_b_rdata_test),
+
+        .mac_ifmap_test(mac_ifmap_test),
+        .mac_weight_test(mac_weight_test),
+        .mac_bias_test(mac_bias_test),
+
+        .rq_mult_test(rq_mult_test),
+        .rq_shift_test(rq_shift_test),
+
+        .state_test(state_test),
+        .layer_test(layer_test),
+        .acc_test(acc_test),
+
+        .w_raddr_test(w_raddr_test),
+        .w_rdata_test(w_rdata_test),
+
+        .ss_a_raddr_test(ss_a_raddr_test),
+        .ss_a_rdata_test(ss_a_rdata_test),
+        .ss_b_raddr_test(ss_b_raddr_test),
+        .ss_b_rdata_test(ss_b_rdata_test),
+
+        .mac_en_test(mac_en_test),
+        .mac_clear_test(mac_clear_test),
+
+        .rq_relu_en_test(rq_relu_en_test),
+        .rq_out_test(rq_out_test),
+
+        .debug_gap0_test(debug_gap0_test),
+        .debug_gap1_test(debug_gap1_test),
+        .debug_gap2_test(debug_gap2_test),
+        .debug_gap3_test(debug_gap3_test),
+        .debug_gap4_test(debug_gap4_test),
+        .debug_gap5_test(debug_gap5_test),
+        .debug_gap6_test(debug_gap6_test),
+        .bias_addr_test(bias_addr_test),
+        .bias_data_test(bias_data_test)
     );
+    assign gap_score_0 = debug_gap0_test;
+    assign gap_score_1 = debug_gap1_test;
+    assign gap_score_2 = debug_gap2_test;
+    assign gap_score_3 = debug_gap3_test;
+    assign gap_score_4 = debug_gap4_test;
+    assign gap_score_5 = debug_gap5_test;
+    assign gap_score_6 = debug_gap6_test;
 
     // ---- Score TX sequencer ------------------------------------------------
     // On the rising edge of kws_done, latch all 7 GAP scores and stream them
