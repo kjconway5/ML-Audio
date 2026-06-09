@@ -278,6 +278,127 @@ module chip_core #(
     wire mel_compensated_valid;
     wire pipeline_vad_active;
 
+    // TEST SIGNALS PIPELINE
+    logic [CIC_REG_W-1:0]     cic_audio;
+    logic signed [FIR_OW-1:0]    FIR_audio_in;
+    logic signed [FIR_OW-1:0]    FIR_audio_out;
+    logic [ADDR_W-1:0]      sp_a_waddr_test;
+    logic signed [7:0]      sp_a_wdata_test;
+    logic [ADDR_W-1:0]      sp_b_waddr_test;
+    logic signed [7:0]      sp_b_wdata_test;
+    logic                   spect_write_sel_test;
+    logic [7:0]          test_coeff_addr_i;
+    logic [7:0]          test_index_addr_i;
+    logic [LUT_FRAC-1:0] test_lut_addr_i;
+    logic [1:0] frame_control_state;
+    logic [$clog2(N_MELS)-1:0] mel_idx_test;
+    logic [POWER_W:0] power_test;
+
+    // TEST SIGNALS KWS
+    logic [2:0]fsm_class_test;
+    logic  [ADDR_W-1:0]        fsm_a_waddr_test;
+    logic  signed [DATA_W-1:0] fsm_a_wdata_test;
+    logic  [ADDR_W-1:0]        fsm_a_raddr_test;   
+    logic  signed [DATA_W-1:0] fsm_a_rdata_test;
+    logic  [ADDR_W-1:0]        fsm_b_waddr_test;
+    logic  signed [DATA_W-1:0] fsm_b_wdata_test;
+    logic  [ADDR_W-1:0]        fsm_b_raddr_test;   
+    logic  signed [DATA_W-1:0] fsm_b_rdata_test; 
+    logic  signed [DATA_W-1:0] mac_ifmap_test;
+    logic  signed [DATA_W-1:0] mac_weight_test;
+    logic  signed [ACC_W-1:0]  mac_bias_test;
+    logic  [31:0]              rq_mult_test;
+    logic  [4:0]               rq_shift_test;
+    logic [3:0]                state_test;
+    logic [3:0]                layer_test;
+    logic [12:0]          w_raddr_test;
+    logic signed [7:0]    w_rdata_test;
+    logic [10:0]          ss_a_raddr_test;
+    logic signed [7:0]    ss_a_rdata_test;
+    logic [10:0]          ss_b_raddr_test;
+    logic signed [7:0]    ss_b_rdata_test;
+    logic                 mac_en_test;
+    logic                 mac_clear_test;
+    logic signed [ACC_W-1:0]   acc_test;
+    logic                 rq_relu_en_test;
+    logic signed [7:0]    rq_out_test;
+    logic signed [31:0]   debug_gap0_test;
+    logic signed [31:0]   debug_gap1_test;
+    logic signed [31:0]   debug_gap2_test;
+    logic signed [31:0]   debug_gap3_test;
+    logic signed [31:0]   debug_gap4_test;
+    logic signed [31:0]   debug_gap5_test;
+    logic signed [31:0]   debug_gap6_test;
+    logic [8:0]           bias_addr_test;
+    logic signed [31:0]   bias_data_test;
+
+    assign test_coeff_addr_i = {2'b00, dft_sel}; 
+    assign test_index_addr_i = {2'b00, dft_sel};  
+    assign test_lut_addr_i   = dft_sel[LUT_FRAC-1:0];
+
+    always_comb begin
+        dft_debug_bus = '0;
+
+        if (test_mode_audio) begin
+            case (dft_sel)
+                6'd0: dft_debug_bus = {{(DFT_DEBUG_W-CIC_REG_W){1'b0}}, cic_audio};
+                6'd1: dft_debug_bus = {{(DFT_DEBUG_W-FIR_OW){FIR_audio_in[FIR_OW-1]}}, FIR_audio_in};
+                6'd2: dft_debug_bus = {{(DFT_DEBUG_W-FIR_OW){FIR_audio_out[FIR_OW-1]}}, FIR_audio_out};
+                6'd3:  dft_debug_bus = {{20{1'b0}}, sp_a_waddr_test};
+                6'd4:  dft_debug_bus = {{23{sp_a_wdata_test[7]}}, sp_a_wdata_test};
+                6'd5:  dft_debug_bus = {{20{1'b0}}, sp_b_waddr_test};
+                6'd6:  dft_debug_bus = {{23{sp_b_wdata_test[7]}}, sp_b_wdata_test};
+                6'd7:  dft_debug_bus = {{30{1'b0}}, spect_write_sel_test};
+                6'd8:  dft_debug_bus = {{23{1'b0}}, test_coeff_addr_i};
+                6'd9:  dft_debug_bus = {{23{1'b0}}, test_index_addr_i};
+                6'd10: dft_debug_bus = {{(DFT_DEBUG_W-LUT_FRAC){1'b0}}, test_lut_addr_i};
+                6'd11: dft_debug_bus = {{29{1'b0}}, frame_control_state};
+                6'd12: dft_debug_bus = {{25{1'b0}}, mel_idx_test};
+                6'd13: dft_debug_bus = power_test[DFT_DEBUG_W-1:0];
+                default: dft_debug_bus = '0;
+            endcase
+        end else if (test_mode_ml) begin
+            case (dft_sel)
+                6'd0:  dft_debug_bus = {{28{1'b0}}, fsm_class_test};
+                6'd1:  dft_debug_bus = {{20{1'b0}}, fsm_a_waddr_test};
+                6'd2:  dft_debug_bus = {{23{fsm_a_wdata_test[7]}}, fsm_a_wdata_test};
+                6'd3:  dft_debug_bus = {{20{1'b0}}, fsm_a_raddr_test};
+                6'd4:  dft_debug_bus = {{23{fsm_a_rdata_test[7]}}, fsm_a_rdata_test};
+                6'd5:  dft_debug_bus = {{20{1'b0}}, fsm_b_waddr_test};
+                6'd6:  dft_debug_bus = {{23{fsm_b_wdata_test[7]}}, fsm_b_wdata_test};
+                6'd7:  dft_debug_bus = {{20{1'b0}}, fsm_b_raddr_test};
+                6'd8:  dft_debug_bus = {{23{fsm_b_rdata_test[7]}}, fsm_b_rdata_test};
+                6'd9:  dft_debug_bus = {{23{mac_ifmap_test[7]}}, mac_ifmap_test};
+                6'd10: dft_debug_bus = {{23{mac_weight_test[7]}}, mac_weight_test};
+                6'd11: dft_debug_bus = mac_bias_test[DFT_DEBUG_W-1:0];
+                6'd12: dft_debug_bus = rq_mult_test[DFT_DEBUG_W-1:0];
+                6'd13: dft_debug_bus = {{26{1'b0}}, rq_shift_test};
+                6'd14: dft_debug_bus = {{27{1'b0}}, state_test};
+                6'd15: dft_debug_bus = {{27{1'b0}}, layer_test};
+                6'd16: dft_debug_bus = {{18{1'b0}}, w_raddr_test};
+                6'd17: dft_debug_bus = {{23{w_rdata_test[7]}}, w_rdata_test};
+                6'd18: dft_debug_bus = {{20{1'b0}}, ss_a_raddr_test};
+                6'd19: dft_debug_bus = {{23{ss_a_rdata_test[7]}}, ss_a_rdata_test};
+                6'd20: dft_debug_bus = {{20{1'b0}}, ss_b_raddr_test};
+                6'd21: dft_debug_bus = {{23{ss_b_rdata_test[7]}}, ss_b_rdata_test};
+                6'd22: dft_debug_bus = {{30{1'b0}}, mac_en_test};
+                6'd23: dft_debug_bus = {{30{1'b0}}, mac_clear_test};
+                6'd24: dft_debug_bus = acc_test[DFT_DEBUG_W-1:0];
+                6'd25: dft_debug_bus = {{30{1'b0}}, rq_relu_en_test};
+                6'd26: dft_debug_bus = {{23{rq_out_test[7]}}, rq_out_test};
+                6'd27: dft_debug_bus = debug_gap0_test[DFT_DEBUG_W-1:0];
+                6'd28: dft_debug_bus = debug_gap1_test[DFT_DEBUG_W-1:0];
+                6'd29: dft_debug_bus = debug_gap2_test[DFT_DEBUG_W-1:0];
+                6'd30: dft_debug_bus = debug_gap3_test[DFT_DEBUG_W-1:0];
+                6'd31: dft_debug_bus = debug_gap4_test[DFT_DEBUG_W-1:0];
+                6'd32: dft_debug_bus = debug_gap5_test[DFT_DEBUG_W-1:0];
+                6'd33: dft_debug_bus = debug_gap6_test[DFT_DEBUG_W-1:0];
+                6'd34: dft_debug_bus = {{22{1'b0}}, bias_addr_test};
+                6'd35: dft_debug_bus = bias_data_test[DFT_DEBUG_W-1:0];
+                default: dft_debug_bus = '0;
+            endcase
+        end
+    end
 
     full_pipeline_top #(
         .IW_STFFT   (16),
