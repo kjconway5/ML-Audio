@@ -3,7 +3,7 @@
 fatal errors or VPI assertion crashes
 
 Usage:
-    sdf_fix_for_icarus.py [--dry-run] [--verbose] <input.sdf> <output.sdf>
+    sdf_icarus_fixer.py [--dry-run] [--verbose] <input.sdf> <output.sdf>
 """
 
 from __future__ import annotations
