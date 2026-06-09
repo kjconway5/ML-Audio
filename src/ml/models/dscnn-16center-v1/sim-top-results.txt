@@ -195,3 +195,18 @@ Result: PASS
 RTL GAP scores: no(0)=1012  off(1)=-1086  on(2)=-794  silence(3)=-1282  unknown(4)=672  wow(5)=-216  yes(6)=-4
 RTL GAP ranking: no(0)=1012 > unknown(4)=672 > yes(6)=-4 > wow(5)=-216 > on(2)=-794 > off(1)=-1086 > silence(3)=-1282  margin=340
 
+[2026-06-06 18:32:14 PDT] make sim chip_top
+Model: dscnn-16center-v1
+Manifest: /home/dnocera/ML-Audio/src/rtl/dscnn/kws_top/spectrograms/test_vectors.json
+Selected sample[8]: 3b3d2f59_nohash_0.wav
+WAV: /home/dnocera/ML-Audio/src/ml/Pipeline/speech_commands_v0.02/no/3b3d2f59_nohash_0.wav
+Hex: spectrograms/spectrogram_8.hex
+Golden truth class: no (0)
+Arithmetic class: no (0)
+PyTorch class: no (0)
+RTL class from chip_top pads: no (0)
+Expected[manifest arithmetic]: no (0)
+Result: PASS
+RTL GAP scores: no(0)=1238  off(1)=-1227  on(2)=-1466  silence(3)=-1208  unknown(4)=534  wow(5)=250  yes(6)=226
+RTL GAP ranking: no(0)=1238 > unknown(4)=534 > wow(5)=250 > yes(6)=226 > silence(3)=-1208 > off(1)=-1227 > on(2)=-1466  margin=704
+
