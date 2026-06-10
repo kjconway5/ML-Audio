@@ -21,14 +21,14 @@ import math
 import argparse
 import sys
 
-# ── System parameters ─────────────────────────────────────────────────────────
+# System parameters 
 FIN          = 1_008_000
 FOUT         =    16_000
 FNYQ         = FOUT // 2
-R            = 63
+R            = FIN // FOUT
 N_CIC        = 3
 
-# ── Default design parameters ─────────────────────────────────────────────────
+# Default design parameters
 NTAPS        = 33
 FPASS        = 7_000
 BITS         = 14        # CW
@@ -37,7 +37,7 @@ IW           = 16
 NFFT         = 4096
 
 
-# ── CIC magnitude ─────────────────────────────────────────────────────────────
+# CIC magnitude
 def cic_mag(f):
     f = np.asarray(f, dtype=float)
     with np.errstate(divide="ignore", invalid="ignore"):
@@ -46,7 +46,7 @@ def cic_mag(f):
         return np.where(den < 1e-12, 1.0, (num / den) ** N_CIC)
 
 
-# ── Kaiser window ──────────────────────────────────────────────────────────────
+# Kaiser window
 def kaiser_win(n, beta):
     from numpy import i0
     k = np.arange(n)
@@ -54,7 +54,7 @@ def kaiser_win(n, beta):
     return i0(beta * np.sqrt(np.maximum(1.0 - x**2, 0.0))) / i0(beta)
 
 
-# ── FIR design ────────────────────────────────────────────────────────────────
+# FIR design 
 def design_fir(ntaps, fpass, bits):
     assert ntaps % 2 == 1, "NTAPS must be odd (Type I)"
     M     = (ntaps - 1) // 2
@@ -86,7 +86,7 @@ def design_fir(ntaps, fpass, bits):
     return h, hq
 
 
-# ── Effective hardware DC gain ────────────────────────────────────────────────
+# Effective hardware DC gain 
 def eff_dc_gain(hq):
     """sum(full_h) = hardware DC gain (pre-adder doubles outer taps)."""
     M    = (len(hq) - 1) // 2
@@ -107,7 +107,7 @@ def safe_shift(hq, iw):
     return s
 
 
-# ── CSD helpers ───────────────────────────────────────────────────────────────
+# CSD helpers
 def to_csd(n):
     terms = []; v = abs(n); bit = 0
     while v:
@@ -129,7 +129,7 @@ def csd_str(terms):
     )
 
 
-# ── Design report ──────────────────────────────────────────────────────────────
+# Design report
 def print_report(hq, bits, iw):
     M    = (len(hq) - 1) // 2
     g    = eff_dc_gain(hq)
@@ -164,7 +164,7 @@ def print_report(hq, bits, iw):
     print("=" * 68)
 
 
-# ── Verilog generation ────────────────────────────────────────────────────────
+# Verilog generation
 def gen_csd_expr(sym_name: str, qv: int, ow: int, iw: int) -> str:
     """CSD shift-add expression for one tap, OW-bit signed output."""
     csd = to_csd(qv)
@@ -222,12 +222,12 @@ def generate_verilog(hq, ntaps, bits, iw):
     L.append("    input  wire                   i_clk,")
     L.append("    input  wire                   i_reset,")
     L.append("")
-    L.append("    // -- Upstream (from CIC decimator) -----------------------------------------")
+    L.append("    // Upstream (from CIC decimator)")
     L.append("    input  wire signed [IW-1:0]   i_tdata,")
     L.append("    input  wire                   i_tvalid,")
     L.append("    output wire                   i_tready,")
     L.append("")
-    L.append("    // -- Downstream (to STFFT) -------------------------------------------------")
+    L.append("    // Downstream (to STFFT)")
     L.append("    output reg  signed [OW-1:0]   o_tdata,")
     L.append("    output reg                    o_tvalid,")
     L.append("    input  wire                   o_tready")
@@ -235,15 +235,11 @@ def generate_verilog(hq, ntaps, bits, iw):
     L.append("")
     L.append("    localparam M = (NTAPS-1)/2;   // Index of centre tap")
     L.append("")
-    L.append("    // =========================================================================")
     L.append("    // Handshake: 1-deep pipeline, i_tready = !o_tvalid || o_tready")
-    L.append("    // =========================================================================")
     L.append("    assign i_tready = !o_tvalid || o_tready;")
     L.append("    wire advance = i_tvalid && i_tready;  // new sample accepted this cycle")
     L.append("")
-    L.append("    // =========================================================================")
     L.append("    // Registered delay line")
-    L.append("    // =========================================================================")
     L.append("    reg signed [IW-1:0] sr [0:NTAPS-1];")
     L.append("    integer i;")
     L.append("    always @(posedge i_clk) begin")
@@ -255,14 +251,12 @@ def generate_verilog(hq, ntaps, bits, iw):
     L.append("        end")
     L.append("    end")
     L.append("")
-    L.append("    // =========================================================================")
     L.append("    // Combinational next-state delay line")
     L.append("    //")
     L.append("    // sr_next[k] is the value sr[k] WILL hold after the next advance.")
     L.append("    // The pre-adders use (advance ? sr_next[k] : sr[k]) so the output")
     L.append("    // register captures the correct sum in the same cycle as advance,")
     L.append("    // giving exactly 1-cycle latency from input to output.")
-    L.append("    // =========================================================================")
     L.append("    wire signed [IW-1:0] sr_next [0:NTAPS-1];")
     L.append("    assign sr_next[0] = i_tdata;")
     L.append("    genvar si;")
@@ -272,9 +266,7 @@ def generate_verilog(hq, ntaps, bits, iw):
     L.append("    end")
     L.append("    endgenerate")
     L.append("")
-    L.append("    // =========================================================================")
     L.append("    // Pre-adders  (exploit Type-I symmetry: tap[k] + tap[NTAPS-1-k])")
-    L.append("    // =========================================================================")
     L.append("    wire signed [IW:0] sym [0:M];")
     L.append("    genvar k;")
     L.append("    generate")
@@ -287,10 +279,8 @@ def generate_verilog(hq, ntaps, bits, iw):
     L.append("    wire signed [IW-1:0] mid = advance ? sr_next[M] : sr[M];")
     L.append("    assign sym[M] = $signed({mid[IW-1], mid});")
     L.append("")
-    L.append("    // =========================================================================")
     L.append("    // CSD multiply  (shift-add, no multiplier cells)")
     L.append(f"    // PW = IW+CW+1 = {iw+bits+1}")
-    L.append("    // =========================================================================")
     L.append("    wire signed [OW-1:0] prod [0:M];")
     L.append("")
 
@@ -303,9 +293,7 @@ def generate_verilog(hq, ntaps, bits, iw):
         L.append(f"    assign prod[{k}] = {expr};")
         L.append("")
 
-    L.append("    // =========================================================================")
     L.append("    // Output register — advances only on accepted samples")
-    L.append("    // =========================================================================")
     L.append("    always @(posedge i_clk) begin")
     L.append("        if (i_reset) begin")
     L.append("            o_tdata  <= 0;")
@@ -327,7 +315,7 @@ def generate_verilog(hq, ntaps, bits, iw):
     return "\n".join(L) + "\n"
 
 
-# ── Main ───────────────────────────────────────────────────────────────────────
+# Main
 def main():
     global NTAPS, FPASS, BITS, IW
 
