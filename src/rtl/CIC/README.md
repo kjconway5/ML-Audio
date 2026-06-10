@@ -1,15 +1,4 @@
-
-Directory Structure Summary
-
-rtl/<module_name>/
-├── <module_name>.sv      # RTL design
-├── tb_<module_name>.sv   # SystemVerilog testbench
-├── test_<module_name>.py # Cocotb Python tests
-├── test_runner.py        # Pytest runner ()
-├── filelist.json         # File manifest
-├── Makefile              # Build configuration
-└── README.md             # (optional) Module documentation
-
+## CIC Deciamator
 
 Since the PDM microphone will be outputting
 a high-frequency 1-bit stream and our pro-
@@ -27,17 +16,20 @@ This describes a single stage CIC filter, however
 we can improve attenuation by increasing the
 stages of integrators and comb filters.
 For this design we choose the number of
-stages to be N = 5, this provides a good spot.
+stages to be N = 3, this provides a good spot.
 We can analyze this decision by looking at the
-magnitude response and transfer function of
-the CIC Filter:
-H(z) = [(1-z^(-R)/(1-z^(-1))]^N
+z-domain transfer function of
+the CIC Filter:\
+&emsp; &emsp; $H(z) = [(1-z^(-R)/(1-z^(-1))]^N$
 
-In these equations M = 1 and R = fi/fo. Additionally,
+In these equations $M = 1$ and $R = \frac{f_{in}}{f_{out}}$. Additionally,
 upon analyzing these equations in MATLAB we
 find that the outputted frequencies will have
-less gain as the frequencies increases. This in
-turn will cause the higher frequencies bins on
+less gain as the frequencies increases: 
+
+<img src="../FIR/util/CIC_FMR.png" alt="Sized Image" width="500" height="500">
+
+This in turn will cause the higher frequencies bins on
 a spectrogram(input to ML model) to be low
 and potentially cause issues for ML speech
 detection, this is called pass-band droop. To
