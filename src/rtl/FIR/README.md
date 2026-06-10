@@ -17,13 +17,13 @@ To achieve a flatter pass-band gain and sharper transition region we can utilize
 &emsp; &emsp; $h_d[n]=\frac{1}{2\pi}\int_{0}^{2\pi}H_d(e^{jw})e^{jwn}dw$
 
 3. FIR Approximation via Kaiser Windowing: $h[n]=h_d[n]w[n]$
-&emsp; &emsp; $h[n] = \begin{cases} h_d[n] & 0\leq n\leq N \\ 0 & otherwise \end{cases}$
-&emsp; &emsp; $w[n] = \begin{cases} 
-          \frac{I_0(\beta\sqrt{1-(n-\alpha)^2/\alpha^2})}{I_0(\beta)} & 0\leq n\leq N \\
-          0 & otherwise
-       \end{cases}$
+&emsp; &emsp; $h[n] = h_d[n],  0 \leq n \leq N$
+&emsp; &emsp; $w[n] = \frac{I_0(\beta\sqrt{1-(n-\alpha)^2/\alpha^2})}{I_0(\beta)},  0\leq n\leq N$
  4. Quantization 
- 5. Canonical Sign Digit Representation Conversion  
+ &emsp; &emsp; Float tap coefficients are quantized to $N_{BITS}$-bit integers 
+ 5. Canonical Sign Digit Representation Conversion
+ &emsp; &emsp; Float tap coefficients are quantized to $N_{BITS}$-bit integers 
+
 
 
 This design process it achieved through a python script in python script that generates the compensation FIR filter verilog with inputted filter parameters:
@@ -40,3 +40,29 @@ This design process it achieved through a python script in python script that ge
 | $N_{BITS}$ | Bit width of Tap Coefficients | 
 | $\beta$ | Kaiser Window Shape Parameter |
 | $IW$ | Input Bit Width |
+
+## Generating Verilog
+To generate Compensation FIR Filter verilog:
+```bash
+cd scripts
+python3 compFIR.py
+```
+To update/change filter parameters the python script `comp.FIR` must manually be edited
+
+## RTL Testbench
+To run cocoTB Compensation FIR Filter testbench:
+```bash
+cd tests
+make test-FIR
+```
+
+| Test | Description |
+|------|-------------|
+| **`test_reset`** | Verifies outputs are zero and valid is de-asserted after reset |
+| **`test_ready_signal`** | Checks that `i_tready` correctly stalls upstream when output is valid but downstream isn't ready (`i_tready = !o_tvalid || o_tready`) |
+| **`test_impulse_response_axi`** | Sends a single max-amplitude impulse followed by zeros, collects the impulse response, checks if it matches the reference and is symmetric|
+| **`test_step_response_axi`** | Checks transient behavior and that steady-state output equals `sum(full_h) × step_val`|
+| **`test_random_full_rate_axi`** | 1000 random samples at full throughput while comparing against the reference model |
+| **`test_backpressure`** | Toggles `o_tready` every 3 cycles to stress the stall logic; verifies no sample is dropped or duplicated under back-pressure |
+| **`test_valid_deasserts`** | Verifies `o_tvalid` goes low after the downstream consumes the output with no new input arriving |
+
