@@ -38,3 +38,6 @@ Filters since ”in typical decimation filtering ap-
 plication we desire reasonably flat pass band
 gain and narrow transition region width per-
 formance”.
+
+### IP Usage
+This CIC Filter is designed, tested, copyrighted by Alex Forencich.
