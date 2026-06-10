@@ -17,10 +17,7 @@ To achieve a flatter pass-band gain and sharper transition region we can utilize
 &emsp; &emsp; $h_d[n]=\frac{1}{2\pi}\int_{0}^{2\pi}H_d(e^{jw})e^{jwn}dw$
 
 3. FIR Approximation via Kaiser Windowing: $h[n]=h_d[n]w[n]$
-&emsp; &emsp; $h[n] = \begin{cases} 
-          h_d[n] & 0\leq n\leq N \\
-          0 & otherwise
-       \end{cases}$
+&emsp; &emsp; $h[n] = \begin{cases} h_d[n] & 0\leq n\leq N \\ 0 & otherwise \end{cases}$
 &emsp; &emsp; $w[n] = \begin{cases} 
           \frac{I_0(\beta\sqrt{1-(n-\alpha)^2/\alpha^2})}{I_0(\beta)} & 0\leq n\leq N \\
           0 & otherwise
