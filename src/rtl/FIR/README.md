@@ -6,7 +6,8 @@ Post PDM to PCM conversion using the CIC filter(an anti-aliasing and decimation 
 
 The CIC filter produces a pass-band droop as the frequency increases towards the transition band: 
 
-**insert image**
+<img src="util/CIC_FMR.png" alt="Sized Image" width="500" height="500">
+
 
 To achieve a flatter pass-band gain and sharper transition region we can utilize a FIR filter with tap coefficients that contain the inverse magnitude response of the CIC filter. 
 
@@ -22,7 +23,15 @@ To achieve a flatter pass-band gain and sharper transition region we can utilize
  4. Quantization: \
  &emsp; &emsp; Float tap coefficients are quantized to $N_{BITS}$-bit integers 
  5. Canonical Sign Digit Representation Conversion: \
- &emsp; &emsp; Float tap coefficients are quantized to $N_{BITS}$-bit integers 
+ &emsp; &emsp; CSD uses a ternary representation of data as a {-1, 0, 1} format, alongside the constraint: no two adjacent digits are non-zero. However, two ‎bits ‎are ‎required ‎to ‎store ‎one ‎digit ‎of a ‎CSD number & requires extra conversion logic for variable CSD multiplication. \
+The probability of a CSD bit $C_i$ being non-zero is: \
+&emsp; &emsp; $P(|C_{i}|=1) = \frac{1}{3} + \frac{1}{9N}[1-(\frac{1}{2})^{N}]$ \
+As N grows larger the probability becomes: $\frac{1}{3}$ \
+However for a binary N-bit number the probability becomes: $\frac{1}{2}$ \
+**Where the number of shift and addition ‎operations‎ depends on the number of non-zero digits of the multiplicand.**
+
+
+
 
 
 
