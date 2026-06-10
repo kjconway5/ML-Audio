@@ -11,17 +11,17 @@ The CIC filter produces a pass-band droop as the frequency increases towards the
 To achieve a flatter pass-band gain and sharper transition region we can utilize a FIR filter with tap coefficients that contain the inverse magnitude response of the CIC filter. 
 
 ## Design Steps
-1. Calculate the inverse magnitude response:
+1. Calculate the inverse magnitude response: \
 &emsp; &emsp; $\left| H_{d}(e^{j2 \pi f}) \right|=\left| \frac{sin(2\pi f/2)}{sin(2\pi fD/2)}\right|^M$
-2. Compute the impulse responses:
+2. Compute the impulse responses: \
 &emsp; &emsp; $h_d[n]=\frac{1}{2\pi}\int_{0}^{2\pi}H_d(e^{jw})e^{jwn}dw$
 
-3. FIR Approximation via Kaiser Windowing: $h[n]=h_d[n]w[n]$
-&emsp; &emsp; $h[n] = h_d[n],  0 \leq n \leq N$
+3. FIR Approximation via Kaiser Windowing: $h[n]=h_d[n]w[n]$ \
+&emsp; &emsp; $h[n] = h_d[n],  0 \leq n \leq N$ \
 &emsp; &emsp; $w[n] = \frac{I_0(\beta\sqrt{1-(n-\alpha)^2/\alpha^2})}{I_0(\beta)},  0\leq n\leq N$
- 4. Quantization 
+ 4. Quantization: \
  &emsp; &emsp; Float tap coefficients are quantized to $N_{BITS}$-bit integers 
- 5. Canonical Sign Digit Representation Conversion
+ 5. Canonical Sign Digit Representation Conversion: \
  &emsp; &emsp; Float tap coefficients are quantized to $N_{BITS}$-bit integers 
 
 
