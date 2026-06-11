@@ -56,10 +56,6 @@ src/
     │       ├── output_buffer/       # Mel Bin Output Buffer
     │       └── log_top/             # top-level integration test
     ├── SPECT_BUFFER/                # Spectrogram buffer RTL and testbench
-    ├── Arty-A7-Demo/                # Arty A7 FPGA Demo
-    │   ├── feature_stage2/          # TODO
-    │   ├── full_demo/               # TODO
-    │       └── host/                # TODO
     ├── flash/                       # SRAM loading/boot controller
     └── top/                         # Audio Preprocessing and Feature extraction (pre-CNN) RTL and testbench
         ├── data/                    # Memory files for simulation
@@ -131,102 +127,6 @@ Useful selectors:
 
 With `make`, pass these as variables (`KWS_KEYWORD=yes`), not as command-line
 flags (`--keyword yes`).
-
----
-
-#### FIR Filter
-The FIR filter uses the ZipCPU `fastfir` module from the
-[dspfilters](https://github.com/ZipCPU/dspfilters) repository.
-
-**Our cocotb testbench:**
-```bash
-cd src/rtl/FIR/ip/bench/cpp
-make
-./fastfir_tb
-```
-
-Requires Verilator to build. See the ZipCPU
-[dspfilters](https://github.com/ZipCPU/dspfilters) repo for full build
-instructions.
-
-| Test | Description |
-|------|-------------|
-| Impulse + overflow check | Loads each tap position individually with a single non-zero coefficient and verifies no overflow occurs |
-| Block filter, impulse input | Loads all-identical taps, drives a single impulse, verifies output matches expected impulse response |
-| Block filter, block input | Drives a constant block input, verifies cumulative sum response and intentional overflow behavior |
-| Lowpass characterization (all-ones taps) | Measures passband/stopband cutoff, verifies stopband depth is between -14 and -13 dB |
-| Lowpass characterization (12-tap design coefficients) | Loads actual filter coefficients, verifies stopband depth is between -55 and -54 dB |
-
-
-**ZipCPU fastfir: Formal verification:**
-
-A SymbiYosys formal proof for `fastfir` is available at:
-```bash
-cd src/rtl/FIR/ip/bench/formal
-# requires SymbiYosys and a supported solver (e.g. yices2, z3)
-sby fastfir.sby
-
----
-
-#### CIC Decimation Filter
-
-The CIC filter uses MyHDL cosimulation rather than cocotb. MyHDL drives the
-SystemVerilog testbench `tb_cic.sv` via VPI (`$from_myhdl`/`$to_myhdl`).
-```bash
-cd src/rtl/CIC
-python3 test_cic.py
-```
-
-A waveform dump is written to `test_cic_decimator.lxt`:
-```bash
-gtkwave test_cic_decimator.lxt
-```
-
-| Test | Description |
-|------|-------------|
-| test 1: impulse response | Verifies CIC impulse response at rate=2 |
-| test 2: ramp | Ramp input at rate=2 |
-| test 3: source pause | Ramp with input stream pausing intermittently |
-| test 4: sink pause | Ramp with output sink pausing intermittently |
-| test 5: sinewave | 1kHz sine wave decimation at rate=2 |
-| test 6: rate of 4 | Sine wave decimation at rate=4 |
-| test 7: DC | DC signal steady-state correctness |
-
----
-
-#### STFFT
-
-**Top-level cocotb test:**
-```bash
-cd src/rtl/STFFT
-make test-cocotb
-```
-
-| Test | Description |
-|------|-------------|
-| `test_stfft_basic` | Drives a 1kHz sine wave at 16kHz sample rate, checks for valid FFT output sync |
-
-**Window function:**
-```bash
-cd src/rtl/STFFT/ip/Window
-make test-cocotb
-```
-
-| Test | Description |
-|------|-------------|
-| `test_windowfn` | Drives 5 frames of a 1kHz sine wave at 16kHz sample rate through the Hann window, captures RTL output and compares against a PyTorch reference model. Verifies each sample across all frames is within 4 LSBs of fixed-point tolerance |
-
-**ZipCPU FFT IP: C++ testbenches:**
-```bash
-cd src/rtl/STFFT/ip/FFT/bench/cpp
-# see README.md in this directory for build and run instructions
-```
-
-**ZipCPU FFT IP: Formal verification:**
-```bash
-cd src/rtl/STFFT/ip/FFT/bench/formal
-# see README.md in this directory for tool requirements and run instructions
-```
 
 ---
 
