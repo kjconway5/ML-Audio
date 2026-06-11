@@ -1,6 +1,15 @@
-# gf180mcu Project Template
+# Custom ASIC for Keyword Spotting
 
-Project template for wafer.space MPW runs using the gf180mcu PDK.
+This repository presents the RTL design and verification of a complete keyword spotting (KWS) digital signal
+processing pipeline for a GF180MCU ASIC implementation. The audio pre-processing converts a 1.003 MHz PDM microphone
+bit-stream to 16 kHz PCM 16 bit mono audio using a five-stage CIC decimator followed by a 33-tap compensation FIR
+filter to correct pass-band droop and gain produced by the CIC filter. Time-frequency analysis is performed by a
+256-point pipelined Short-time FFT that generates complex frequency bins and frames, which are transformed into a
+Log-Mel Spectrogram through a filter-bank and logarithmic compression; then fed into a DS-CNN. The classification
+core implements a depthwise-separable Convolutional neural network with int8 quantization, featuring a custom
+accelerator with shared MAC array, re-quantization logic, and 29 KB of on-chip SRAM for weights and feature maps.
+Verification employs a bit-accurate Python reference model and Cocotb testbenches, with system-level validation
+confirming correct pipeline operation through .wav file comparsion of RTL and Golden Model.
 
 ## Simulation & Verification
 
@@ -129,6 +138,17 @@ With `make`, pass these as variables (`KWS_KEYWORD=yes`), not as command-line
 flags (`--keyword yes`).
 
 ---
+
+### Documentation
+
+Per-block documentation lives alongside the RTL in each subdirectory:
+
+| Module | README | Contents |
+|--------|--------|----------|
+| CIC Decimator | [`rtl/CIC/README.md`](rtl/CIC/README.md) | 3-stage CIC, R=63, 1.008 MHz → 16 kHz, ready/valid interface |
+| FIR Compensation | [`rtl/FIR/README.md`](rtl/FIR/README.md) | 33-tap Type-I symmetric CSD-optimized droop correction filter |
+| STFFT / R2FFT | [`rtl/STFFT/README.md`](rtl/STFFT/README.md) | Ping-pong single-port R2FFT, ring-buffer STFFT wrapper, Hanning window |
+| Pipeline Top | [`rtl/top/README.md`](rtl/top/README.md) | End-to-end integration (PCM and PDM inputs), cocotb tests, VAD test suite, golden model comparison |
 
 #### Log-Mel Filterbank
 
@@ -262,62 +282,14 @@ make sim-gl
 > You need to have the latest implementation of your design in the `final/` folder. After implementing the design, execute 'make copy-final' to copy all necessary files.
 
 In both cases, a waveform file will be generated under `cocotb/sim_build/chip_top.fst`.
-You can view it using a waveform viewer, for example, [GTKWave](https://gtkwave.github.io/gtkwave/).
 
 ```
 make sim-view
 ```
 
-You can now update the testbench according to your design.
-
-## Implementing Your Own Design
-
-The source files for this template can be found in the `src/` directory. `chip_top.sv` defines the top-level ports and instantiates `chip_core`, chip ID (QR code) and the wafer.space logo. To allow for the default bonding setup, do not change the number of pads in order to keep the original bondpad positions. To be compatible with the default breakout PCB, do not change any of the power or ground pads. However, you can change the type of the signal pads, e.g. to bidirectional, input-only or e.g. analog pads. The template provides the `NUM_INPUT` and `NUM_BIDIR` parameters for this purpose.
-
-The actual pad positions are defined in the LibreLane configuration file under `librelane/config.yaml`. The variables `PAD_SOUTH`/`PAD_EAST`/`PAD_NORTH`/`PAD_WEST` determine the respective pad placement. The LibreLane configuration also allows you to customize the flow (enable or disable steps), specify the source files, set various variables for the steps, and instantiate macros. For more information about the configuration, please refer to the LibreLane documentation: https://librelane.readthedocs.io/en/latest/
-
-To implement your own design, simply edit `chip_core.sv`. The `chip_core` module receives the clock and reset, as well as the signals from the pads defined in `chip_top`. As an example, a 42-bit wide counter is implemented.
-
-> [!NOTE]
-> For more comprehensive SystemVerilog support, enable the `USE_SLANG` variable in the LibreLane configuration.
-
-## Choosing a Different Slot Size
-
-The template supports the following slot sizes: `1x1`, `0p5x1`, `1x0p5`, `0p5x0p5`.
-By default, the design is implemented using the `1x1` slot definition.
-
-To select a different slot size, simply set the `SLOT` environment variable.
-This can be done when invoking a make target:
-
-```
-SLOT=0p5x0p5 make librelane
-```
-
-Alternatively, you can export the slot size:
-
-```
-export SLOT=0p5x0p5
-```
-
-You can change the slot that is selected by default in the Makefile by editing the value of `DEFAULT_SLOT`.
-
-## Building a Standalone Padring for Analog Design
-
-To build just the padring without any standard cell rows, digital routing or filler cells, run the following command:
-
-```
-make librelane-padring
-```
-
-It is also possible to build the padring for other slot sizes:
-
-```
-SLOT=0p5x0p5 make librelane-padring
-```
-
 ## Precheck
 
-To check whether your design is suitable for manufacturing, run the [gf180mcu-precheck](https://github.com/wafer-space/gf180mcu-precheck) with your layout.
+To check whether your design is suitable for manufacturing, run the [gf180mcu-precheck](https://github.com/wafer-space/gf180mcu-precheck) with layout.
 
 ## Remote Server `sim-core` Environment
 
