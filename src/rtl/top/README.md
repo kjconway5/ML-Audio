@@ -136,6 +136,22 @@ The golden model (`golden_model_spectral_vad.FullPipelineGoldenExtractor`, in `.
 | `VAD threshold` | 11,000,000 (fixed) / `0xFFFFFFFF` (auto-cal) / 0 (off) | test_full_pipeline_top.py |
 | `CALIB_FRAMES` | 256 (auto-VAD calibration passthrough) | test_full_pipeline_top.py |
 
+## Results
+### No
+<img src="scripts/spectrogram_no.png" alt="Sized Image" width="500" height="500">
+
+### Yes
+<img src="scripts/spectrogram_yes.png" alt="Sized Image" width="500" height="500">
+
+### On
+<img src="scripts/spectrogram_on.png" alt="Sized Image" width="500" height="500">
+
+### Off
+<img src="scripts/spectrogram_off.png" alt="Sized Image" width="500" height="500">
+
+### Wow
+<img src="scripts/spectrogram_wow.png" alt="Sized Image" width="500" height="500">
+
 ### Authors:
 * Michael Aguero: @mbaguero
 * Aydan Olaez: @aolaez
