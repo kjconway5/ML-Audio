@@ -29,10 +29,7 @@ It is important to keep in mind the time-frequency resolution of the STFFTs outp
 
 
 
-## FFT Core IP: R2FFT by yoonisi [^2]
-[^2]: yoonish (2021). "R2FFT: R2FFT is a fully synthesizable verilog module for doing the FFT on an FPGA or ASIC. " *https://github.com/yoonisi/R2FFT*.
-
-###  Custom memory architecture and butterfly controller:
+## FFT Core IP: R2FFT by yoonisi [^4]
 
 The R2FFT IP assumes each working-memory bank is a true dual-port (1R1W) SRAM and uses two banks in parallel to read an even- and an odd-indexed word every cycle. This delivers one butterfly per cycle but requires dual-port macros — roughly twice the silicon area of single-port macros, and not available in GF180MCU
 
@@ -136,3 +133,6 @@ make test-stfft
 [^2]: Oppenhiem, A. & Schafer. R (2010). "Discrete-Time Signal Processing" *Chapter 7: Filter Design Techniques*.
 
 [^3]: Ye, H. (2026). "UCSC ECE 153/250: Digital Signal Processing" *Lecture 14: FIR Filter Design*.
+
+[^4]: yoonish (2021). "R2FFT: R2FFT is a fully synthesizable verilog module for doing the FFT on an FPGA or ASIC. " *https://github.com/yoonisi/R2FFT*.
+
