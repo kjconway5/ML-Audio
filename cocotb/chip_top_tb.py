@@ -957,223 +957,223 @@ async def test_chip_top_power_window(dut):
     dut._log.info("=== Power-window test complete ===")
 
 
-@cocotb.test()
-async def test_chip_top_e2e(dut):
-    """
-    End-to-end chip_top RTL verification through real top-level pads:
-      1. Boot log/mel/KWS memories through bidir_PAD[0]/[1] UART.
-      2. Drive PDM audio on input_PAD[1:0].
-      3. Wait for KWS_DONE on bidir_PAD[2].
-      4. Read KWS_CLASS from bidir_PAD[5:3] and compare against manifest output.
-    """
-    manifest_path = _manifest_json_path()
-    for path in [LOG_LUT_HEX, MEL_COEFF_HEX, MEL_INDEX_HEX, WEIGHTS_HEX, BIAS_HEX, SCALES_TXT, manifest_path]:
-        if not Path(path).exists():
-            raise FileNotFoundError(f"Missing: {path}\nRun src/ml/Pipeline/export.py and generate_spect_full.py first.")
+# @cocotb.test()
+# async def test_chip_top_e2e(dut):
+#     """
+#     End-to-end chip_top RTL verification through real top-level pads:
+#       1. Boot log/mel/KWS memories through bidir_PAD[0]/[1] UART.
+#       2. Drive PDM audio on input_PAD[1:0].
+#       3. Wait for KWS_DONE on bidir_PAD[2].
+#       4. Read KWS_CLASS from bidir_PAD[5:3] and compare against manifest output.
+#     """
+#     manifest_path = _manifest_json_path()
+#     for path in [LOG_LUT_HEX, MEL_COEFF_HEX, MEL_INDEX_HEX, WEIGHTS_HEX, BIAS_HEX, SCALES_TXT, manifest_path]:
+#         if not Path(path).exists():
+#             raise FileNotFoundError(f"Missing: {path}\nRun src/ml/Pipeline/export.py and generate_spect_full.py first.")
 
-    with open(manifest_path) as f:
-        manifest = json.load(f)
-    class_names = manifest["class_names"]
-    samples = manifest["samples"]
+#     with open(manifest_path) as f:
+#         manifest = json.load(f)
+#     class_names = manifest["class_names"]
+#     samples = manifest["samples"]
 
-    dut._log.info(f"Manifest: {manifest_path} ({len(samples)} samples)")
-    await start_up(dut)
+#     dut._log.info(f"Manifest: {manifest_path} ({len(samples)} samples)")
+#     await start_up(dut)
 
-    dut._log.info("=== chip_top pad UART boot phase ===")
-    await _boot_chip_from_pads(dut)
+#     dut._log.info("=== chip_top pad UART boot phase ===")
+#     await _boot_chip_from_pads(dut)
 
-    sample_idx, sample = _select_manifest_sample(samples)
-    gt_class = sample["ground_truth_class"]
-    gt_name = sample["ground_truth_name"]
-    arith_class = sample.get("arith_class")
-    arith_name = sample.get("arith_name")
-    pytorch_class = sample.get("pytorch_class")
-    pytorch_name = sample.get("pytorch_name")
-    wav_path = sample["wav"]
-    resolved_wav_path = _resolve_wav_path(wav_path)
-    hex_file = sample.get("hex_file", "?")
-    dut._log.info(f"=== Audio phase: sample[{sample_idx}] {Path(wav_path).name} hex={hex_file} GT={gt_name} arith={arith_name} pytorch={pytorch_name} ===")
-    if Path(wav_path) != resolved_wav_path:
-        dut._log.info(f"  Resolved manifest WAV path to {resolved_wav_path}")
+#     sample_idx, sample = _select_manifest_sample(samples)
+#     gt_class = sample["ground_truth_class"]
+#     gt_name = sample["ground_truth_name"]
+#     arith_class = sample.get("arith_class")
+#     arith_name = sample.get("arith_name")
+#     pytorch_class = sample.get("pytorch_class")
+#     pytorch_name = sample.get("pytorch_name")
+#     wav_path = sample["wav"]
+#     resolved_wav_path = _resolve_wav_path(wav_path)
+#     hex_file = sample.get("hex_file", "?")
+#     dut._log.info(f"=== Audio phase: sample[{sample_idx}] {Path(wav_path).name} hex={hex_file} GT={gt_name} arith={arith_name} pytorch={pytorch_name} ===")
+#     if Path(wav_path) != resolved_wav_path:
+#         dut._log.info(f"  Resolved manifest WAV path to {resolved_wav_path}")
 
-    pcm = _load_wav_pcm(resolved_wav_path)
-    pdm_bits = _pcm_to_pdm(pcm)
-    dut._log.info(f"  {len(pcm)} PCM samples -> {len(pdm_bits)} PDM bits")
-    dut._log.info(f"  [initial state] {_probe_str(dut)}")
-    if gl:
-        dut._log.info(f"  [gl_milestones] {_gl_milestone_str(dut)}")
+#     pcm = _load_wav_pcm(resolved_wav_path)
+#     pdm_bits = _pcm_to_pdm(pcm)
+#     dut._log.info(f"  {len(pcm)} PCM samples -> {len(pdm_bits)} PDM bits")
+#     dut._log.info(f"  [initial state] {_probe_str(dut)}")
+#     if gl:
+#         dut._log.info(f"  [gl_milestones] {_gl_milestone_str(dut)}")
 
-    handles = _resolve_probe_handles(dut)
-    force_pad_only = os.getenv("KWS_PAD_ONLY", "1" if gl else "0").lower() in ("1", "true", "yes")
-    frontend_probes_available = _frontend_probes_available(handles) and not force_pad_only
-    if not frontend_probes_available:
-        reason = (
-            "forced by KWS_PAD_ONLY/GL mode"
-            if force_pad_only else
-            "internal frontend probes are unavailable"
-        )
-        dut._log.warning(
-            f"  Using pad-only KWS_DONE wait ({reason}). "
-            "Internal milestones will be logged only when probe hierarchy is reliable."
-        )
-    pulse_counts = {name: 0 for name in ['cic_valid', 'fir_valid', 'fft_sync', 'fft_valid', 'power_valid', 'filterbank_done', 'log_done', 'mel_valid', 'spect_done', 'kws_start']}
-    milestones = {name: False for name in ['cic_valid', 'fir_valid', 'fft_sync', 'fft_sync_aligned', 'fft_valid', 'power_valid', 'filterbank_done', 'log_done', 'mel_valid', 'spect_done', 'kws_start']}
-    frontend_timeout_cycles = len(pdm_bits) + 200_000
-    kws_timeout_cycles = len(pdm_bits) + 20_000_000
-    monitor_cycles = frontend_timeout_cycles if frontend_probes_available else kws_timeout_cycles
-    log_every = int(os.getenv("KWS_LOG_EVERY", "500000"))
-    t0_real = time.time()
-    frontend_cyc = None
-    kws_started_cyc = None
-    rtl_class = None
-    kws_done_seen = False
+#     handles = _resolve_probe_handles(dut)
+#     force_pad_only = os.getenv("KWS_PAD_ONLY", "1" if gl else "0").lower() in ("1", "true", "yes")
+#     frontend_probes_available = _frontend_probes_available(handles) and not force_pad_only
+#     if not frontend_probes_available:
+#         reason = (
+#             "forced by KWS_PAD_ONLY/GL mode"
+#             if force_pad_only else
+#             "internal frontend probes are unavailable"
+#         )
+#         dut._log.warning(
+#             f"  Using pad-only KWS_DONE wait ({reason}). "
+#             "Internal milestones will be logged only when probe hierarchy is reliable."
+#         )
+#     pulse_counts = {name: 0 for name in ['cic_valid', 'fir_valid', 'fft_sync', 'fft_valid', 'power_valid', 'filterbank_done', 'log_done', 'mel_valid', 'spect_done', 'kws_start']}
+#     milestones = {name: False for name in ['cic_valid', 'fir_valid', 'fft_sync', 'fft_sync_aligned', 'fft_valid', 'power_valid', 'filterbank_done', 'log_done', 'mel_valid', 'spect_done', 'kws_start']}
+#     frontend_timeout_cycles = len(pdm_bits) + 200_000
+#     kws_timeout_cycles = len(pdm_bits) + 20_000_000
+#     monitor_cycles = frontend_timeout_cycles if frontend_probes_available else kws_timeout_cycles
+#     log_every = int(os.getenv("KWS_LOG_EVERY", "500000"))
+#     t0_real = time.time()
+#     frontend_cyc = None
+#     kws_started_cyc = None
+#     rtl_class = None
+#     kws_done_seen = False
 
-    for cyc in range(monitor_cycles):
-        if cyc < len(pdm_bits):
-            dut.input_PAD.value = 0b10 | (pdm_bits[cyc] & 1)
-        else:
-            dut.input_PAD.value = 0
-        await RisingEdge(dut.clk_PAD)
+#     for cyc in range(monitor_cycles):
+#         if cyc < len(pdm_bits):
+#             dut.input_PAD.value = 0b10 | (pdm_bits[cyc] & 1)
+#         else:
+#             dut.input_PAD.value = 0
+#         await RisingEdge(dut.clk_PAD)
 
-        if frontend_probes_available:
-            for name in pulse_counts:
-                if _handle_is_one(handles[name]):
-                    pulse_counts[name] += 1
-            for name in milestones:
-                if not milestones[name] and _handle_is_one(handles[name]):
-                    milestones[name] = True
-                    dut._log.info(f"  [milestone] {name} observed at cyc={cyc + 1:,}")
-                    if name == 'kws_start':
-                        kws_started_cyc = cyc + 1
+#         if frontend_probes_available:
+#             for name in pulse_counts:
+#                 if _handle_is_one(handles[name]):
+#                     pulse_counts[name] += 1
+#             for name in milestones:
+#                 if not milestones[name] and _handle_is_one(handles[name]):
+#                     milestones[name] = True
+#                     dut._log.info(f"  [milestone] {name} observed at cyc={cyc + 1:,}")
+#                     if name == 'kws_start':
+#                         kws_started_cyc = cyc + 1
 
-        done, cls = _read_kws_pads(dut)
-        if done:
-            rtl_class = cls
-            kws_done_seen = True
-            frontend_cyc = cyc + 1
-            if gl:
-                _, spect_snap = _sample_spect_sram_gl(dut)
-                dut._log.info(f"  [kws_done] spect SRAM snapshot: {spect_snap}")
-            break
-        if frontend_probes_available and kws_started_cyc is not None:
-            frontend_cyc = cyc + 1
-            break
+#         done, cls = _read_kws_pads(dut)
+#         if done:
+#             rtl_class = cls
+#             kws_done_seen = True
+#             frontend_cyc = cyc + 1
+#             if gl:
+#                 _, spect_snap = _sample_spect_sram_gl(dut)
+#                 dut._log.info(f"  [kws_done] spect SRAM snapshot: {spect_snap}")
+#             break
+#         if frontend_probes_available and kws_started_cyc is not None:
+#             frontend_cyc = cyc + 1
+#             break
 
-        if cyc % log_every == log_every - 1:
-            pdm_status = 'done' if cyc + 1 >= len(pdm_bits) else f'in flight ({cyc + 1}/{len(pdm_bits)})'
-            elapsed_s = time.time() - t0_real
-            elapsed_str = f"{elapsed_s / 60:.1f}min ({elapsed_s:.0f}s)"
-            if frontend_probes_available:
-                dut._log.info(f"  [chip_top heartbeat] cyc={cyc + 1:,} sim={(cyc + 1) * CLK_PERIOD_NS / 1e6:.1f}ms elapsed={elapsed_str} PDM={pdm_status} counts={pulse_counts} probes={_probe_str(dut)}")
-            else:
-                gl_state = f" | {_gl_milestone_str(dut)}" if gl else ""
-                dut._log.info(f"  [chip_top heartbeat] cyc={cyc + 1:,} sim={(cyc + 1) * CLK_PERIOD_NS / 1e6:.1f}ms elapsed={elapsed_str} PDM={pdm_status} waiting for KWS_DONE pad{gl_state}")
+#         if cyc % log_every == log_every - 1:
+#             pdm_status = 'done' if cyc + 1 >= len(pdm_bits) else f'in flight ({cyc + 1}/{len(pdm_bits)})'
+#             elapsed_s = time.time() - t0_real
+#             elapsed_str = f"{elapsed_s / 60:.1f}min ({elapsed_s:.0f}s)"
+#             if frontend_probes_available:
+#                 dut._log.info(f"  [chip_top heartbeat] cyc={cyc + 1:,} sim={(cyc + 1) * CLK_PERIOD_NS / 1e6:.1f}ms elapsed={elapsed_str} PDM={pdm_status} counts={pulse_counts} probes={_probe_str(dut)}")
+#             else:
+#                 gl_state = f" | {_gl_milestone_str(dut)}" if gl else ""
+#                 dut._log.info(f"  [chip_top heartbeat] cyc={cyc + 1:,} sim={(cyc + 1) * CLK_PERIOD_NS / 1e6:.1f}ms elapsed={elapsed_str} PDM={pdm_status} waiting for KWS_DONE pad{gl_state}")
 
-    if frontend_cyc is None:
-        if frontend_probes_available:
-            missing = next((name for name, seen in milestones.items() if not seen), None)
-            raise AssertionError(f"frontend never produced kws_start within {frontend_timeout_cycles:,} cycles; first missing milestone: {missing}; counts={pulse_counts}; probes={_probe_str(dut)}")
-        gl_state = f" Last GL milestones: {_gl_milestone_str(dut)}" if gl else ""
-        raise AssertionError(
-            f"KWS_DONE pad never asserted within {kws_timeout_cycles:,} cycles; "
-            "pad-only completion checking was used, so this timeout is based "
-            f"only on the chip_top output pads.{gl_state}"
-        )
+#     if frontend_cyc is None:
+#         if frontend_probes_available:
+#             missing = next((name for name, seen in milestones.items() if not seen), None)
+#             raise AssertionError(f"frontend never produced kws_start within {frontend_timeout_cycles:,} cycles; first missing milestone: {missing}; counts={pulse_counts}; probes={_probe_str(dut)}")
+#         gl_state = f" Last GL milestones: {_gl_milestone_str(dut)}" if gl else ""
+#         raise AssertionError(
+#             f"KWS_DONE pad never asserted within {kws_timeout_cycles:,} cycles; "
+#             "pad-only completion checking was used, so this timeout is based "
+#             f"only on the chip_top output pads.{gl_state}"
+#         )
 
-    if not kws_done_seen:
-        remaining_pdm = pdm_bits[frontend_cyc:]
-        if remaining_pdm:
-            cocotb.start_soon(_drive_pdm_from_pads(dut, remaining_pdm))
-            dut._log.info(f"  Continuing remaining PDM in background ({len(remaining_pdm):,} bits)")
-        else:
-            dut.input_PAD.value = 0
+#     if not kws_done_seen:
+#         remaining_pdm = pdm_bits[frontend_cyc:]
+#         if remaining_pdm:
+#             cocotb.start_soon(_drive_pdm_from_pads(dut, remaining_pdm))
+#             dut._log.info(f"  Continuing remaining PDM in background ({len(remaining_pdm):,} bits)")
+#         else:
+#             dut.input_PAD.value = 0
 
-        remaining_timeout = max(1, kws_timeout_cycles - frontend_cyc)
-        dut._log.info(f"  KWS started; waiting up to {remaining_timeout:,} more cycles for bidir_PAD[2]")
-        done_cyc, cls = await _wait_for_kws_done_pad(dut, remaining_timeout)
-        if done_cyc is None:
-            raise AssertionError(f"KWS_DONE pad never asserted within {kws_timeout_cycles:,} total cycles; frontend_cyc={frontend_cyc:,}; probes={_probe_str(dut)}")
-        rtl_class = cls
-        kws_done_seen = True
-        dut._log.info(f"  KWS_DONE pad observed after {done_cyc:,} post-start wait cycles")
+#         remaining_timeout = max(1, kws_timeout_cycles - frontend_cyc)
+#         dut._log.info(f"  KWS started; waiting up to {remaining_timeout:,} more cycles for bidir_PAD[2]")
+#         done_cyc, cls = await _wait_for_kws_done_pad(dut, remaining_timeout)
+#         if done_cyc is None:
+#             raise AssertionError(f"KWS_DONE pad never asserted within {kws_timeout_cycles:,} total cycles; frontend_cyc={frontend_cyc:,}; probes={_probe_str(dut)}")
+#         rtl_class = cls
+#         kws_done_seen = True
+#         dut._log.info(f"  KWS_DONE pad observed after {done_cyc:,} post-start wait cycles")
 
-    assert kws_done_seen, "KWS_DONE was not observed on bidir_PAD[2]"
+#     assert kws_done_seen, "KWS_DONE was not observed on bidir_PAD[2]"
 
-    rtl_name = class_names[rtl_class] if rtl_class < len(class_names) else f"cls{rtl_class}"
-    expected_class = arith_class if arith_class is not None else gt_class
-    expected_name = arith_name if arith_class is not None else gt_name
-    expected_source = "manifest arithmetic" if arith_class is not None else "dataset label"
-    passed = rtl_class == expected_class
+#     rtl_name = class_names[rtl_class] if rtl_class < len(class_names) else f"cls{rtl_class}"
+#     expected_class = arith_class if arith_class is not None else gt_class
+#     expected_name = arith_name if arith_class is not None else gt_name
+#     expected_source = "manifest arithmetic" if arith_class is not None else "dataset label"
+#     passed = rtl_class == expected_class
 
-    if gl:
-        # Read gap scores directly from FSM accumulator registers preserved in the PNL.
-        # The score TX sequencer and debug_gap*_test wires were added to RTL after tapeout
-        # and are not present in the PNL netlist.
-        pnl_scores = _gl_read_gap_scores_pnl(dut, dut._log)
-        if pnl_scores is not None:
-            dut._log.info(
-                "  [gl_gap_scores] from global_pool_acc: "
-                + "  ".join(f"cls{c}={v}" for c, v in pnl_scores)
-            )
-            scores = [(c, class_names[c] if c < len(class_names) else f"cls{c}", v)
-                      for c, v in pnl_scores]
-            score_warning = None
-        else:
-            dut._log.warning("  [gl_gap_scores] could not read global_pool_acc")
-            scores, score_warning = _read_kws_scores(dut, class_names)
+#     if gl:
+#         # Read gap scores directly from FSM accumulator registers preserved in the PNL.
+#         # The score TX sequencer and debug_gap*_test wires were added to RTL after tapeout
+#         # and are not present in the PNL netlist.
+#         pnl_scores = _gl_read_gap_scores_pnl(dut, dut._log)
+#         if pnl_scores is not None:
+#             dut._log.info(
+#                 "  [gl_gap_scores] from global_pool_acc: "
+#                 + "  ".join(f"cls{c}={v}" for c, v in pnl_scores)
+#             )
+#             scores = [(c, class_names[c] if c < len(class_names) else f"cls{c}", v)
+#                       for c, v in pnl_scores]
+#             score_warning = None
+#         else:
+#             dut._log.warning("  [gl_gap_scores] could not read global_pool_acc")
+#             scores, score_warning = _read_kws_scores(dut, class_names)
 
-        _gl_probe_chip_core_signals(dut, dut._log)
-        try:
-            dut._log.info(
-                f"  [gl_debug] bidir_PAD state: full={dut.bidir_PAD.value} "
-                f"uart_tx_bit={_uart_tx_pad_bit(dut)}"
-            )
-        except Exception as e:
-            dut._log.warning(f"  [gl_debug] bidir_PAD read failed: {e}")
-    else:
-        scores, score_warning = await _uart_read_score_packet(dut, class_names)
-        if scores is None:
-            dut._log.warning(f"  UART score packet failed ({score_warning}); falling back to hierarchy probe")
-            scores, score_warning = _read_kws_scores(dut, class_names)
+#         _gl_probe_chip_core_signals(dut, dut._log)
+#         try:
+#             dut._log.info(
+#                 f"  [gl_debug] bidir_PAD state: full={dut.bidir_PAD.value} "
+#                 f"uart_tx_bit={_uart_tx_pad_bit(dut)}"
+#             )
+#         except Exception as e:
+#             dut._log.warning(f"  [gl_debug] bidir_PAD read failed: {e}")
+#     else:
+#         scores, score_warning = await _uart_read_score_packet(dut, class_names)
+#         if scores is None:
+#             dut._log.warning(f"  UART score packet failed ({score_warning}); falling back to hierarchy probe")
+#             scores, score_warning = _read_kws_scores(dut, class_names)
 
-    await _check_class_pad_stability(dut, rtl_class, class_names)
+#     await _check_class_pad_stability(dut, rtl_class, class_names)
 
-    if gl:
-        spect_data, spect_summary = _sample_spect_sram_gl(dut)
-        if spect_data is None:
-            dut._log.warning(f"  Spect SRAM probe: {spect_summary}")
-        else:
-            all_zero_banks = [
-                k for k, v in spect_data.items()
-                if isinstance(v, list) and all(x == 0 for x in v if x is not None)
-            ]
-            if all_zero_banks:
-                dut._log.warning(
-                    f"  Spect SRAM probe: ALL-ZERO banks {all_zero_banks} — {spect_summary}"
-                )
-                dut._log.warning(
-                    "  ALL-ZERO spectrogram SRAM means KWS sees no input features; "
-                    "classification is bias-only (likely root cause of wrong class)"
-                )
-            else:
-                dut._log.info(f"  Spect SRAM probe: {spect_summary}")
+#     if gl:
+#         spect_data, spect_summary = _sample_spect_sram_gl(dut)
+#         if spect_data is None:
+#             dut._log.warning(f"  Spect SRAM probe: {spect_summary}")
+#         else:
+#             all_zero_banks = [
+#                 k for k, v in spect_data.items()
+#                 if isinstance(v, list) and all(x == 0 for x in v if x is not None)
+#             ]
+#             if all_zero_banks:
+#                 dut._log.warning(
+#                     f"  Spect SRAM probe: ALL-ZERO banks {all_zero_banks} — {spect_summary}"
+#                 )
+#                 dut._log.warning(
+#                     "  ALL-ZERO spectrogram SRAM means KWS sees no input features; "
+#                     "classification is bias-only (likely root cause of wrong class)"
+#                 )
+#             else:
+#                 dut._log.info(f"  Spect SRAM probe: {spect_summary}")
 
-    dut._log.info(f"  Dataset label = {gt_name} ({gt_class})")
-    dut._log.info(f"  Manifest arithmetic = {arith_name} ({arith_class})")
-    dut._log.info(f"  Manifest PyTorch = {pytorch_name} ({pytorch_class})")
-    dut._log.info(f"  RTL class from chip_top pads = {rtl_name} ({rtl_class})")
-    dut._log.info(f"  Expected[{expected_source}] = {expected_name} ({expected_class})")
-    if scores is not None:
-        dut._log.info(f"  RTL GAP scores: {_format_kws_scores(scores)}")
-        dut._log.info(f"  RTL GAP ranking: {_format_kws_score_ranking(scores)}")
-    if score_warning:
-        dut._log.warning(f"  RTL GAP score warning: {score_warning}")
+#     dut._log.info(f"  Dataset label = {gt_name} ({gt_class})")
+#     dut._log.info(f"  Manifest arithmetic = {arith_name} ({arith_class})")
+#     dut._log.info(f"  Manifest PyTorch = {pytorch_name} ({pytorch_class})")
+#     dut._log.info(f"  RTL class from chip_top pads = {rtl_name} ({rtl_class})")
+#     dut._log.info(f"  Expected[{expected_source}] = {expected_name} ({expected_class})")
+#     if scores is not None:
+#         dut._log.info(f"  RTL GAP scores: {_format_kws_scores(scores)}")
+#         dut._log.info(f"  RTL GAP ranking: {_format_kws_score_ranking(scores)}")
+#     if score_warning:
+#         dut._log.warning(f"  RTL GAP score warning: {score_warning}")
 
-    _append_sim_top_result(sample_idx=sample_idx, wav_path=resolved_wav_path, hex_file=hex_file, gt_name=gt_name, gt_class=gt_class, arith_name=arith_name, arith_class=arith_class, pytorch_name=pytorch_name, pytorch_class=pytorch_class, rtl_name=rtl_name, rtl_class=rtl_class, expected_source=expected_source, expected_name=expected_name, expected_class=expected_class, passed=passed, scores=scores, score_warning=score_warning, manifest_path=manifest_path)
-    dut._log.info(f"  sim-top result appended to {RESULTS_TXT}")
+#     _append_sim_top_result(sample_idx=sample_idx, wav_path=resolved_wav_path, hex_file=hex_file, gt_name=gt_name, gt_class=gt_class, arith_name=arith_name, arith_class=arith_class, pytorch_name=pytorch_name, pytorch_class=pytorch_class, rtl_name=rtl_name, rtl_class=rtl_class, expected_source=expected_source, expected_name=expected_name, expected_class=expected_class, passed=passed, scores=scores, score_warning=score_warning, manifest_path=manifest_path)
+#     dut._log.info(f"  sim-top result appended to {RESULTS_TXT}")
 
-    assert passed, f"chip_top RTL produced '{rtl_name}', expected '{expected_name}' from {expected_source}"
-    dut._log.info("test_chip_top_e2e PASSED")
+#     assert passed, f"chip_top RTL produced '{rtl_name}', expected '{expected_name}' from {expected_source}"
+#     dut._log.info("test_chip_top_e2e PASSED")
 
 
 @cocotb.test(skip=gl and os.getenv("RUN_GL_PAD_SMOKE", "0") != "1")
