@@ -2,16 +2,13 @@
 # 256-point Short Time Fast Fourier Transform
 The Short Time Fast Fourier Transform is a version of the Discrete Fourier Transform:
 &emsp; &emsp; $F(n) = \sum_{k=0}^{N-1}f[k]e^\text{-j*(2pi/N)*nk}$
-where instead of computing the computationally expensive DFT, $O(n^2)$, it utilizes the efficient radix-2 Fast Fourier Transform algorithm:  $O(nlogn)$. However, in the case of a human speech, the signal produced is aperiodic and the DFT treats a finite sequence as one period of an implicitly periodic signal.
+where instead of computing the computationally expensive DFT, $O(n^2)$, it utilizes the efficient radix-2 Fast Fourier Transform algorithm:  $O(nlogn)$. However, in the case of a human speech, the signal produced is aperiodic and the DFT treats a finite sequence as one period of an implicitly periodic signal[^2].
 
-To solve the issue of transforming an aperiodic signal, the Short Time Fast Fourier Transform must be used. The STFFT is comprised of multiple smaller FFTs that span over a specified sample range instead of a single FFT. This is achieved through a layered windowing system: $h[n]=h_d[n]w[n]$
+To solve the issue of transforming an aperiodic signal, the Short Time Fast Fourier Transform must be used. The STFFT is comprised of multiple smaller FFTs that span over a specified sample range instead of a single FFT. This is achieved through a layered windowing system[^3]: $h[n]=h_d[n]w[n]$
 
 Now that there is a continuously moving window across an incoming audio input to simulate many smaller FFTs across the signal. We must introduce different forms of measurement for the FFTs range. First we have the window size/frame size(in our case window and frame size are equal). The window size is the sample range of the window function we are going to apply a singular FFT to:
   
 <img src="ZipCPU/util/frame_size.png" alt="Sized Image" width="500" height="500"> [^1]
-
-[^1]: Velardo, V. (2021). "Short-Time Fourier Transform Explained Easily" *https://www.youtube.com/watch?v=-Yxj3yfvY-4*.
-
 
 Hop size, this is the time or amount of samples before a new window will begin. It is essential to have windows overlapping to prevent aliasing and errors in output(hop size is less than window size):
 
@@ -134,3 +131,8 @@ To run the STFFT testbench:
 cd tests
 make test-stfft
 ```
+[^1]: Velardo, V. (2021). "Short-Time Fourier Transform Explained Easily" *https://www.youtube.com/watch?v=-Yxj3yfvY-4*.
+
+[^2]: Oppenhiem, A. & Schafer. R (2010). "Discrete-Time Signal Processing" *Chapter 7: Filter Design Techniques*.
+
+[^3]: Ye, H. (2026). "UCSC ECE 153/250: Digital Signal Processing" *Lecture 14: FIR Filter Design*.
