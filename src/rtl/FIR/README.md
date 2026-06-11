@@ -1,4 +1,4 @@
-# Type I Symmetric FIR  Compensation Filter
+# Type I FIR Compensation Filter
 
 Post PDM to PCM conversion using the CIC filter(an anti-aliasing and decimation filter). It is necessary to have a relatively flat pass-band gain and transition region when fed into a larger system. Due to the pass-band magnitude response of the CIC filter[^1]:
 
