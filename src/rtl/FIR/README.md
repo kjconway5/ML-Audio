@@ -1,6 +1,6 @@
 # Type I Symmetric FIR  Compensation Filter
 
-Post PDM to PCM conversion using the CIC filter(an anti-aliasing and decimation filter). It is necessary to have a relatively flat pass-band gain and transition region when fed into a larger system. Due to the pass-band magnitude response of the CIC filter:
+Post PDM to PCM conversion using the CIC filter(an anti-aliasing and decimation filter). It is necessary to have a relatively flat pass-band gain and transition region when fed into a larger system. Due to the pass-band magnitude response of the CIC filter[^1]:
 
 &emsp; &emsp; $\left| H_{CIC}(e^{j2 \pi f}) \right|=\left| \frac{sin(2\pi fD/2)}{sin(2\pi f/2)}\right|^M$
 
@@ -11,7 +11,7 @@ The CIC filter produces a pass-band droop as the frequency increases towards the
 
 To achieve a flatter pass-band gain and sharper transition region we can utilize a FIR filter with tap coefficients that contain the inverse magnitude response of the CIC filter. 
 
-## Design Steps
+## Design Steps[^4][^5]
 1. Calculate the inverse magnitude response: \
 &emsp; &emsp; $\left| H_{d}(e^{j2 \pi f}) \right|=\left| \frac{sin(2\pi f/2)}{sin(2\pi fD/2)}\right|^M$
 2. Compute the impulse responses: \
@@ -22,7 +22,7 @@ To achieve a flatter pass-band gain and sharper transition region we can utilize
 &emsp; &emsp; $w[n] = \frac{I_0(\beta\sqrt{1-(n-\alpha)^2/\alpha^2})}{I_0(\beta)},  0\leq n\leq N$
  4. Quantization: \
  &emsp; &emsp; Float tap coefficients are quantized to $N_{BITS}$-bit integers 
- 5. Canonical Sign Digit Representation Conversion: \
+ 5. Canonical Sign Digit Representation Conversion[^2][^3]: \
  &emsp; &emsp; CSD uses a ternary representation of data as a {-1, 0, 1} format, alongside the constraint: no two adjacent digits are non-zero. However, two ‎bits ‎are ‎required ‎to ‎store ‎one ‎digit ‎of a ‎CSD number & requires extra conversion logic for variable CSD multiplication. \
 The probability of a CSD bit $C_i$ being non-zero is: \
 &emsp; &emsp; $P(|C_{i}|=1) = \frac{1}{3} + \frac{1}{9N}[1-(\frac{1}{2})^{N}]$ \
@@ -74,4 +74,15 @@ make test-FIR
 | **`test_random_full_rate_axi`** | 1000 random samples at full throughput while comparing against the reference model |
 | **`test_backpressure`** | Toggles `o_tready` every 3 cycles to stress the stall logic; verifies no sample is dropped or duplicated under back-pressure |
 | **`test_valid_deasserts`** | Verifies `o_tvalid` goes low after the downstream consumes the output with no new input arriving |
+
+
+[^1]: Lyons, R. (2020). "A Beginner's Guide To Cascaded Integrator-Comb (CIC) Filters" *https://www.dsprelated.com/showarticle/1337.php*.
+
+[^2]: Rovertson, N. (2017). "Canonic Signed Digit (CSD) Representation of Integers" *https://www.dsprelated.com/showarticle/1030.php*.
+
+[^3]: Arar, S. (2017). "An Introduction to Canonical Signed Digit Representation: CSD is an elegant method to implement digital multipliers in a more efficient way. " *https://www.allaboutcircuits.com/technical-articles/an-introduction-to-canonical-signed-digit-representation/*.
+
+[^4]: Ye, H. (2026). "UCSC ECE 153/250: Digital Signal Processing" *Lecture 14: FIR Filter Design*.
+
+[^5]: Oppenhiem, A. & Schafer. R (2010). "Discrete-Time Signal Processing" *Chapter 7: Filter Design Techniques*.
 
