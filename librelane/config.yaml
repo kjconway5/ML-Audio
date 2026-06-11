@@ -161,7 +161,7 @@ CTS_CLK_MAX_WIRE_LENGTH: 100 # good at 300 testing at 200
 
 # Limits the number of sinks allowed in each CTS sink cluster
 # smaller clusters mean more leaf buffers and lower fanout/cap per
-CTS_SINK_CLUSTERING_SIZE: 8   #Increased by 20 max cap vios, worsened timing at 12, untested at other values
+# CTS_SINK_CLUSTERING_SIZE: 12   Increased by 20 max cap vios, worsened timing at 12, untested at other values
 
 # Increase for more logic
 # on your die
