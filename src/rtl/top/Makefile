@@ -93,7 +93,7 @@ COCOTB_MAKEFILES := $(shell cocotb-config --makefiles 2>/dev/null)
 
 # Hex data files required by $readmemh in RTL
 DATA_DIR    := $(abspath $(LOGMEL_DIR)/data)
-HANNING_HEX := $(STFFT_DIR)/R2FFT/hanning.hex
+HANNING_HEX := $(STFFT_DIR)/tests/hanning.hex
 
 
 HEX_FILES := \
