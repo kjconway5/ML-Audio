@@ -23,11 +23,20 @@ slot = os.getenv("SLOT", "1x1")
 
 hdl_toplevel = "chip_top"
 
+def _bidir_drive_value(uart_rx_bit=1):
+    # str(LogicArray) is MSB-first, while pad bit numbers are LSB-first.
+    bits = ["Z"] * NUM_BIDIR_PADS
+    bits[UART_RX_PAD] = "1" if uart_rx_bit else "0"
+    bits[AUDIO_TEST_MODE_PAD] = "0"
+    bits[ML_TEST_MODE_PAD] = "0"
+    return "".join(reversed(bits))
+
+
 async def set_defaults(dut):
     dut.input_PAD.value = 0
-    # UART RX is bidir_PAD[0]. Hold it idle-high and release every other
-    # bidirectional pad so chip_top can drive its output pads without contention.
-    dut.bidir_PAD.value = "Z" * 39 + "1"
+    # UART RX is held idle-high. The test-mode bidir pads are external inputs,
+    # so drive them low instead of leaving the SRAM debug mux select floating.
+    dut.bidir_PAD.value = _bidir_drive_value(1)
 
 async def enable_power(dut):
     dut.VDD.value = 1
@@ -82,6 +91,8 @@ UART_RX_PAD = 0
 UART_TX_PAD = 1
 KWS_DONE_PAD = 2
 KWS_CLASS_BASE = 3
+AUDIO_TEST_MODE_PAD = 7
+ML_TEST_MODE_PAD = 8
 CLK_PERIOD_NS = 40
 UART_PRESCALE = 17 if gl else 1
 BIT_CYCLES = UART_PRESCALE * 8
@@ -195,9 +206,9 @@ def _build_packet(target, addr, payload):
 
 
 def _drive_bidir_uart_rx(dut, bit):
-    # Only external UART RX, bidir_PAD[0], is driven by the testbench. All other
-    # bidirectional pads remain Z so chip_top can drive TX/KWS outputs.
-    dut.bidir_PAD.value = "Z" * (NUM_BIDIR_PADS - 1) + ("1" if bit else "0")
+    # Drive only external input pads: UART RX plus test-mode selects.
+    # Other bidirectional pads remain Z so chip_top can drive TX/KWS outputs.
+    dut.bidir_PAD.value = _bidir_drive_value(bit)
 
 
 def _uart_tx_pad_bit(dut):
@@ -595,10 +606,42 @@ def _resolve_probe_handles(dut):
     paths = {
         'cic_valid': 'pipeline_inst.cic_valid',
         'fir_valid': 'pipeline_inst.fir_valid_o',
-        'fft_sync': 'pipeline_inst.u_stfft.o_fft_sync',
-        'fft_sync_aligned': 'pipeline_inst.fft_sync_aligned',
+        # The STFFT was rewritten to an AXI-stream interface: it no longer has
+        # an o_fft_sync port, and full_pipeline_top renamed fft_sync_aligned to
+        # the registered fft_sync_r/fft_sync_rr pair (rr is the logmel-aligned one).
+        'fft_sync': 'pipeline_inst.fft_sync_r',
+        'fft_sync_aligned': 'pipeline_inst.fft_sync_rr',
         'fft_valid': 'pipeline_inst.fft_valid',
+        # STFFT internals — let a frontend hang localize to a stage instead of a
+        # silent "fft never produced anything". warmup_cnt climbing to 255 means
+        # samples are reaching the FFT; if it stalls below 255 the stall is
+        # upstream (CIC/FIR feed), if it completes but no o_valid appears the
+        # stall is the FFT-core handshake (watch fft_done / r2fft_s_ready).
+        'stfft_warmup_cnt': 'pipeline_inst.u_stfft.warmup_cnt',
+        'stfft_warmup_done': 'pipeline_inst.u_stfft.warmup_done',
+        'stfft_frame_pending': 'pipeline_inst.u_stfft.frame_pending',
+        'stfft_state': 'pipeline_inst.u_stfft.state',
+        'stfft_read_idx': 'pipeline_inst.u_stfft.read_idx',
+        'stfft_i_ready': 'pipeline_inst.stfft_i_ready',
+        'stfft_fft_i_ready': 'pipeline_inst.u_stfft.fft_i_ready_w',
+        'fft_done': 'pipeline_inst.u_stfft.u_fft.done',
+        'r2fft_s_ready': 'pipeline_inst.u_stfft.u_fft.r2fft_s_ready',
         'power_valid': 'pipeline_inst.u_logmel.power_valid',
+        'fb_state': 'pipeline_inst.u_logmel.u_mel_filterbank.state',
+        'fb_store_ctr': 'pipeline_inst.u_logmel.u_mel_filterbank.store_ctr',
+        'fb_mel_idx': 'pipeline_inst.u_logmel.u_mel_filterbank.mel_idx',
+        'fb_proc_bin': 'pipeline_inst.u_logmel.u_mel_filterbank.proc_bin',
+        'fb_start_bin': 'pipeline_inst.u_logmel.u_mel_filterbank.start_bin_r',
+        'fb_end_bin': 'pipeline_inst.u_logmel.u_mel_filterbank.end_bin_r',
+        'fb_coeff_base': 'pipeline_inst.u_logmel.u_mel_filterbank.coeff_base',
+        'fb_index_addr': 'pipeline_inst.u_logmel.u_mel_filterbank.index_addr',
+        'fb_index_out': 'pipeline_inst.u_logmel.u_mel_filterbank.index_out',
+        'fb_coeff_addr': 'pipeline_inst.u_logmel.u_mel_filterbank.coeff_addr',
+        'fb_weight': 'pipeline_inst.u_logmel.u_mel_filterbank.weight',
+        'frame_ctrl_state': 'pipeline_inst.u_logmel.u_frame_ctrl.curr_state_q',
+        'vad_active': 'pipeline_inst.u_logmel.vad_active',
+        'vad_done': 'pipeline_inst.u_logmel.vad_done',
+        'vad_frame_accept': 'pipeline_inst.u_logmel.vad_frame_accept',
         'filterbank_done': 'pipeline_inst.u_logmel.filterbank_done',
         'log_done': 'pipeline_inst.u_logmel.log_done',
         'mel_valid': 'pipeline_inst.mel_valid',
@@ -626,7 +669,11 @@ def _frontend_probes_available(handles):
     Gate-level/PnR netlists may flatten or rename chip_core internals. In that
     case the pad-level test must not fail just because debug probes disappeared.
     """
-    required = ("cic_valid", "mel_valid", "spect_done", "kws_start")
+    required = (
+        "cic_valid", "fir_valid", "fft_sync", "fft_sync_aligned", "fft_valid",
+        "power_valid", "filterbank_done", "log_done", "mel_valid",
+        "spect_done", "kws_start",
+    )
     return all(handles.get(name) is not None for name in required)
 
 
@@ -636,7 +683,17 @@ def _probe_str(dut):
         f"cic={_handle_int(handles['cic_valid'])} fir={_handle_int(handles['fir_valid'])} "
         f"fft_sync={_handle_int(handles['fft_sync'])}/{_handle_int(handles['fft_sync_aligned'])} "
         f"fft_valid={_handle_int(handles['fft_valid'])} pwr={_handle_int(handles['power_valid'])} "
-        f"fb_done={_handle_int(handles['filterbank_done'])} log_done={_handle_int(handles['log_done'])} "
+        f"stfft[warm={_handle_int(handles['stfft_warmup_cnt'])} done={_handle_int(handles['stfft_warmup_done'])} "
+        f"pend={_handle_int(handles['stfft_frame_pending'])} state={_handle_int(handles['stfft_state'])} "
+        f"rd={_handle_int(handles['stfft_read_idx'])} iready={_handle_int(handles['stfft_i_ready'])} "
+        f"fft_iready={_handle_int(handles['stfft_fft_i_ready'])} fft_done={_handle_int(handles['fft_done'])} "
+        f"r2ready={_handle_int(handles['r2fft_s_ready'])}] "
+        f"fb[state={_handle_int(handles['fb_state'])} store={_handle_int(handles['fb_store_ctr'])} mel={_handle_int(handles['fb_mel_idx'])} "
+        f"proc={_handle_int(handles['fb_proc_bin'])} start={_handle_int(handles['fb_start_bin'])} end={_handle_int(handles['fb_end_bin'])} "
+        f"base={_handle_int(handles['fb_coeff_base'])} iaddr={_handle_int(handles['fb_index_addr'])} iout={_handle_int(handles['fb_index_out'])} "
+        f"caddr={_handle_int(handles['fb_coeff_addr'])} weight={_handle_int(handles['fb_weight'])}] "
+        f"vad[active={_handle_int(handles['vad_active'])} done={_handle_int(handles['vad_done'])} accept={_handle_int(handles['vad_frame_accept'])}] "
+        f"fc={_handle_int(handles['frame_ctrl_state'])} fb_done={_handle_int(handles['filterbank_done'])} log_done={_handle_int(handles['log_done'])} "
         f"mel={_handle_int(handles['mel_valid'])} spect_done={_handle_int(handles['spect_done'])} "
         f"kws_start={_handle_int(handles['kws_start'])} kws_done={_handle_int(handles['kws_done'])} "
         f"wr={_handle_int(handles['spect_wr_addr'])}"
@@ -959,7 +1016,7 @@ async def test_chip_top_e2e(dut):
             f"  Using pad-only KWS_DONE wait ({reason}). "
             "Internal milestones will be logged only when probe hierarchy is reliable."
         )
-    pulse_counts = {name: 0 for name in ['fft_sync', 'filterbank_done', 'log_done', 'mel_valid', 'spect_done', 'kws_start']}
+    pulse_counts = {name: 0 for name in ['cic_valid', 'fir_valid', 'fft_sync', 'fft_valid', 'power_valid', 'filterbank_done', 'log_done', 'mel_valid', 'spect_done', 'kws_start']}
     milestones = {name: False for name in ['cic_valid', 'fir_valid', 'fft_sync', 'fft_sync_aligned', 'fft_valid', 'power_valid', 'filterbank_done', 'log_done', 'mel_valid', 'spect_done', 'kws_start']}
     frontend_timeout_cycles = len(pdm_bits) + 200_000
     kws_timeout_cycles = len(pdm_bits) + 20_000_000

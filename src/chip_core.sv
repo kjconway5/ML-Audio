@@ -74,6 +74,7 @@ module chip_core #(
     logic [NUM_BIDIR_PADS-1:0] bidir_oe_r;
     logic [NUM_BIDIR_PADS-1:0] bidir_ie_r;
     logic [NUM_BIDIR_PADS-1:0] bidir_out_r;
+    logic [NUM_BIDIR_PADS-1:0] bidir_pd_r;
 
     assign bidir_oe = bidir_oe_r;
     assign bidir_ie = bidir_ie_r;
@@ -81,7 +82,7 @@ module chip_core #(
     assign bidir_cs = '0;
     assign bidir_sl = '0;
     assign bidir_pu = '0;
-    assign bidir_pd = '0;
+    assign bidir_pd = bidir_pd_r;
 
     wire reset;
     assign reset = ~rst_n;
@@ -108,6 +109,9 @@ module chip_core #(
         bidir_oe_r  = '0;
         bidir_ie_r  = '0;
         bidir_out_r = '0;
+        bidir_pd_r  = '0;
+        bidir_pd_r[AUDIO_TEST_MODE_PAD] = 1'b1;
+        bidir_pd_r[ML_TEST_MODE_PAD]    = 1'b1;
 
         // input pads
         bidir_ie_r[UART_RX_PAD] = 1'b1;

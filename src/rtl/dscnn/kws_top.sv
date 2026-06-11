@@ -261,21 +261,9 @@ module kws_top #(
             debug_gap4_test <= '0;
             debug_gap5_test <= '0;
             debug_gap6_test <= '0;
-            bias_addr_test  <= '0;
+            bias_addr_test <= '0;
             bias_data_test <= '0;
-
-        end else if (test_mode_ml) begin
-            // weight SRAM signals
-            w_raddr_test <= w_raddr;
-            w_rdata_test <= w_rdata;
-            ss_a_raddr_test <= ss_a_raddr;
-            ss_a_rdata_test <= ss_a_rdata;
-            ss_b_raddr_test <= ss_b_raddr;
-            ss_b_rdata_test <= ss_b_rdata;
-            mac_en_test <= mac_en;
-            mac_clear_test <= mac_clear;
-            rq_relu_en_test <= rq_relu_en;
-            rq_out_test <= rq_out;
+        end else begin
             debug_gap0_test <= debug_gap0;
             debug_gap1_test <= debug_gap1;
             debug_gap2_test <= debug_gap2;
@@ -283,29 +271,34 @@ module kws_top #(
             debug_gap4_test <= debug_gap4;
             debug_gap5_test <= debug_gap5;
             debug_gap6_test <= debug_gap6;
-            bias_addr_test  <= bias_addr;
-            bias_data_test <= bias_data;
 
-        end else begin 
-            w_raddr_test <= '0;
-            w_rdata_test <= '0;
-            ss_a_raddr_test <= '0;
-            ss_a_rdata_test <= '0;
-            ss_b_raddr_test <= '0;
-            ss_b_rdata_test <= '0;
-            mac_en_test <= '0;
-            mac_clear_test <= '0;
-            rq_relu_en_test <= '0;
-            rq_out_test <= '0;
-            debug_gap0_test <= '0;
-            debug_gap1_test <= '0;
-            debug_gap2_test <= '0;
-            debug_gap3_test <= '0;
-            debug_gap4_test <= '0;
-            debug_gap5_test <= '0;
-            debug_gap6_test <= '0;
-            bias_addr_test  <= '0;
-            bias_data_test <= '0;
+            if (test_mode_ml) begin
+                w_raddr_test <= w_raddr;
+                w_rdata_test <= w_rdata;
+                ss_a_raddr_test <= ss_a_raddr;
+                ss_a_rdata_test <= ss_a_rdata;
+                ss_b_raddr_test <= ss_b_raddr;
+                ss_b_rdata_test <= ss_b_rdata;
+                mac_en_test <= mac_en;
+                mac_clear_test <= mac_clear;
+                rq_relu_en_test <= rq_relu_en;
+                rq_out_test <= rq_out;
+                bias_addr_test <= bias_addr;
+                bias_data_test <= bias_data;
+            end else begin
+                w_raddr_test <= '0;
+                w_rdata_test <= '0;
+                ss_a_raddr_test <= '0;
+                ss_a_rdata_test <= '0;
+                ss_b_raddr_test <= '0;
+                ss_b_rdata_test <= '0;
+                mac_en_test <= '0;
+                mac_clear_test <= '0;
+                rq_relu_en_test <= '0;
+                rq_out_test <= '0;
+                bias_addr_test <= '0;
+                bias_data_test <= '0;
+            end
         end
     end
 
