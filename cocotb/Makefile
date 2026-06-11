@@ -2,7 +2,7 @@ REPO_ROOT := $(abspath ..)
 SRC       := $(REPO_ROOT)/src
 RTL       := $(SRC)/rtl
 LOGMEL_DATA := $(RTL)/Log-Mel/data
-HANNING_HEX := $(RTL)/STFFT/ZipCPU/hanning.hex
+HANNING_HEX := $(RTL)/STFFT/tests/hanning.hex
 
 READMEMH_HEX_FILES := \
 	$(HANNING_HEX) \

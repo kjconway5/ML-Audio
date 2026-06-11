@@ -272,6 +272,57 @@ def _gl_read_gap_scores_pnl(dut, log):
     return scores
 
 
+_GL_MILESTONE_BITS = {
+    'boot_done': r"\i_chip_core.boot_done ",
+    'spect_write_sel': r"\i_chip_core.kws_inst.inst_ctrl.spect_write_sel ",
+    'spect_done': r"\i_chip_core.kws_inst.inst_ctrl.spect_done ",
+    'kws_done_r': r"\i_chip_core.kws_done_r ",
+}
+
+_GL_MILESTONE_BUSES = {
+    'frame_state': (r"\i_chip_core.frame_control_state[{}] ", 2),
+    'kws_state': (r"\i_chip_core.kws_inst.inst_ctrl.state[{}] ", 4),
+    'kws_layer': (r"\i_chip_core.kws_inst.inst_ctrl.layer[{}] ", 4),
+}
+
+
+def _gl_read_escaped(chip_top, name):
+    """Read one escaped-name bit from the flat PNL: int, 'X', or None if absent."""
+    try:
+        handle = getattr(chip_top, name)
+    except Exception:
+        return None
+    try:
+        return int(handle.value)
+    except Exception:
+        return 'X'
+
+
+def _gl_milestone_str(dut):
+    """Compact frontend/KWS progress summary from nets preserved in the PNL.
+
+    Net names verified against final/pnl/chip_top.pnl.v. Usable on every
+    heartbeat in GL/SDF mode where the RTL probe hierarchy is unavailable,
+    so a hang localizes to a stage instead of a silent pad wait. Never raises.
+    """
+    chip_top = getattr(dut, "u_chip_top", None)
+    if chip_top is None:
+        return "u_chip_top unavailable"
+    parts = []
+    for label, name in _GL_MILESTONE_BITS.items():
+        val = _gl_read_escaped(chip_top, name)
+        parts.append(f"{label}={'?' if val is None else val}")
+    for label, (fmt, width) in _GL_MILESTONE_BUSES.items():
+        bits = [_gl_read_escaped(chip_top, fmt.format(b)) for b in range(width)]
+        if any(b is None for b in bits):
+            parts.append(f"{label}=?")
+        elif any(b == 'X' for b in bits):
+            parts.append(f"{label}=X")
+        else:
+            parts.append(f"{label}={sum(b << i for i, b in enumerate(bits))}")
+    return " ".join(parts)
+
+
 async def _uart_read_byte(dut, timeout_cycles=800_000):
     log = dut._log
     log.info("  [UART RX] waiting for start bit on bidir_PAD[1] (chip TX)")
@@ -892,6 +943,8 @@ async def test_chip_top_e2e(dut):
     pdm_bits = _pcm_to_pdm(pcm)
     dut._log.info(f"  {len(pcm)} PCM samples -> {len(pdm_bits)} PDM bits")
     dut._log.info(f"  [initial state] {_probe_str(dut)}")
+    if gl:
+        dut._log.info(f"  [gl_milestones] {_gl_milestone_str(dut)}")
 
     handles = _resolve_probe_handles(dut)
     force_pad_only = os.getenv("KWS_PAD_ONLY", "1" if gl else "0").lower() in ("1", "true", "yes")
@@ -956,16 +1009,18 @@ async def test_chip_top_e2e(dut):
             if frontend_probes_available:
                 dut._log.info(f"  [chip_top heartbeat] cyc={cyc + 1:,} sim={(cyc + 1) * CLK_PERIOD_NS / 1e6:.1f}ms elapsed={elapsed_str} PDM={pdm_status} counts={pulse_counts} probes={_probe_str(dut)}")
             else:
-                dut._log.info(f"  [chip_top heartbeat] cyc={cyc + 1:,} sim={(cyc + 1) * CLK_PERIOD_NS / 1e6:.1f}ms elapsed={elapsed_str} PDM={pdm_status} waiting for KWS_DONE pad")
+                gl_state = f" | {_gl_milestone_str(dut)}" if gl else ""
+                dut._log.info(f"  [chip_top heartbeat] cyc={cyc + 1:,} sim={(cyc + 1) * CLK_PERIOD_NS / 1e6:.1f}ms elapsed={elapsed_str} PDM={pdm_status} waiting for KWS_DONE pad{gl_state}")
 
     if frontend_cyc is None:
         if frontend_probes_available:
             missing = next((name for name, seen in milestones.items() if not seen), None)
             raise AssertionError(f"frontend never produced kws_start within {frontend_timeout_cycles:,} cycles; first missing milestone: {missing}; counts={pulse_counts}; probes={_probe_str(dut)}")
+        gl_state = f" Last GL milestones: {_gl_milestone_str(dut)}" if gl else ""
         raise AssertionError(
             f"KWS_DONE pad never asserted within {kws_timeout_cycles:,} cycles; "
             "pad-only completion checking was used, so this timeout is based "
-            "only on the chip_top output pads."
+            f"only on the chip_top output pads.{gl_state}"
         )
 
     if not kws_done_seen:
@@ -1083,13 +1138,19 @@ async def test_chip_top_pad_smoke(dut):
         assert dut.input_PAD.value.to_unsigned() == pattern
         assert _pad_bit(dut.bidir_PAD.value, 1) in {"0", "1"}, "UART TX pad became X/Z"
 
+    if gl:
+        milestones = _gl_milestone_str(dut)
+        dut._log.info(f"[gl_milestones] {milestones}")
+        assert "unavailable" not in milestones and "=?" not in milestones, \
+            f"GL milestone probe nets missing from netlist: {milestones}"
+
     logger.info("chip_top pad smoke completed")
 
 
 def link_readmemh_files(proj_path):
     rtl = (proj_path / "../src/rtl").resolve()
     links = [
-        rtl / "STFFT/ZipCPU/hanning.hex",
+        rtl / "STFFT/tests/hanning.hex",
         rtl / "Log-Mel/data/mel_coeffs_sparse.hex",
         rtl / "Log-Mel/data/mel_indices.hex",
         rtl / "Log-Mel/data/log2_lut.hex",
@@ -1200,7 +1261,12 @@ def chip_top_runner():
             sim_dir / "chip_top_sdf_wrapper.sv",
         ]
         top_module = "chip_top_sdf_wrapper"
-        defines = {"FUNCTIONAL": True, "USE_POWER_PINS": True}
+        # FUNCTIONAL suppresses `specify` blocks in cell models via `ifndef FUNCTIONAL guards.
+        # For SDF back-annotation we need those blocks compiled in so $sdf_annotate has
+        # paths to write into; omit FUNCTIONAL when a corner is requested.
+        defines = {"USE_POWER_PINS": True}
+        if not sdf_corner:
+            defines["FUNCTIONAL"] = True
     else:
         sources.extend(rtl_sources(proj_path))
 
@@ -1220,9 +1286,17 @@ def chip_top_runner():
         build_args += ["-g2012"]
     if sdf_corner:
         sdf_path = (proj_path / f"../final/sdf/{sdf_corner}/chip_top__{sdf_corner}.sdf").resolve()
+        fixed_sdf_path = (proj_path / "sim_build" / f"chip_top__{sdf_corner}_fixed.sdf").resolve()
+        sys.path.insert(0, str((proj_path / "../scripts").resolve()))
+        import sdf_icarus_fixer
+        (proj_path / "sim_build").mkdir(exist_ok=True)
+        stats = sdf_icarus_fixer.fix(sdf_path, fixed_sdf_path)
+        print(f"[sdf_fix] fixed {stats.triplets_fixed} triplet(s), "
+              f"dropped {stats.interconnects_dropped} INTERCONNECT(s), "
+              f"{stats.cells_dropped} CELL(s)  →  {fixed_sdf_path}")
         sdf_inc = proj_path / "sim" / "sdf_annotate.v"
-        sdf_inc.write_text(f'initial $sdf_annotate("{sdf_path}", u_chip_top, , "sdf.log", "MAXIMUM");\n')
-        build_args += ["-DSDF_ENABLED", f"-I{proj_path / 'sim'}", "-specify"]
+        sdf_inc.write_text(f'initial $sdf_annotate("{fixed_sdf_path}", u_chip_top, , "sdf.log", "MAXIMUM");\n')
+        build_args += ["-DSDF_ENABLED", f"-I{proj_path / 'sim'}", "-gspecify"]
 
     if sim == "verilator":
         build_args += ["--timing"]
@@ -1245,7 +1319,19 @@ def chip_top_runner():
         power_vcd_path = (proj_path / "sim_build" / "power_window.vcd").resolve()
         plusargs.append(f"+power_vcd_path={power_vcd_path}")
 
-    if sim == "icarus" and run_power_vcd:
+    # KWS_WAVES=1 arms a debug FST dump of u_chip_top (see chip_top_sdf_wrapper.sv).
+    # KWS_DUMP_START_NS=<t> postpones the dump so long runs only capture the
+    # window of interest instead of filling the disk.
+    kws_waves = gl and os.getenv("KWS_WAVES", "0").lower() in ("1", "true", "yes")
+    if kws_waves:
+        fst_path = (proj_path / "sim_build" / "chip_top_gl.fst").resolve()
+        plusargs.append(f"+kws_fst_path={fst_path}")
+        dump_start_ns = os.getenv("KWS_DUMP_START_NS", "")
+        if dump_start_ns:
+            plusargs.append(f"+kws_dump_start_ns={dump_start_ns}")
+
+    if sim == "icarus" and (run_power_vcd or kws_waves):
+        wave_flag = "-vcd" if run_power_vcd else "-fst"
         base_test_command = runner._test_command
 
         def _test_command_vcd():
@@ -1253,7 +1339,7 @@ def chip_top_runner():
             for cmd in cmds:
                 for idx, arg in enumerate(cmd):
                     if arg == "-none":
-                        cmd[idx] = "-vcd"
+                        cmd[idx] = wave_flag
             return cmds
 
         runner._test_command = _test_command_vcd
