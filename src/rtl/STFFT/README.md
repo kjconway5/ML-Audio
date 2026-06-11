@@ -6,7 +6,7 @@ where instead of computing the computationally expensive DFT, $O(n^2)$, it utili
 
 To solve the issue of transforming an aperiodic signal, the Short Time Fast Fourier Transform must be used. The STFFT is comprised of multiple smaller FFTs that span over a specified sample range instead of a single FFT. This is achieved through a layered windowing system: $h[n]=h_d[n]w[n]$
 
-Now that there is a continuously moving window across an incoming audio input to simulate many smaller FFTs across the signal. We must introduce different forms of measurement for the FFTs range. First we have the window size/frame size(in our case window and frame size are equal). The window size is the signal we are going to apply a singular FFT to. The window size can be measured in time and number of samples:
+Now that there is a continuously moving window across an incoming audio input to simulate many smaller FFTs across the signal. We must introduce different forms of measurement for the FFTs range. First we have the window size/frame size(in our case window and frame size are equal). The window size is the sample range of the window function we are going to apply a singular FFT to:
   
 <img src="ZipCPU/util/frame_size.png" alt="Sized Image" width="500" height="500">
 
@@ -24,11 +24,13 @@ It is important to keep in mind the time-frequency resolution of the STFFTs outp
 - **Clock**: 16MHz
 - **Processing Time**: 17000 Clock Cycles
 - **FFT Size**: 256
+- **Window Size**: 256
 - **Hop Size**: 128
 
 
 
-## 256-point FFT Core IP: R2FFT
+## 256-point FFT Core IP: R2FFT by yoonisi
+This design ulitizes the R2FFT core with a custom memory and butterfly controller:
 
 
 ## Running Testbench
