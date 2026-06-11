@@ -22,6 +22,22 @@ ifeq ($(filter $(SLOT),$(AVAILABLE_SLOTS)),)
     $(error $(SLOT) does not exist in AVAILABLE_SLOTS: $(AVAILABLE_SLOTS))
 endif
 
+
+ifeq ($(SCL),default)
+    SCL = gf180mcu_as_sc_mcu7t3v3
+endif
+SCL ?= gf180mcu_as_sc_mcu7t3v3
+
+ifeq ($(PAD),default)
+    PAD = gf180mcu_fd_io
+endif
+PAD ?= gf180mcu_fd_io
+
+ifeq ($(SRAM),default)
+    SRAM = gf180mcu_ocd_ip_sram
+endif
+SRAM ?= gf180mcu_ocd_ip_sram
+
 .DEFAULT_GOAL := help
 
 help: ## Show this help message
