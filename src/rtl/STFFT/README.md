@@ -8,11 +8,11 @@ To solve the issue of transforming an aperiodic signal, the Short Time Fast Four
 
 Now that there is a continuously moving window across an incoming audio input to simulate many smaller FFTs across the signal. We must introduce different forms of measurement for the FFTs range. First we have the window size/frame size(in our case window and frame size are equal). The window size is the sample range of the window function we are going to apply a singular FFT to:
   
-<img src="ZipCPU/util/frame_size.png" alt="Sized Image" width="500" height="500"> [^1]
+<img src="R2FFT/doc/frame_size.png" alt="Sized Image" width="500" height="500"> [^1]
 
 Hop size, this is the time or amount of samples before a new window will begin. It is essential to have windows overlapping to prevent aliasing and errors in output(hop size is less than window size):
 
-  <img src="ZipCPU/util/hop_size.png" alt="Sized Image" width="500" height="500"> [^1]
+  <img src="R2FFT/doc/hop_size.png" alt="Sized Image" width="500" height="500"> [^1]
 
 It is important to keep in mind the time-frequency resolution of the STFFTs output. As the frame size increases the frequency resolution increase however the time resolution decreases. Additionally, the hop size dictates how many FFTs are computed in a given audio sound.
 
