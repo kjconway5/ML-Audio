@@ -334,6 +334,238 @@ def _gl_milestone_str(dut):
     return " ".join(parts)
 
 
+# ---------------------------------------------------------------------------
+# GL X-propagation forensics
+#
+# The KWS layer controller (inst_ctrl / FSM.sv) state goes X in gate-level sim
+# the instant it activates after the first spectrogram (see sim_gl.log). These
+# helpers + the _GLForensics tracker capture *which* register corrupts first and
+# what the surrounding datapath looks like at that exact cycle, so an overnight
+# run pinpoints the X source without a second pass. All names verified to
+# survive synthesis in final/pnl/chip_top.pnl.v.
+# ---------------------------------------------------------------------------
+
+_CTRL = r"\i_chip_core.kws_inst.inst_ctrl."
+
+# Control / FSM regs that are RESET to a known value (so a transition to X is a
+# real corruption event, not a power-up X). Sampled every cycle in the window.
+# (label, name-format, width) — width None => scalar (no bit index).
+_GL_FSM_TRIGGER = [
+    ('state',           _CTRL + r"state[{}] ", 4),
+    ('layer',           _CTRL + r"layer[{}] ", 4),
+    ('ic',              _CTRL + r"ic[{}] ", 8),
+    ('kh',              _CTRL + r"kh[{}] ", 4),
+    ('kw',              _CTRL + r"kw[{}] ", 4),
+    ('oc',              _CTRL + r"oc[{}] ", 8),
+    ('oh',              _CTRL + r"oh[{}] ", 8),
+    ('ow',              _CTRL + r"ow[{}] ", 8),
+    ('spect_write_sel', _CTRL + r"spect_write_sel ", None),
+    ('spect_read_sel',  _CTRL + r"spect_read_sel ", None),
+    ('spect_ready',     _CTRL + r"spect_ready ", None),
+    ('spect_done',      _CTRL + r"spect_done ", None),
+    ('start',           _CTRL + r"start ", None),
+    ('mac_en',          _CTRL + r"mac_en ", None),
+    ('mac_clear',       _CTRL + r"mac_clear ", None),
+    ('buf_sel',         _CTRL + r"buf_sel ", None),
+    ('cfg_load_done',   _CTRL + r"cfg_load_done ", None),
+]
+
+# Wider datapath regs — read only on events (first-spect, first-X, burst,
+# periodic, end) to keep per-cycle overhead low.
+_GL_FSM_DATAPATH = [
+    ('mac_acc',         _CTRL + r"mac_acc[{}] ", 32),
+    ('mac_ifmap',       _CTRL + r"mac_ifmap[{}] ", 8),
+    ('mac_weight',      _CTRL + r"mac_weight[{}] ", 8),
+    ('mac_bias',        _CTRL + r"mac_bias[{}] ", 32),
+    ('max_val',         _CTRL + r"max_val[{}] ", 32),
+    ('max_idx',         _CTRL + r"max_idx[{}] ", 3),
+    ('global_pool_idx', _CTRL + r"global_pool_idx[{}] ", 3),
+    ('rq_shift',        _CTRL + r"rq_shift[{}] ", 5),
+    ('rq_mult',         _CTRL + r"rq_mult[{}] ", 32),
+    ('rq_relu_en',      _CTRL + r"rq_relu_en ", None),
+]
+
+
+def _fmt_val(v):
+    return '?' if v is None else ('X' if v == 'X' else str(v))
+
+
+def _sim_ms(cyc):
+    return f"{cyc * CLK_PERIOD_NS / 1e6:.3f}ms"
+
+
+class _GLForensics:
+    """Per-cycle X-corruption tracker for the gate-level KWS controller.
+
+    Tunables (env):
+      KWS_ARM_BEFORE      cycles before PDM-end to start sampling (default 80000)
+      KWS_TRIGGER_WINDOW  cycles to keep per-cycle sampling armed   (default 1500000)
+      KWS_XTRACE          cycles of per-cycle full dump after first X (default 256)
+      KWS_FINE_EVERY      periodic full-snapshot interval in window (default 20000)
+    """
+
+    def __init__(self, dut, log, pdm_len):
+        self.dut = dut
+        self.log = log
+        self.chip_top = getattr(dut, "u_chip_top", None)
+        self.arm_cyc = max(0, pdm_len - int(os.getenv("KWS_ARM_BEFORE", "80000")))
+        self.window = int(os.getenv("KWS_TRIGGER_WINDOW", "1500000"))
+        self.xtrace = int(os.getenv("KWS_XTRACE", "256"))
+        self.fine_every = int(os.getenv("KWS_FINE_EVERY", "20000"))
+        self._handles = {}
+        self.prev = {}
+        self.firstx = []          # ordered (label, cyc, prev_value) corruption events
+        self.firstx_set = set()
+        self.burst_remaining = 0
+        self.burst_fired = False
+        self.spect_flip_logged = False
+        self.spect_done_logged = False
+        self.last_full_cyc = -10 ** 9
+        if self.chip_top is None:
+            self.log.warning("  [GL-FORENSIC] u_chip_top unavailable; forensics disabled")
+
+    # -- cached low-level reads -------------------------------------------
+    def _handle(self, name):
+        h = self._handles.get(name, 0)
+        if h == 0:
+            try:
+                h = getattr(self.chip_top, name)
+            except Exception:
+                h = None
+            self._handles[name] = h
+        return h
+
+    def _scalar(self, name):
+        h = self._handle(name)
+        if h is None:
+            return None
+        try:
+            return int(h.value)
+        except Exception:
+            return 'X'
+
+    def _bus(self, fmt, width, signed=False):
+        bits = [self._scalar(fmt.format(b)) for b in range(width)]
+        if all(b is None for b in bits):
+            return None
+        if any(b == 'X' or b is None for b in bits):
+            return 'X'
+        v = sum((b & 1) << i for i, b in enumerate(bits))
+        if signed and v >= (1 << (width - 1)):
+            v -= (1 << width)
+        return v
+
+    def _snapshot(self, table):
+        snap = {}
+        for label, fmt, width in table:
+            snap[label] = self._scalar(fmt) if width is None else self._bus(fmt, width)
+        return snap
+
+    @staticmethod
+    def _snap_str(snap):
+        return ' '.join(f"{k}={_fmt_val(v)}" for k, v in snap.items())
+
+    # -- forensic dumps ----------------------------------------------------
+    def _full_dump(self, cyc, tag):
+        t = self._snapshot(_GL_FSM_TRIGGER)
+        d = self._snapshot(_GL_FSM_DATAPATH)
+        self.log.info(f"  [GL-SNAP {tag} cyc={cyc:,} sim={_sim_ms(cyc)}] "
+                      f"{self._snap_str(t)} || {self._snap_str(d)}")
+
+    def _spect_dump(self, cyc):
+        try:
+            _, summ = _sample_spect_sram_gl(self.dut, n_samples=24)
+            self.log.info(f"  [GL-SPECT cyc={cyc:,}] {summ}")
+        except Exception as e:
+            self.log.info(f"  [GL-SPECT cyc={cyc:,}] sample failed: {type(e).__name__}: {e}")
+
+    def _gap_dump(self, cyc):
+        parts = []
+        for c in range(7):
+            v = self._bus(_CTRL + rf"global_pool_acc[{c}][{{}}] ", 32, signed=True)
+            parts.append(f"cls{c}={_fmt_val(v)}")
+        self.log.info(f"  [GL-GAP cyc={cyc:,}] " + " ".join(parts))
+
+    # -- per-cycle entry point --------------------------------------------
+    def tick(self, cyc):
+        """Call once per clock with the 1-based cycle count (cyc+1 from loop)."""
+        if self.chip_top is None:
+            return
+
+        # First spectrogram completion: frontend flipped the write bank. Capture
+        # the spectrogram content now to prove whether the frontend wrote valid
+        # data (vs X) BEFORE the KWS engine reads it.
+        if not self.spect_flip_logged:
+            sw = self._scalar(_CTRL + r"spect_write_sel ")
+            if sw not in (None, 0, 'X'):
+                self.spect_flip_logged = True
+                self.log.info(f"  [GL-EVENT] spect_write_sel->{sw} (first spectrogram written) "
+                              f"cyc={cyc:,} sim={_sim_ms(cyc)}")
+                self._full_dump(cyc, "first-spect-write")
+                self._spect_dump(cyc)
+
+        if not self.spect_done_logged:
+            if self._scalar(_CTRL + r"spect_done ") == 1:
+                self.spect_done_logged = True
+                self.log.info(f"  [GL-EVENT] spect_done pulse cyc={cyc:,} sim={_sim_ms(cyc)}")
+                self._full_dump(cyc, "spect_done")
+
+        armed = self.arm_cyc < cyc <= self.arm_cyc + self.window
+        in_burst = self.burst_remaining > 0
+        if not armed and not in_burst:
+            return
+
+        if armed and (cyc - self.last_full_cyc) >= self.fine_every:
+            self._full_dump(cyc, "periodic")
+            self.last_full_cyc = cyc
+
+        snap = self._snapshot(_GL_FSM_TRIGGER)
+
+        # A reset reg going from a defined value to X is a real corruption event.
+        # (Unreset datapath regs are born X and are reported via the burst dump,
+        # not here, to avoid power-up-X noise.)
+        newly = [(label, self.prev.get(label)) for label, val in snap.items()
+                 if val == 'X' and label not in self.firstx_set
+                 and isinstance(self.prev.get(label), int)]
+        for label, prevv in newly:
+            self.firstx_set.add(label)
+            self.firstx.append((label, cyc, prevv))
+            self.log.warning(f"  [GL-FIRST-X] {label} {_fmt_val(prevv)}->X "
+                             f"cyc={cyc:,} sim={_sim_ms(cyc)}")
+        if newly and not self.burst_fired:
+            self.burst_fired = True
+            self.burst_remaining = self.xtrace
+            self.log.warning(f"  [GL-FIRST-X] first corruption at cyc={cyc:,}; "
+                             f"forensic dump + {self.xtrace}-cycle trace follows")
+            self._full_dump(cyc, "first-X")
+            self._spect_dump(cyc)
+            self._gap_dump(cyc)
+
+        if in_burst:
+            self.log.info(f"  [GL-XTRACE cyc={cyc:,}] {self._snap_str(snap)}")
+            self.burst_remaining -= 1
+            if self.burst_remaining == 0:
+                self._full_dump(cyc, "burst-end")
+                self._gap_dump(cyc)
+
+        self.prev = snap
+
+    def summary(self, cyc):
+        if self.chip_top is None:
+            return
+        self.log.warning("  [GL-FORENSIC] ===== end-of-run X summary =====")
+        if self.firstx:
+            self.log.warning("  [GL-FORENSIC] reset-reg corruption order (label @ cyc, prev->X):")
+            for label, c, prevv in self.firstx:
+                self.log.warning(f"      {label:<16} @ cyc={c:,} sim={_sim_ms(c)} ({_fmt_val(prevv)}->X)")
+        else:
+            self.log.warning("  [GL-FORENSIC] no reset-reg corruption captured in window "
+                             "(widen KWS_TRIGGER_WINDOW / KWS_ARM_BEFORE)")
+        self._full_dump(cyc, "final")
+        self._spect_dump(cyc)
+        self._gap_dump(cyc)
+
+
 async def _uart_read_byte(dut, timeout_cycles=800_000):
     log = dut._log
     log.info("  [UART RX] waiting for start bit on bidir_PAD[1] (chip TX)")
@@ -795,10 +1027,14 @@ def _sample_spect_sram_gl(dut, n_samples=16):
             vals = []
             for i in range(n_samples):
                 try:
-                    vals.append(int(sram.mem[i].value))
+                    cell = sram.mem[i].value
                 except Exception:
-                    vals.append(None)
+                    vals.append(None)          # cell not accessible: stop probing this bank
                     break
+                try:
+                    vals.append(int(cell))     # defined value
+                except Exception:
+                    vals.append('X')           # X/Z cell — do NOT break; keep scanning
             results[label] = vals
         except Exception as e:
             results[label] = f"unavailable ({type(e).__name__})"
@@ -807,12 +1043,20 @@ def _sample_spect_sram_gl(dut, n_samples=16):
     for label, vals in results.items():
         if isinstance(vals, str):
             summaries.append(f"{label}={vals}")
-        elif all(v is None for v in vals):
+            continue
+        probed = [v for v in vals if v is not None]
+        x_cnt = sum(1 for v in probed if v == 'X')
+        if not probed:
             summaries.append(f"{label}=inaccessible")
-        elif all(v == 0 for v in vals if v is not None):
+        elif x_cnt:
+            head = " ".join('XX' if v == 'X' else (f"{v:02x}" if v is not None else "??")
+                            for v in vals[:8])
+            summaries.append(f"{label}=X({x_cnt}/{len(probed)})[{head}]")
+        elif all(v == 0 for v in probed):
             summaries.append(f"{label}=ALL_ZERO")
         else:
-            hex_str = " ".join(f"{v:02x}" if v is not None else "??" for v in vals[:8])
+            hex_str = " ".join('XX' if v == 'X' else (f"{v:02x}" if v is not None else "??")
+                               for v in vals[:8])
             summaries.append(f"{label}=[{hex_str}]")
 
     return results, "  ".join(summaries)
@@ -1027,6 +1271,7 @@ async def test_chip_top_e2e(dut):
     kws_started_cyc = None
     rtl_class = None
     kws_done_seen = False
+    forensics = _GLForensics(dut, dut._log, len(pdm_bits)) if gl else None
 
     for cyc in range(monitor_cycles):
         if cyc < len(pdm_bits):
@@ -1034,6 +1279,9 @@ async def test_chip_top_e2e(dut):
         else:
             dut.input_PAD.value = 0
         await RisingEdge(dut.clk_PAD)
+
+        if forensics is not None:
+            forensics.tick(cyc + 1)
 
         if frontend_probes_available:
             for name in pulse_counts:
@@ -1073,11 +1321,17 @@ async def test_chip_top_e2e(dut):
         if frontend_probes_available:
             missing = next((name for name, seen in milestones.items() if not seen), None)
             raise AssertionError(f"frontend never produced kws_start within {frontend_timeout_cycles:,} cycles; first missing milestone: {missing}; counts={pulse_counts}; probes={_probe_str(dut)}")
+        if forensics is not None:
+            forensics.summary(monitor_cycles)
         gl_state = f" Last GL milestones: {_gl_milestone_str(dut)}" if gl else ""
+        first_x = ""
+        if forensics is not None and forensics.firstx:
+            lbl, c, prevv = forensics.firstx[0]
+            first_x = f" FIRST corruption: {lbl} ({_fmt_val(prevv)}->X) at cyc={c:,}."
         raise AssertionError(
             f"KWS_DONE pad never asserted within {kws_timeout_cycles:,} cycles; "
             "pad-only completion checking was used, so this timeout is based "
-            f"only on the chip_top output pads.{gl_state}"
+            f"only on the chip_top output pads.{gl_state}{first_x}"
         )
 
     if not kws_done_seen:
@@ -1314,16 +1568,30 @@ def chip_top_runner():
             sim_dir / "gf180mcu_fd_io.v",
             sim_dir / "gf180mcu_ws_io.v",
             sim_dir / "gf180mcu_ocd_ip_sram_models.v",
-            proj_path / f"../final/pnl/{hdl_toplevel}.pnl.v",
+            # SDF back-annotation requires the synthesis netlist (final/nl):
+            # its instance names (e.g. _069513_) match the SDF, whereas the
+            # PnR netlist (final/pnl) renumbers cells and leaves ~89% of SDF
+            # INSTANCE paths unresolved ("Unable to find _NNNNNN_ in scope").
+            # Plain GL (no SDF) keeps pnl.v, whose net names the probe helpers
+            # (_gl_read_gap_scores_pnl, _gl_milestone_str) are verified against.
+            proj_path / (f"../final/nl/{hdl_toplevel}.nl.v" if sdf_corner
+                         else f"../final/pnl/{hdl_toplevel}.pnl.v"),
             sim_dir / "chip_top_sdf_wrapper.sv",
         ]
         top_module = "chip_top_sdf_wrapper"
-        # FUNCTIONAL suppresses `specify` blocks in cell models via `ifndef FUNCTIONAL guards.
+        # FUNCTIONAL suppresses `specify` blocks in cell models via `ifndef FUNCTIONAL` guards.
         # For SDF back-annotation we need those blocks compiled in so $sdf_annotate has
         # paths to write into; omit FUNCTIONAL when a corner is requested.
-        defines = {"USE_POWER_PINS": True}
-        if not sdf_corner:
-            defines["FUNCTIONAL"] = True
+        #
+        # The SDF run targets the logical synthesis netlist (final/nl), which has no
+        # power pins and no VDD/VSS top ports (verified: 0 power-pin refs vs 1.6M in
+        # pnl). So USE_POWER_PINS must be OFF for it — cell models compile logic-only,
+        # matching nl's pin-less instantiations — and the wrapper drops the .VDD/.VSS
+        # binding under SDF_ENABLED to match nl's port list.
+        if sdf_corner:
+            defines = {}
+        else:
+            defines = {"USE_POWER_PINS": True, "FUNCTIONAL": True}
     else:
         sources.extend(rtl_sources(proj_path))
 
@@ -1386,6 +1654,9 @@ def chip_top_runner():
         dump_start_ns = os.getenv("KWS_DUMP_START_NS", "")
         if dump_start_ns:
             plusargs.append(f"+kws_dump_start_ns={dump_start_ns}")
+        dump_stop_ns = os.getenv("KWS_DUMP_STOP_NS", "")
+        if dump_stop_ns:
+            plusargs.append(f"+kws_dump_stop_ns={dump_stop_ns}")
 
     if sim == "icarus" and (run_power_vcd or kws_waves):
         wave_flag = "-vcd" if run_power_vcd else "-fst"

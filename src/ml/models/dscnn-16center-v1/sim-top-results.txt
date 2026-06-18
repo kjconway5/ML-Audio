@@ -210,3 +210,213 @@ Result: PASS
 RTL GAP scores: no(0)=1238  off(1)=-1227  on(2)=-1466  silence(3)=-1208  unknown(4)=534  wow(5)=250  yes(6)=226
 RTL GAP ranking: no(0)=1238 > unknown(4)=534 > wow(5)=250 > yes(6)=226 > silence(3)=-1208 > off(1)=-1227 > on(2)=-1466  margin=704
 
+[2026-06-11 02:57:24 PDT] make sim chip_top
+Model: dscnn-16center-v1
+Manifest: /home/dnocera/ML-Audio/src/rtl/dscnn/kws_top/spectrograms/test_vectors.json
+Selected sample[0]: 08ab8082_nohash_1.wav
+WAV: /home/dnocera/ML-Audio/src/ml/Pipeline/speech_commands_v0.02/no/08ab8082_nohash_1.wav
+Hex: spectrograms/spectrogram_0.hex
+Golden truth class: no (0)
+Arithmetic class: no (0)
+PyTorch class: no (0)
+RTL class from chip_top pads: unknown (4)
+Expected[manifest arithmetic]: no (0)
+Result: FAIL
+RTL GAP scores: no(0)=0  off(1)=0  on(2)=0  silence(3)=0  unknown(4)=0  wow(5)=0  yes(6)=0
+RTL GAP ranking: no(0)=0 > off(1)=0 > on(2)=0 > silence(3)=0 > unknown(4)=0 > wow(5)=0 > yes(6)=0  margin=0
+
+[2026-06-11 03:05:34 PDT] make sim chip_top
+Model: dscnn-16center-v1
+Manifest: /home/dnocera/ML-Audio/src/rtl/dscnn/kws_top/spectrograms/test_vectors.json
+Selected sample[0]: 08ab8082_nohash_1.wav
+WAV: /home/dnocera/ML-Audio/src/ml/Pipeline/speech_commands_v0.02/no/08ab8082_nohash_1.wav
+Hex: spectrograms/spectrogram_0.hex
+Golden truth class: no (0)
+Arithmetic class: no (0)
+PyTorch class: no (0)
+RTL class from chip_top pads: unknown (4)
+Expected[manifest arithmetic]: no (0)
+Result: FAIL
+RTL GAP scores: no(0)=198  off(1)=271  on(2)=-221  silence(3)=-1957  unknown(4)=563  wow(5)=-52  yes(6)=-574
+RTL GAP ranking: unknown(4)=563 > off(1)=271 > no(0)=198 > wow(5)=-52 > on(2)=-221 > yes(6)=-574 > silence(3)=-1957  margin=292
+
+[2026-06-11 03:09:30 PDT] make sim chip_top
+Model: dscnn-16center-v1
+Manifest: /home/dnocera/ML-Audio/src/rtl/dscnn/kws_top/spectrograms/test_vectors.json
+Selected sample[0]: 08ab8082_nohash_1.wav
+WAV: /home/dnocera/ML-Audio/src/ml/Pipeline/speech_commands_v0.02/no/08ab8082_nohash_1.wav
+Hex: spectrograms/spectrogram_0.hex
+Golden truth class: no (0)
+Arithmetic class: no (0)
+PyTorch class: no (0)
+RTL class from chip_top pads: unknown (4)
+Expected[manifest arithmetic]: no (0)
+Result: FAIL
+RTL GAP scores: no(0)=198  off(1)=271  on(2)=-221  silence(3)=-1957  unknown(4)=563  wow(5)=-52  yes(6)=-574
+RTL GAP ranking: unknown(4)=563 > off(1)=271 > no(0)=198 > wow(5)=-52 > on(2)=-221 > yes(6)=-574 > silence(3)=-1957  margin=292
+
+[2026-06-11 03:14:43 PDT] make sim chip_top
+Model: dscnn-16center-v1
+Manifest: /home/dnocera/ML-Audio/src/rtl/dscnn/kws_top/spectrograms/test_vectors.json
+Selected sample[8]: 3b3d2f59_nohash_0.wav
+WAV: /home/dnocera/ML-Audio/src/ml/Pipeline/speech_commands_v0.02/no/3b3d2f59_nohash_0.wav
+Hex: spectrograms/spectrogram_8.hex
+Golden truth class: no (0)
+Arithmetic class: no (0)
+PyTorch class: no (0)
+RTL class from chip_top pads: no (0)
+Expected[manifest arithmetic]: no (0)
+Result: PASS
+RTL GAP scores: no(0)=1238  off(1)=-1227  on(2)=-1466  silence(3)=-1208  unknown(4)=534  wow(5)=250  yes(6)=226
+RTL GAP ranking: no(0)=1238 > unknown(4)=534 > wow(5)=250 > yes(6)=226 > silence(3)=-1208 > off(1)=-1227 > on(2)=-1466  margin=704
+
+[2026-06-11 03:16:13 PDT] make sim chip_top
+Model: dscnn-16center-v1
+Manifest: /home/dnocera/ML-Audio/src/rtl/dscnn/kws_top/spectrograms/test_vectors.json
+Selected sample[0]: 08ab8082_nohash_1.wav
+WAV: /home/dnocera/ML-Audio/src/ml/Pipeline/speech_commands_v0.02/no/08ab8082_nohash_1.wav
+Hex: spectrograms/spectrogram_0.hex
+Golden truth class: no (0)
+Arithmetic class: no (0)
+PyTorch class: no (0)
+RTL class from chip_top pads: unknown (4)
+Expected[manifest arithmetic]: no (0)
+Result: FAIL
+RTL GAP scores: no(0)=198  off(1)=271  on(2)=-221  silence(3)=-1957  unknown(4)=563  wow(5)=-52  yes(6)=-574
+RTL GAP ranking: unknown(4)=563 > off(1)=271 > no(0)=198 > wow(5)=-52 > on(2)=-221 > yes(6)=-574 > silence(3)=-1957  margin=292
+
+[2026-06-11 03:43:09 PDT] make sim chip_top
+Model: dscnn-16center-v1
+Manifest: /home/dnocera/ML-Audio/src/rtl/dscnn/kws_top/spectrograms/test_vectors.json
+Selected sample[1]: 0a396ff2_nohash_0.wav
+WAV: /home/dnocera/ML-Audio/src/ml/Pipeline/speech_commands_v0.02/no/0a396ff2_nohash_0.wav
+Hex: spectrograms/spectrogram_1.hex
+Golden truth class: no (0)
+Arithmetic class: no (0)
+PyTorch class: no (0)
+RTL class from chip_top pads: no (0)
+Expected[manifest arithmetic]: no (0)
+Result: PASS
+RTL GAP scores: no(0)=173  off(1)=-242  on(2)=-394  silence(3)=-633  unknown(4)=-138  wow(5)=-184  yes(6)=-360
+RTL GAP ranking: no(0)=173 > unknown(4)=-138 > wow(5)=-184 > off(1)=-242 > yes(6)=-360 > on(2)=-394 > silence(3)=-633  margin=311
+
+[2026-06-11 03:46:56 PDT] make sim chip_top
+Model: dscnn-16center-v1
+Manifest: /home/dnocera/ML-Audio/src/rtl/dscnn/kws_top/spectrograms/test_vectors.json
+Selected sample[5]: 1c3f50ad_nohash_0.wav
+WAV: /home/dnocera/ML-Audio/src/ml/Pipeline/speech_commands_v0.02/no/1c3f50ad_nohash_0.wav
+Hex: spectrograms/spectrogram_5.hex
+Golden truth class: no (0)
+Arithmetic class: no (0)
+PyTorch class: no (0)
+RTL class from chip_top pads: no (0)
+Expected[manifest arithmetic]: no (0)
+Result: PASS
+RTL GAP scores: no(0)=956  off(1)=-675  on(2)=-1146  silence(3)=-1502  unknown(4)=600  wow(5)=-200  yes(6)=318
+RTL GAP ranking: no(0)=956 > unknown(4)=600 > yes(6)=318 > wow(5)=-200 > off(1)=-675 > on(2)=-1146 > silence(3)=-1502  margin=356
+
+[2026-06-11 03:50:46 PDT] make sim chip_top
+Model: dscnn-16center-v1
+Manifest: /home/dnocera/ML-Audio/src/rtl/dscnn/kws_top/spectrograms/test_vectors.json
+Selected sample[9]: 3f170018_nohash_0.wav
+WAV: /home/dnocera/ML-Audio/src/ml/Pipeline/speech_commands_v0.02/no/3f170018_nohash_0.wav
+Hex: spectrograms/spectrogram_9.hex
+Golden truth class: no (0)
+Arithmetic class: no (0)
+PyTorch class: no (0)
+RTL class from chip_top pads: no (0)
+Expected[manifest arithmetic]: no (0)
+Result: PASS
+RTL GAP scores: no(0)=1731  off(1)=-1464  on(2)=-1508  silence(3)=-2846  unknown(4)=1640  wow(5)=-183  yes(6)=1074
+RTL GAP ranking: no(0)=1731 > unknown(4)=1640 > yes(6)=1074 > wow(5)=-183 > off(1)=-1464 > on(2)=-1508 > silence(3)=-2846  margin=91
+
+[2026-06-11 03:54:34 PDT] make sim chip_top
+Model: dscnn-16center-v1
+Manifest: /home/dnocera/ML-Audio/src/rtl/dscnn/kws_top/spectrograms/test_vectors.json
+Selected sample[12]: 96a48d28_nohash_2.wav
+WAV: /home/dnocera/ML-Audio/src/ml/Pipeline/speech_commands_v0.02/no/96a48d28_nohash_2.wav
+Hex: spectrograms/spectrogram_12.hex
+Golden truth class: no (0)
+Arithmetic class: no (0)
+PyTorch class: no (0)
+RTL class from chip_top pads: off (1)
+Expected[manifest arithmetic]: no (0)
+Result: FAIL
+RTL GAP scores: no(0)=28  off(1)=45  on(2)=-94  silence(3)=-813  unknown(4)=-231  wow(5)=-306  yes(6)=-443
+RTL GAP ranking: off(1)=45 > no(0)=28 > on(2)=-94 > unknown(4)=-231 > wow(5)=-306 > yes(6)=-443 > silence(3)=-813  margin=17
+
+[2026-06-11 16:28:43 PDT] make sim chip_top
+Model: dscnn-16center-v1
+Manifest: /home/dnocera/ML-Audio/src/rtl/dscnn/kws_top/spectrograms/test_vectors.json
+Selected sample[8]: 3b3d2f59_nohash_0.wav
+WAV: /home/dnocera/ML-Audio/src/ml/Pipeline/speech_commands_v0.02/no/3b3d2f59_nohash_0.wav
+Hex: spectrograms/spectrogram_8.hex
+Golden truth class: no (0)
+Arithmetic class: no (0)
+PyTorch class: no (0)
+RTL class from chip_top pads: no (0)
+Expected[manifest arithmetic]: no (0)
+Result: PASS
+RTL GAP scores: no(0)=1238  off(1)=-1227  on(2)=-1466  silence(3)=-1208  unknown(4)=534  wow(5)=250  yes(6)=226
+RTL GAP ranking: no(0)=1238 > unknown(4)=534 > wow(5)=250 > yes(6)=226 > silence(3)=-1208 > off(1)=-1227 > on(2)=-1466  margin=704
+
+[2026-06-12 07:34:31 PDT] make sim chip_top
+Model: dscnn-16center-v1
+Manifest: /home/dnocera/ML-Audio/src/rtl/dscnn/kws_top/spectrograms/test_vectors.json
+Selected sample[0]: 08ab8082_nohash_1.wav
+WAV: /home/dnocera/ML-Audio/src/ml/Pipeline/speech_commands_v0.02/no/08ab8082_nohash_1.wav
+Hex: spectrograms/spectrogram_0.hex
+Golden truth class: no (0)
+Arithmetic class: no (0)
+PyTorch class: no (0)
+RTL class from chip_top pads: unknown (4)
+Expected[manifest arithmetic]: no (0)
+Result: FAIL
+RTL GAP scores: no(0)=198  off(1)=271  on(2)=-221  silence(3)=-1957  unknown(4)=563  wow(5)=-52  yes(6)=-574
+RTL GAP ranking: unknown(4)=563 > off(1)=271 > no(0)=198 > wow(5)=-52 > on(2)=-221 > yes(6)=-574 > silence(3)=-1957  margin=292
+
+[2026-06-12 07:39:55 PDT] make sim chip_top
+Model: dscnn-16center-v1
+Manifest: /home/dnocera/ML-Audio/src/rtl/dscnn/kws_top/spectrograms/test_vectors.json
+Selected sample[8]: 3b3d2f59_nohash_0.wav
+WAV: /home/dnocera/ML-Audio/src/ml/Pipeline/speech_commands_v0.02/no/3b3d2f59_nohash_0.wav
+Hex: spectrograms/spectrogram_8.hex
+Golden truth class: no (0)
+Arithmetic class: no (0)
+PyTorch class: no (0)
+RTL class from chip_top pads: no (0)
+Expected[manifest arithmetic]: no (0)
+Result: PASS
+RTL GAP scores: no(0)=1238  off(1)=-1227  on(2)=-1466  silence(3)=-1208  unknown(4)=534  wow(5)=250  yes(6)=226
+RTL GAP ranking: no(0)=1238 > unknown(4)=534 > wow(5)=250 > yes(6)=226 > silence(3)=-1208 > off(1)=-1227 > on(2)=-1466  margin=704
+
+[2026-06-13 07:40:23 PDT] make sim chip_top
+Model: dscnn-16center-v1
+Manifest: /home/dnocera/ML-Audio/src/rtl/dscnn/kws_top/spectrograms/test_vectors.json
+Selected sample[8]: 3b3d2f59_nohash_0.wav
+WAV: /home/dnocera/ML-Audio/src/ml/Pipeline/speech_commands_v0.02/no/3b3d2f59_nohash_0.wav
+Hex: spectrograms/spectrogram_8.hex
+Golden truth class: no (0)
+Arithmetic class: no (0)
+PyTorch class: no (0)
+RTL class from chip_top pads: no (0)
+Expected[manifest arithmetic]: no (0)
+Result: PASS
+RTL GAP scores: no(0)=1238  off(1)=-1227  on(2)=-1466  silence(3)=-1208  unknown(4)=534  wow(5)=250  yes(6)=226
+RTL GAP ranking: no(0)=1238 > unknown(4)=534 > wow(5)=250 > yes(6)=226 > silence(3)=-1208 > off(1)=-1227 > on(2)=-1466  margin=704
+
+[2026-06-18 00:49:22 PDT] make sim chip_top
+Model: dscnn-16center-v1
+Manifest: /home/dnocera/ML-Audio/src/rtl/dscnn/kws_top/spectrograms/test_vectors.json
+Selected sample[8]: 3b3d2f59_nohash_0.wav
+WAV: /home/dnocera/ML-Audio/src/ml/Pipeline/speech_commands_v0.02/no/3b3d2f59_nohash_0.wav
+Hex: spectrograms/spectrogram_8.hex
+Golden truth class: no (0)
+Arithmetic class: no (0)
+PyTorch class: no (0)
+RTL class from chip_top pads: no (0)
+Expected[manifest arithmetic]: no (0)
+Result: PASS
+RTL GAP scores: no(0)=63500  off(1)=63500  on(2)=63500  silence(3)=-64000  unknown(4)=63500  wow(5)=-64000  yes(6)=-64000
+RTL GAP ranking: no(0)=63500 > off(1)=63500 > on(2)=63500 > unknown(4)=63500 > silence(3)=-64000 > wow(5)=-64000 > yes(6)=-64000  margin=0
+
