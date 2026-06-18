@@ -11,6 +11,7 @@ module bias_SRAM #(
     parameter BIAS_HEX  = "bias.hex"
 )(
     input  wire                         clk,
+    input  wire                         reset,   // synchronous, active-high
 
     // Runtime read port. Data is valid two cycles after addr is presented.
     input  wire [ADDR_W-1:0]            addr,
@@ -41,8 +42,13 @@ module bias_SRAM #(
                 2'd3: mem[waddr[BYTE_ADDR_W-1:2]][31:24] <= wdata;
             endcase
         end
-        raddr_q0 <= addr;
-        raddr_q1 <= raddr_q0;
+        if (reset) begin
+            raddr_q0 <= '0;
+            raddr_q1 <= '0;
+        end else begin
+            raddr_q0 <= addr;
+            raddr_q1 <= raddr_q0;
+        end
     end
 
     assign data = mem[raddr_q1];
@@ -73,7 +79,9 @@ module bias_SRAM #(
     wire [7:0]        q_out [0:NUM_BYTES-1];
 
     always @(posedge clk) begin
-        if (read_high && !we)
+        if (reset)
+            low_half_q <= 16'h0000;
+        else if (read_high && !we)
             low_half_q <= {q_out[1], q_out[0]};
     end
 

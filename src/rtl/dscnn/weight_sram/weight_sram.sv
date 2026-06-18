@@ -8,8 +8,9 @@ module weight_sram #(
     parameter ADDR_W = 13   // covers 0-8191; valid range 0-6751
 )(
     input  wire              clk,
+    input  wire              reset,           // synchronous, active-high
 
-    // Write port 
+    // Write port
     input  wire              we,              // write enable (1 = write, 0 = read)
     input  wire [ADDR_W-1:0] waddr,           
     input  wire [DATA_W-1:0] wdata,           // write data from SERV
@@ -28,7 +29,10 @@ module weight_sram #(
     always @(posedge clk) begin
         if (we)
             mem[waddr] <= wdata;
-        raddr_q <= raddr;
+        if (reset)
+            raddr_q <= '0;
+        else
+            raddr_q <= raddr;
     end
 
     assign rdata = mem[raddr_q];
@@ -72,9 +76,12 @@ module weight_sram #(
     endgenerate
 
     // Account for 1 cycle read latency 
-    reg [2:0] bank_sel_q;   
-    always_ff @(posedge clk)       
-        bank_sel_q <= bank_sel;
+    reg [2:0] bank_sel_q;
+    always_ff @(posedge clk)
+        if (reset)
+            bank_sel_q <= '0;
+        else
+            bank_sel_q <= bank_sel;
 
     assign rdata = q_out[bank_sel_q];
 

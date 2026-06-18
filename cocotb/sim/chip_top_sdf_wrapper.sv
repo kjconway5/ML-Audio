@@ -8,8 +8,12 @@ module chip_top_sdf_wrapper (
     input         rst_n_PAD
 );
     chip_top u_chip_top (
+`ifndef SDF_ENABLED
+        // The PnR netlist (plain GL) exposes power ports; the synthesis netlist
+        // used for SDF annotation does not, so omit these under SDF_ENABLED.
         .VDD       (VDD),
         .VSS       (VSS),
+`endif
         .input_PAD (input_PAD),
         .bidir_PAD (bidir_PAD),
         .clk_PAD   (clk_PAD),
@@ -23,18 +27,29 @@ module chip_top_sdf_wrapper (
     // Debug waveform dumping, armed via +kws_fst_path=<file> (KWS_WAVES=1 in
     // the make environment swaps vvp to -fst). +kws_dump_start_ns=<t> delays
     // the dump start so multi-hour runs only capture the window of interest.
-    // Mutually exclusive with +power_vcd_path (one $dumpfile per sim).
+    // +kws_dump_stop_ns=<t> stops the dump (bounds the FST size around the X
+    // event; e.g. start=55_000_000 stop=66_000_000 captures the ~60ms KWS
+    // activation in a small file). Mutually exclusive with +power_vcd_path.
     string kws_fst_path;
     longint kws_dump_start_ns;
+    longint kws_dump_stop_ns;
     initial begin
         if ($value$plusargs("kws_fst_path=%s", kws_fst_path)) begin
             if (!$value$plusargs("kws_dump_start_ns=%d", kws_dump_start_ns))
                 kws_dump_start_ns = 0;
+            if (!$value$plusargs("kws_dump_stop_ns=%d", kws_dump_stop_ns))
+                kws_dump_stop_ns = 0;
             if (kws_dump_start_ns > 0)
                 #(kws_dump_start_ns);
             $dumpfile(kws_fst_path);
             $dumpvars(0, u_chip_top);
             $display("[KWS_WAVES] dump to %0s armed at t=%0t", kws_fst_path, $time);
+            if (kws_dump_stop_ns > kws_dump_start_ns) begin
+                #(kws_dump_stop_ns - kws_dump_start_ns);
+                $dumpoff;
+                $dumpflush;
+                $display("[KWS_WAVES] dump stopped at t=%0t (bounded window)", $time);
+            end
         end
     end
 

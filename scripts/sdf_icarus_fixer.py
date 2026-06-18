@@ -31,12 +31,7 @@ _TRIPLET_RE = re.compile(
     r'\s*\)'
 )
 
-# Zero-delay top-level clk/rst pad INTERCONNECT entries that Icarus cannot
-# resolve even without escape sequences.
-# Example:  (INTERCONNECT clk_PAD clk_pad.PAD ...)
-_TOP_PAD_INTERCONNECT_RE = re.compile(
-    r'^\s*\(INTERCONNECT\s+\S+_PAD(?:\[\d+\])?\s+\w+_pad\.PAD\s+'
-)
+_INTERCONNECT_RE = re.compile(r'^\s*\(INTERCONNECT\b')
 
 # Any backslash escape that Icarus 13's SDF path parser rejects.
 # Covers \[ \] \.  as found in OpenROAD output for pad / SRAM instances.
@@ -74,22 +69,14 @@ def _fix_triplet(m: re.Match, stats: PatchStats) -> str:
 # INTERCONNECT filter
 
 def _is_unannotatable_interconnect(line: str) -> bool:
-    """
-    Return True if *line* is an INTERCONNECT entry that will crash vvp.
+    """Return True for any INTERCONNECT line.
 
-    Two failure modes are caught:
-
-    * Escaped brackets or dots in the source or destination path
-      (``\\[``, ``\\]``, ``\\.``) — Icarus 13's path splitter rejects them.
-    * Zero-delay top-level clk/rst pad entries that Icarus cannot bind even
-      without any escape sequences.
+    Icarus 13 requires -ginterconnect to process these at all, and enabling
+    that flag stalls elaboration on large netlists (248K entries in GF180 PnR
+    output).  Wire RC delays are sub-ns and immaterial for cell-delay timing
+    verification, so we drop them all.
     """
-    if not line.lstrip().startswith('(INTERCONNECT'):
-        return False
-    return bool(
-        _ESCAPED_PATH_RE.search(line)
-        or _TOP_PAD_INTERCONNECT_RE.match(line)
-    )
+    return bool(_INTERCONNECT_RE.match(line))
 
 
 # Paren-depth tracker (string-literal aware)
@@ -149,15 +136,37 @@ def _flush_cell(
     *,
     verbose: bool,
 ) -> None:
-    """Emit or discard a completed CELL block based on its INSTANCE path."""
+    """Emit or discard a completed CELL block.
+
+    Drops the block if it contains nested INTERCONNECT entries (wire RC delays
+    that Icarus 13 cannot annotate without -ginterconnect, which stalls
+    elaboration on large netlists) or if its INSTANCE path has backslash
+    escapes that Icarus 13's SDF path parser rejects.
+    """
+    # INTERCONNECT lines appear nested inside CELL blocks in OpenROAD SDF
+    # (not at the top level), so we must check here as well.
+    nested = [line for line in cell_buf if _is_unannotatable_interconnect(line)]
+    if nested:
+        stats.interconnects_dropped += len(nested)
+        stats.cells_dropped += 1
+        if verbose:
+            for line in nested:
+                stats.dropped_interconnect_lines.append(line.rstrip())
+            inst = _instance_line(cell_buf)
+            stats.dropped_cell_instances.append(inst)
+            log.debug('Dropped CELL block with %d INTERCONNECT(s)  INSTANCE: %s',
+                      len(nested), inst)
+        return
+
     if _cell_has_unannotatable_instance(cell_buf):
         stats.cells_dropped += 1
         if verbose:
             inst = _instance_line(cell_buf)
             stats.dropped_cell_instances.append(inst)
             log.debug('Dropped CELL block  INSTANCE: %s', inst)
-    else:
-        out.extend(cell_buf)
+        return
+
+    out.extend(cell_buf)
 
 
 # Single-pass INTERCONNECT + CELL filter

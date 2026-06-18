@@ -147,7 +147,7 @@ module kws_top #(
     assign ss_b_raddr = ss_a_raddr;
 
     spectrogram_sram inst_specram (
-        .clk(clk),
+        .clk(clk), .reset(reset),
         .a_we(sp_a_we), .a_waddr(sp_a_waddr), .a_wdata(sp_a_wdata),
         .a_raddr(ss_a_raddr), .a_rdata(ss_a_rdata),
         .b_we(sp_b_we), .b_waddr(sp_b_waddr), .b_wdata(sp_b_wdata),
@@ -156,6 +156,7 @@ module kws_top #(
 
     weight_sram inst_wsram (
         .clk  (clk),
+        .reset(reset),
         .we   (w_we),
         .waddr(w_waddr),
         .wdata(w_wdata),
@@ -164,7 +165,7 @@ module kws_top #(
     );
 
     feature_sram inst_fsram (
-        .clk(clk),
+        .clk(clk), .reset(reset),
         .a_we(fs_a_we), .a_waddr(fs_a_waddr), .a_wdata(fs_a_wdata),
         .a_raddr(fs_a_raddr), .a_rdata(fs_a_rdata),
         .b_we(fs_b_we), .b_waddr(fs_b_waddr), .b_wdata(fs_b_wdata),
@@ -189,6 +190,7 @@ module kws_top #(
 
     bias_SRAM inst_bias (
         .clk(clk),
+        .reset(reset),
         .addr(bias_addr),
         .read_high(bias_read_high),
         .data(bias_data),

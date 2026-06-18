@@ -104,8 +104,12 @@ sim-core: ## Run chip_core end-to-end cocotb test (boot + PDM audio + KWS)
 .PHONY: sim-core
 
 sim-gl: ## Run gate-level simulation with cocotb (after copy-final)
-	cd cocotb; GL=1 PDK_ROOT=${PDK_ROOT} PDK=${PDK} SLOT=${SLOT} python3 chip_top_tb.py
+	$(MAKE) -C cocotb sim-gl SLOT=${SLOT} KWS_KEYWORD="${KWS_KEYWORD}" KWS_SAMPLE_INDEX="${KWS_SAMPLE_INDEX}" KWS_SAMPLE_MATCH="${KWS_SAMPLE_MATCH}" KWS_MANIFEST_JSON="${KWS_MANIFEST_JSON}"
 .PHONY: sim-gl
+
+sim-gl-sdf: ## Run gate-level simulation with SDF back-annotated timing
+	$(MAKE) -C cocotb sim-gl-sdf SLOT=${SLOT} $(if ${SDF_CORNER},SDF_CORNER="${SDF_CORNER}") KWS_KEYWORD="${KWS_KEYWORD}" KWS_SAMPLE_INDEX="${KWS_SAMPLE_INDEX}" KWS_SAMPLE_MATCH="${KWS_SAMPLE_MATCH}" KWS_MANIFEST_JSON="${KWS_MANIFEST_JSON}"
+.PHONY: sim-gl-sdf
 
 sim-view: ## View simulation waveforms in GTKWave
 	gtkwave cocotb/sim_build/chip_top.fst

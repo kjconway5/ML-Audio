@@ -308,6 +308,7 @@ module FSM #(
         if (reset) begin
             state     <= IDLE;
             done      <= 1'b0;
+            class_out <= 3'd0;
             layer     <= 4'd0;
             buf_sel   <= 1'b0;
             mac_en    <= 1'b0;
@@ -317,6 +318,23 @@ module FSM #(
             global_pool_idx <= 3'd0;
             for (int i = 0; i < 7; i = i + 1)
                 global_pool_acc[i] <= {ACC_W{1'b0}};
+            // Datapath counters and requant/MAC operand regs: must reset to a
+            // defined value or they power up X in the netlist and poison the
+            // control FSM (oc/oh -> bias_addr/ofmap_addr -> mac_acc -> state).
+            oc         <= 8'd0;
+            oh         <= 8'd0;
+            ow         <= 8'd0;
+            ic         <= 8'd0;
+            kh         <= 4'd0;
+            kw         <= 4'd0;
+            max_val    <= {ACC_W{1'b0}};
+            max_idx    <= 3'd0;
+            rq_mult    <= 32'd0;
+            rq_shift   <= 5'd0;
+            rq_relu_en <= 1'b0;
+            mac_bias   <= {ACC_W{1'b0}};
+            mac_ifmap  <= {DATA_W{1'b0}};
+            mac_weight <= {DATA_W{1'b0}};
         end else begin
             mac_en    <= 1'b0;
             mac_clear <= 1'b0;

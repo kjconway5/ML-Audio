@@ -12,6 +12,7 @@ module feature_sram #(
     parameter ADDR_W = 14   // covers 0-16383; valid range 0-15999
 )(
     input  wire              clk,
+    input  wire              reset,   // synchronous, active-high
 
     // Bank A ports
     input  wire              a_we,
@@ -40,11 +41,18 @@ module feature_sram #(
     always @(posedge clk) begin
         if (a_we)
             mem_a[a_waddr] <= a_wdata;
-        a_raddr_q <= a_raddr;
-
         if (b_we)
             mem_b[b_waddr] <= b_wdata;
-        b_raddr_q <= b_raddr;
+
+        // Reset the read-address pipeline regs so they power up defined
+        // (matches the synth path; avoids X-prop in gate-level sim).
+        if (reset) begin
+            a_raddr_q <= '0;
+            b_raddr_q <= '0;
+        end else begin
+            a_raddr_q <= a_raddr;
+            b_raddr_q <= b_raddr;
+        end
     end
 
     assign a_rdata = mem_a[a_raddr_q];
@@ -122,8 +130,13 @@ module feature_sram #(
     reg [3:0] b_bank_sel_q;
 
     always_ff @(posedge clk) begin
-        a_bank_sel_q <= a_bank_sel;
-        b_bank_sel_q <= b_bank_sel;
+        if (reset) begin
+            a_bank_sel_q <= '0;
+            b_bank_sel_q <= '0;
+        end else begin
+            a_bank_sel_q <= a_bank_sel;
+            b_bank_sel_q <= b_bank_sel;
+        end
     end
 
     assign a_rdata = a_q[a_bank_sel_q];
