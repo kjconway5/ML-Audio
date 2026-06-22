@@ -102,7 +102,7 @@ module gf180mcu_ocd_ip_sram__sram512x8m8wm1 (
                 if (WEN[6] === 1'b0) mem[A][6] <= D[6];
                 if (WEN[7] === 1'b0) mem[A][7] <= D[7];
             end else begin
-                q_r <= mem[A];
+                q_r <= #(6.960) mem[A];
             end
         end
     end
@@ -157,7 +157,7 @@ module gf180mcu_ocd_ip_sram__sram1024x8m8wm1 (
                 if (WEN[6] === 1'b0) mem[A][6] <= D[6];
                 if (WEN[7] === 1'b0) mem[A][7] <= D[7];
             end else begin
-                q_r <= mem[A];
+                q_r <= #(7.004) mem[A];
             end
         end
     end
