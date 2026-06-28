@@ -9,7 +9,7 @@
   };
 
   inputs = {
-    librelane.url = "github:librelane/librelane/3.0.0";
+    librelane.url = "github:librelane/librelane/dev";
   };
 
   outputs =
@@ -69,16 +69,12 @@
               ps: with ps; [
                 # Verification
                 cocotb
-                numpy
-                scipy
 
                 # For KLayout Python DRC runner
                 docopt
 
                 # For logo generation
                 pillow
-
-          
               ];
           });
         }
