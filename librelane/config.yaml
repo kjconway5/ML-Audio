@@ -3,6 +3,10 @@ meta:
   flow: Chip
   substituting_steps:
 
+    # Render the layout after sealring insertion
+    KLayout.Render: null
+    +KLayout.SealRing: KLayout.Render
+
     # Disable KLayout DRC
     #KLayout.DRC: null
     #Checker.KLayoutDRC: null
@@ -132,7 +136,10 @@ GND_NETS:
 # due to the unused Y output for output only pads
 IGNORE_DISCONNECTED_MODULES:
 - gf180mcu_fd_io__bi_24t
-- gf180mcu_ws_ip__id
+- gf180mcu_ws_ip__qrcode_id
+- gf180mcu_ws_ip__shuttle_id
+- gf180mcu_ws_ip__project_id
+- gf180mcu_ws_ip__marker
 - gf180mcu_ws_ip__logo
 
 # Clock
@@ -142,35 +149,30 @@ CLOCK_PERIOD: 62.5 # 16 MHz
   
 # Fix hold violations
 MAX_FANOUT_CONSTRAINT: 16
-# Buffer insertion starts plateauing after 0.115]
+# Buffer insertion starts plateauing after 0.115
 PL_RESIZER_HOLD_SLACK_MARGIN: 0.1
 GRT_RESIZER_HOLD_SLACK_MARGIN: 0.1
 
 # Insert more buffers for these vios
-# DESIGN_REPAIR_MAX_WIRE_LENGTH: 300 didnt do anything?
-DESIGN_REPAIR_MAX_SLEW_PCT: 10
 DESIGN_REPAIR_MAX_CAP_PCT: 45
 CTS_SINK_BUFFER_MAX_CAP_DERATE_PCT: 45
 
 # Wire lengths
-PL_RESIZER_MAX_WIRE_LENGTH: 300 # reduced from 300 to test, 100 helped timing slightly but increased vios slightly
-CTS_CLK_MAX_WIRE_LENGTH: 100 # good at 300 testing at 200
-# Limits the physical diameter of each CTS sink cluster.
-# Smaller values keep sinks in a cluster physically closer together
-# CTS_SINK_CLUSTERING_MAX_DIAMETER: 25 increased cap vios from 177 to 427 at this value
+PL_RESIZER_MAX_WIRE_LENGTH: 300
+CTS_CLK_MAX_WIRE_LENGTH: 100
 
-# Limits the number of sinks allowed in each CTS sink cluster
-# smaller clusters mean more leaf buffers and lower fanout/cap per
-# CTS_SINK_CLUSTERING_SIZE: 12   Increased by 20 max cap vios, worsened timing at 12, untested at other values
 
-# Increase for more logic
-# on your die
-PL_TARGET_DENSITY_PCT: 42 # keep at 42, 40 ruins timing 45 has more cap vios
+# Increase for more logic on your die
+PL_TARGET_DENSITY_PCT: 42
 GRT_ALLOW_CONGESTION: true
 
 # Fix antenna violations after DRT
 DRT_ANTENNA_REPAIR_ITERS: 10
 DRT_ANTENNA_REPAIR_MARGIN: 10 # %
+
+# PDN
+PDN_CFG: dir::pdn/pdn_cfg.tcl
+PDN_ENABLE_PINS: False
 
 # PDN - Straps
 PDN_VWIDTH: 5
@@ -187,13 +189,9 @@ PDN_CORE_RING_VWIDTH: 25
 PDN_CORE_RING_HWIDTH: 25
 PDN_CORE_RING_CONNECT_TO_PADS: True
 PDN_ENABLE_PINS: False
-PDN_CORE_VERTICAL_LAYER: Metal2
+PDN_CORE_VERTICAL_LAYER: Metal4
 PDN_CORE_HORIZONTAL_LAYER: Metal3
-
-# Due to OpenROAD bug
-# https://github.com/The-OpenROAD-Project/OpenROAD/issues/8229
-#PL_TIME_DRIVEN: False
-#PL_ROUTABILITY_DRIVEN: False
+PDN_CORE_RING_CONNECT_TO_PAD_LAYERS: [Metal2]
 
 # Do not error on magic DRC violations
 # Note: Passing magic DRC is not required for the submission.
@@ -205,7 +203,6 @@ ERROR_ON_MAGIC_DRC: False
 # / tap_2 cells; netgen's partition refinement does not converge in
 # reasonable time at that scale. These cells connect only to power /
 # ground rails, so dropping them does not affect LVS coverage.
-# ############# Commenting out for now because not supported by our version of either librelane or nix-eda, but this is a fix suggested by professor
 LVS_IGNORE_CELLS:
 # 3.3V standard-cell library
 - gf180mcu_as_sc_mcu7t3v3__fill_1
@@ -267,259 +264,38 @@ KLAYOUT_FILLER_OPTIONS:
 # Because we have multiple power pads for one power domain
 MAGIC_EXT_UNIQUE: notopports
 
-MACROS:
-  gf180mcu_ws_ip__id:
-    gds:
-      - dir::../ip/gf180mcu_ws_ip__id/gds/gf180mcu_ws_ip__id.gds
-    lef:
-      - dir::../ip/gf180mcu_ws_ip__id/lef/gf180mcu_ws_ip__id.lef
-    vh:
-      - dir::../ip/gf180mcu_ws_ip__id/vh/gf180mcu_ws_ip__id.v
-    lib:
-      "*":
-        - dir::../ip/gf180mcu_ws_ip__id/lib/gf180mcu_ws_ip__id.lib
-    instances:
-      chip_id:
-        location: [26, 26]
-        orientation: N
+# Image render settings
+KLAYOUT_RENDER_RESOLUTION: 2048
+KLAYOUT_RENDER_OVERSAMPLING: 3
+KLAYOUT_PROPERTIES: dir::gf180mcu_render.lyp
 
-  gf180mcu_ws_ip__logo:
-    gds:
-      - dir::../ip/gf180mcu_ws_ip__logo/gds/gf180mcu_ws_ip__logo.gds
-    lef:
-      - dir::../ip/gf180mcu_ws_ip__logo/lef/gf180mcu_ws_ip__logo.lef
-    vh:
-      - dir::../ip/gf180mcu_ws_ip__logo/vh/gf180mcu_ws_ip__logo.v
-    lib:
-      "*":
-        - dir::../ip/gf180mcu_ws_ip__logo/lib/gf180mcu_ws_ip__logo.lib
-    instances:
-      wafer_space_logo:
-        location: ["expr::$DIE_AREA[2] + -169.25", "expr::$DIE_AREA[3] + -169.25"]
-        orientation: N
+# DRC settings
+# A high number of workers increases RAM usage,
+# but can significantly improve the performance.
+# workers * threads should equal the available
+# hardware threads for a best possible utilization.
+KLAYOUT_DRC_THREADS: 16
 
-  gf180mcu_ocd_ip_sram__sram256x8m8wm1:
-    gds:
-      - dir::../gf180mcu_ocd_ip_sram/cells/gf180mcu_ocd_ip_sram__sram256x8m8wm1/gf180mcu_ocd_ip_sram__sram256x8m8wm1.gds
-    lef:
-      - dir::../gf180mcu_ocd_ip_sram/cells/gf180mcu_ocd_ip_sram__sram256x8m8wm1/gf180mcu_ocd_ip_sram__sram256x8m8wm1.lef
-    vh:
-      - dir::../gf180mcu_ocd_ip_sram/cells/gf180mcu_ocd_ip_sram__sram256x8m8wm1/gf180mcu_ocd_ip_sram__sram256x8m8wm1.blackbox.v
-    lib:
-      "nom_tt_025C_3v30":
-        - dir::../gf180mcu_ocd_ip_sram/cells/gf180mcu_ocd_ip_sram__sram256x8m8wm1/gf180mcu_ocd_ip_sram__sram256x8m8wm1__tt_025C_3v30.lib
-      "min_tt_025C_3v30":
-        - dir::../gf180mcu_ocd_ip_sram/cells/gf180mcu_ocd_ip_sram__sram256x8m8wm1/gf180mcu_ocd_ip_sram__sram256x8m8wm1__tt_025C_3v30.lib
-      "max_tt_025C_3v30":
-        - dir::../gf180mcu_ocd_ip_sram/cells/gf180mcu_ocd_ip_sram__sram256x8m8wm1/gf180mcu_ocd_ip_sram__sram256x8m8wm1__tt_025C_3v30.lib
-      "nom_ff_n40C_3v60":
-        - dir::../gf180mcu_ocd_ip_sram/cells/gf180mcu_ocd_ip_sram__sram256x8m8wm1/gf180mcu_ocd_ip_sram__sram256x8m8wm1__ff_n40C_3v60.lib
-      "min_ff_n40C_3v60":
-        - dir::../gf180mcu_ocd_ip_sram/cells/gf180mcu_ocd_ip_sram__sram256x8m8wm1/gf180mcu_ocd_ip_sram__sram256x8m8wm1__ff_n40C_3v60.lib
-      "max_ff_n40C_3v60":
-        - dir::../gf180mcu_ocd_ip_sram/cells/gf180mcu_ocd_ip_sram__sram256x8m8wm1/gf180mcu_ocd_ip_sram__sram256x8m8wm1__ff_n40C_3v60.lib
-    instances:
-      # LogMel SRAMs (5× sram256x8)
-      i_chip_core.pipeline_inst.u_logmel.u_mel_filterbank.u_sram.u_coeff_hi:
-        location: [2020, 615]
-        orientation: W
-      i_chip_core.pipeline_inst.u_logmel.u_mel_filterbank.u_sram.u_coeff_lo:
-        location: [2020, 1005]
-        orientation: W
-      i_chip_core.pipeline_inst.u_logmel.u_mel_filterbank.u_sram.u_index:
-        location: [2020, 1395]
-        orientation: N
-      i_chip_core.pipeline_inst.u_logmel.u_log_lut.u_lut_sram.u_lut_lo:
-        location: [2355, 1005]
-        orientation: E
-      i_chip_core.pipeline_inst.u_logmel.u_log_lut.u_lut_sram.u_lut_hi:
-        location: [2355, 615]
-        orientation: E
-      # STFFT SRAMs (8× sram256x8 — 2 RAM instances × 4 bytes each)
-      i_chip_core.pipeline_inst.u_stfft.u_fft.u_ram0.u2:
-        location: [680, 910]
-        orientation: W
-      i_chip_core.pipeline_inst.u_stfft.u_fft.u_ram0.u3:
-        location: [680, 1310]
-        orientation: W
-      i_chip_core.pipeline_inst.u_stfft.u_fft.u_ram1.u2:
-        location: [1015, 910]
-        orientation: E
-      i_chip_core.pipeline_inst.u_stfft.u_fft.u_ram1.u3:
-        location: [1015, 1310]
-        orientation: E
-      i_chip_core.pipeline_inst.u_stfft.u_fft.u_ram0.u0:
-        location: [1350, 910]
-        orientation: W
-      i_chip_core.pipeline_inst.u_stfft.u_fft.u_ram0.u1:
-        location: [1350, 1310]
-        orientation: W
-      i_chip_core.pipeline_inst.u_stfft.u_fft.u_ram1.u0:
-        location: [1685, 910]
-        orientation: E
-      i_chip_core.pipeline_inst.u_stfft.u_fft.u_ram1.u1:
-        location: [1685, 1310]
-        orientation: E
+# "max" equals max hardware threads
+KLAYOUT_DRC_OPTIONS:
+  decks: "all,-antenna,-density,-cup" # disable CUP for now
+  variant: ref::$PDK
+  workers: max
 
+KLAYOUT_DENSITY_OPTIONS:
+  decks: "density"
+  variant: ref::$PDK
+  workers: max
 
-
-  gf180mcu_ocd_ip_sram__sram512x8m8wm1:
-    gds:
-      - dir::../gf180mcu_ocd_ip_sram/cells/gf180mcu_ocd_ip_sram__sram512x8m8wm1/gf180mcu_ocd_ip_sram__sram512x8m8wm1.gds
-    lef:
-      - dir::../gf180mcu_ocd_ip_sram/cells/gf180mcu_ocd_ip_sram__sram512x8m8wm1/gf180mcu_ocd_ip_sram__sram512x8m8wm1.lef
-    vh:
-      - dir::../gf180mcu_ocd_ip_sram/cells/gf180mcu_ocd_ip_sram__sram512x8m8wm1/gf180mcu_ocd_ip_sram__sram512x8m8wm1.blackbox.v
-    lib:
-      "nom_tt_025C_3v30":
-        - dir::../gf180mcu_ocd_ip_sram/cells/gf180mcu_ocd_ip_sram__sram512x8m8wm1/gf180mcu_ocd_ip_sram__sram512x8m8wm1__tt_025C_3v30.lib
-      "min_tt_025C_3v30":
-        - dir::../gf180mcu_ocd_ip_sram/cells/gf180mcu_ocd_ip_sram__sram512x8m8wm1/gf180mcu_ocd_ip_sram__sram512x8m8wm1__tt_025C_3v30.lib
-      "max_tt_025C_3v30":
-        - dir::../gf180mcu_ocd_ip_sram/cells/gf180mcu_ocd_ip_sram__sram512x8m8wm1/gf180mcu_ocd_ip_sram__sram512x8m8wm1__tt_025C_3v30.lib
-      "nom_ff_n40C_3v60":
-        - dir::../gf180mcu_ocd_ip_sram/cells/gf180mcu_ocd_ip_sram__sram512x8m8wm1/gf180mcu_ocd_ip_sram__sram512x8m8wm1__ff_n40C_3v60.lib
-      "min_ff_n40C_3v60":
-        - dir::../gf180mcu_ocd_ip_sram/cells/gf180mcu_ocd_ip_sram__sram512x8m8wm1/gf180mcu_ocd_ip_sram__sram512x8m8wm1__ff_n40C_3v60.lib
-      "max_ff_n40C_3v60":
-        - dir::../gf180mcu_ocd_ip_sram/cells/gf180mcu_ocd_ip_sram__sram512x8m8wm1/gf180mcu_ocd_ip_sram__sram512x8m8wm1__ff_n40C_3v60.lib
-    instances:
-      # Bias SRAM (2× sram512x8)
-      i_chip_core.kws_inst.inst_bias.gen_bias_bytes[0].inst_bias_sram:
-        location: [2645.7, 2720.0]
-        orientation: E
-      i_chip_core.kws_inst.inst_bias.gen_bias_bytes[1].inst_bias_sram:
-        location: [2645.7, 3110.0]
-        orientation: E
-
-  gf180mcu_ocd_ip_sram__sram1024x8m8wm1:
-    gds:
-      - dir::../gf180mcu_ocd_ip_sram/cells/gf180mcu_ocd_ip_sram__sram1024x8m8wm1/gf180mcu_ocd_ip_sram__sram1024x8m8wm1.gds
-    lef:
-      - dir::../gf180mcu_ocd_ip_sram/cells/gf180mcu_ocd_ip_sram__sram1024x8m8wm1/gf180mcu_ocd_ip_sram__sram1024x8m8wm1.lef
-    vh:
-      - dir::../gf180mcu_ocd_ip_sram/cells/gf180mcu_ocd_ip_sram__sram1024x8m8wm1/gf180mcu_ocd_ip_sram__sram1024x8m8wm1.blackbox.v
-    lib:
-      "nom_tt_025C_3v30":
-        - dir::../gf180mcu_ocd_ip_sram/cells/gf180mcu_ocd_ip_sram__sram1024x8m8wm1/gf180mcu_ocd_ip_sram__sram1024x8m8wm1__tt_025C_3v30.lib
-      "min_tt_025C_3v30":
-        - dir::../gf180mcu_ocd_ip_sram/cells/gf180mcu_ocd_ip_sram__sram1024x8m8wm1/gf180mcu_ocd_ip_sram__sram1024x8m8wm1__tt_025C_3v30.lib
-      "max_tt_025C_3v30":
-        - dir::../gf180mcu_ocd_ip_sram/cells/gf180mcu_ocd_ip_sram__sram1024x8m8wm1/gf180mcu_ocd_ip_sram__sram1024x8m8wm1__tt_025C_3v30.lib
-      "nom_ff_n40C_3v60":
-        - dir::../gf180mcu_ocd_ip_sram/cells/gf180mcu_ocd_ip_sram__sram1024x8m8wm1/gf180mcu_ocd_ip_sram__sram1024x8m8wm1__ff_n40C_3v60.lib
-      "min_ff_n40C_3v60":
-        - dir::../gf180mcu_ocd_ip_sram/cells/gf180mcu_ocd_ip_sram__sram1024x8m8wm1/gf180mcu_ocd_ip_sram__sram1024x8m8wm1__ff_n40C_3v60.lib
-      "max_ff_n40C_3v60":
-        - dir::../gf180mcu_ocd_ip_sram/cells/gf180mcu_ocd_ip_sram__sram1024x8m8wm1/gf180mcu_ocd_ip_sram__sram1024x8m8wm1__ff_n40C_3v60.lib
-    instances:
-      # Feature SRAMs (8 banks × 2 ping-pong = 16× sram1024x8)
-      i_chip_core.kws_inst.inst_fsram.gen_feat_banks[0].inst_feature_sram:
-        location: [2050.4, 1720.0]
-        orientation: S
-      i_chip_core.kws_inst.inst_fsram.gen_feat_banks[0].inst_feature_sram2:
-        location: [2050.4, 2340.0]
-        orientation: S
-      i_chip_core.kws_inst.inst_fsram.gen_feat_banks[1].inst_feature_sram:
-        location: [1580.5, 1720.0]
-        orientation: S
-      i_chip_core.kws_inst.inst_fsram.gen_feat_banks[1].inst_feature_sram2:
-        location: [1580.5, 2340.0]
-        orientation: S
-      i_chip_core.kws_inst.inst_fsram.gen_feat_banks[2].inst_feature_sram:
-        location: [1140.6, 1720.0]
-        orientation: S
-      i_chip_core.kws_inst.inst_fsram.gen_feat_banks[2].inst_feature_sram2:
-        location: [1140.6, 2340.0]
-        orientation: S
-      i_chip_core.kws_inst.inst_fsram.gen_feat_banks[3].inst_feature_sram:
-        location: [700.7, 1720.0]
-        orientation: S
-      i_chip_core.kws_inst.inst_fsram.gen_feat_banks[3].inst_feature_sram2:
-        location: [700.7, 2340.0]
-        orientation: S
-      i_chip_core.kws_inst.inst_fsram.gen_feat_banks[4].inst_feature_sram:
-        location: [2050.4, 2960.0]
-        orientation: N
-      i_chip_core.kws_inst.inst_fsram.gen_feat_banks[4].inst_feature_sram2:
-        location: [2050.4, 3580.0]
-        orientation: N
-      i_chip_core.kws_inst.inst_fsram.gen_feat_banks[5].inst_feature_sram:
-        location: [1580.5, 2960.0]
-        orientation: N
-      i_chip_core.kws_inst.inst_fsram.gen_feat_banks[5].inst_feature_sram2:
-        location: [1580.5, 3580.0]
-        orientation: N
-      i_chip_core.kws_inst.inst_fsram.gen_feat_banks[6].inst_feature_sram:
-        location: [1140.6, 2960.0]
-        orientation: N
-      i_chip_core.kws_inst.inst_fsram.gen_feat_banks[6].inst_feature_sram2:
-        location: [1140.6, 3580.0]
-        orientation: N
-      i_chip_core.kws_inst.inst_fsram.gen_feat_banks[7].inst_feature_sram:
-        location: [700.7, 2960.0]
-        orientation: N
-      i_chip_core.kws_inst.inst_fsram.gen_feat_banks[7].inst_feature_sram2:
-        location: [700.7, 3580.0]
-        orientation: N
-
-      # Weight SRAMs (3× sram1024x8)
-      i_chip_core.kws_inst.inst_wsram.gen_weight_banks[0].inst_weight_sram:
-        location: [3040.7, 2830.0]
-        orientation: S
-      i_chip_core.kws_inst.inst_wsram.gen_weight_banks[1].inst_weight_sram:
-        location: [3040.7, 3470.0]
-        orientation: N
-      i_chip_core.kws_inst.inst_wsram.gen_weight_banks[2].inst_weight_sram:
-        location: [2645.7, 3500.0]
-        orientation: N
-
-      # Spectrogram SRAMs (4× sram1024x8)
-      i_chip_core.kws_inst.inst_specram.gen_spect_banks[0].inst_spectrogram_sram:
-        location: [2645.7, 2100.0]
-        orientation: N
-      i_chip_core.kws_inst.inst_specram.gen_spect_banks[0].inst_spectrogram_sram2:
-        location: [2645.7, 1540.0]
-        orientation: S
-      i_chip_core.kws_inst.inst_specram.gen_spect_banks[1].inst_spectrogram_sram:
-        location: [3040.7, 2270.0]
-        orientation: N
-      i_chip_core.kws_inst.inst_specram.gen_spect_banks[1].inst_spectrogram_sram2:
-        location: [3040.7, 1710.0]
-        orientation: S
-
-
-# This is an alternative method compared to
-# specifying the power connections in the RTL
-
-PDN_MACRO_CONNECTIONS:
-# ── LogMel 256x8 SRAMs (5 instances) ──
-- "i_chip_core.pipeline_inst.u_logmel.u_mel_filterbank.u_sram.u_coeff_hi VDD VSS VDD VSS"
-- "i_chip_core.pipeline_inst.u_logmel.u_mel_filterbank.u_sram.u_coeff_lo VDD VSS VDD VSS"
-- "i_chip_core.pipeline_inst.u_logmel.u_mel_filterbank.u_sram.u_index VDD VSS VDD VSS"
-- "i_chip_core.pipeline_inst.u_logmel.u_log_lut.u_lut_sram.u_lut_lo VDD VSS VDD VSS"
-- "i_chip_core.pipeline_inst.u_logmel.u_log_lut.u_lut_sram.u_lut_hi VDD VSS VDD VSS"
-# ── STFFT 256x8 SRAMs (8 instances) ──
-- "i_chip_core.pipeline_inst.u_stfft.u_fft.u_ram0.u0 VDD VSS VDD VSS"
-- "i_chip_core.pipeline_inst.u_stfft.u_fft.u_ram0.u1 VDD VSS VDD VSS"
-- "i_chip_core.pipeline_inst.u_stfft.u_fft.u_ram0.u2 VDD VSS VDD VSS"
-- "i_chip_core.pipeline_inst.u_stfft.u_fft.u_ram0.u3 VDD VSS VDD VSS"
-- "i_chip_core.pipeline_inst.u_stfft.u_fft.u_ram1.u0 VDD VSS VDD VSS"
-- "i_chip_core.pipeline_inst.u_stfft.u_fft.u_ram1.u1 VDD VSS VDD VSS"
-- "i_chip_core.pipeline_inst.u_stfft.u_fft.u_ram1.u2 VDD VSS VDD VSS"
-- "i_chip_core.pipeline_inst.u_stfft.u_fft.u_ram1.u3 VDD VSS VDD VSS"
-# ── Feature SRAMs 1024x8 (16 instances) ──
-- 'i_chip_core.kws_inst.inst_fsram.gen_feat_banks.*.inst_feature_sram VDD VSS VDD VSS'
-- 'i_chip_core.kws_inst.inst_fsram.gen_feat_banks.*.inst_feature_sram2 VDD VSS VDD VSS'
-- 'i_chip_core.kws_inst.inst_specram.gen_spect_banks.*.inst_spectrogram_sram VDD VSS VDD VSS'
-- 'i_chip_core.kws_inst.inst_specram.gen_spect_banks.*.inst_spectrogram_sram2 VDD VSS VDD VSS'
-- 'i_chip_core.kws_inst.inst_wsram.gen_weight_banks.*.inst_weight_sram VDD VSS VDD VSS'
-- 'i_chip_core.kws_inst.inst_bias.gen_bias_bytes.*.inst_bias_sram VDD VSS VDD VSS'
+KLAYOUT_ANTENNA_OPTIONS:
+  decks: "antenna"
+  variant: ref::$PDK
+  workers: max
 
 
 # Halo size around macros while cutting rows.
 # Workaround for: https://github.com/The-OpenROAD-Project/OpenROAD/issues/8868
-FP_MACRO_HORIZONTAL_HALO: 20 # Better than both 30 and 10, might be worth to try something else in between but havent yet
+FP_MACRO_HORIZONTAL_HALO: 20
 FP_MACRO_VERTICAL_HALO: 20
 PDN_HORIZONTAL_HALO: 5
 PDN_VERTICAL_HALO: 5
@@ -527,16 +303,21 @@ PDN_VERTICAL_HALO: 5
 PL_RESIZER_ALLOW_SETUP_VIOS: true
 GRT_RESIZER_ALLOW_SETUP_VIOS: true
 
-PDN_CFG: dir::pdn_cfg.tcl
-
 # Make sure netgen doesn't create 'no_connect' nets
 # Not needed since netgen 1.5.303
 LVS_FLATTEN_CELLS:
-- gf180mcu_ws_ip__id
+- gf180mcu_ws_ip__qrcode_id
+- gf180mcu_ws_ip__shuttle_id
+- gf180mcu_ws_ip__project_id
+- gf180mcu_ws_ip__marker
 - gf180mcu_ws_ip__logo
 
-# gf180mcu_ws_ip__id/logo has no ports and components
-# therefore make it an abstract cell in the layout
+# gf180mcu_ws_ip__* IPs have no ports and components
+# therefore make them abstract cells in the layout
 MAGIC_EXT_ABSTRACT_CELLS:
-- gf180mcu_ws_ip__id
+- gf180mcu_ws_ip__qrcode_id
+- gf180mcu_ws_ip__shuttle_id
+- gf180mcu_ws_ip__project_id
+- gf180mcu_ws_ip__marker
 - gf180mcu_ws_ip__logo
+

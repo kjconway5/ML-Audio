@@ -138,7 +138,8 @@ if { $::env(PDN_CORE_RING) == 1 } {
         set arg_list [list]
         append_if_flag arg_list PDN_CORE_RING_ALLOW_OUT_OF_DIE -allow_out_of_die
         append_if_flag arg_list PDN_CORE_RING_CONNECT_TO_PADS -connect_to_pads
-        append_if_equals arg_list PDN_EXTEND_TO "boundary" -extend_to_boundary
+        #append_if_equals arg_list PDN_EXTEND_TO "boundary" -extend_to_boundary
+        append_if_exists_argument arg_list PDN_CORE_RING_CONNECT_TO_PAD_LAYERS -connect_to_pad_layers
 
         set pdn_core_vertical_layer $::env(PDN_VERTICAL_LAYER)
         set pdn_core_horizontal_layer $::env(PDN_HORIZONTAL_LAYER)
@@ -159,29 +160,24 @@ if { $::env(PDN_CORE_RING) == 1 } {
             -core_offset "$::env(PDN_CORE_RING_VOFFSET) $::env(PDN_CORE_RING_HOFFSET)" \
             {*}$arg_list
 
-        if { [info exists ::env(PDN_CORE_VERTICAL_LAYER)] } {
-            add_pdn_connect \
-                -grid stdcell_grid \
-                -layers "$::env(PDN_CORE_VERTICAL_LAYER) $::env(PDN_HORIZONTAL_LAYER)"
-        }
-
-        if { [info exists ::env(PDN_CORE_HORIZONTAL_LAYER)] } {
-            add_pdn_connect \
-                -grid stdcell_grid \
-                -layers "$::env(PDN_CORE_HORIZONTAL_LAYER) $::env(PDN_VERTICAL_LAYER)"
-        }
-
         if { [info exists ::env(PDN_CORE_VERTICAL_LAYER)] && [info exists ::env(PDN_CORE_HORIZONTAL_LAYER)] } {
             add_pdn_connect \
                 -grid stdcell_grid \
                 -layers "$::env(PDN_CORE_VERTICAL_LAYER) $::env(PDN_CORE_HORIZONTAL_LAYER)"
         }
 
+        add_pdn_connect \
+            -grid stdcell_grid \
+            -layers "$::env(PDN_CORE_VERTICAL_LAYER) Metal2"
+
+        add_pdn_connect \
+            -grid stdcell_grid \
+            -layers "$::env(PDN_CORE_HORIZONTAL_LAYER) Metal2"
+
     } else {
         throw APPLICATION "PDN_CORE_RING cannot be used when PDN_MULTILAYER is set to false."
     }
 }
-
 
 
 # ─── Default macro grid ───
@@ -194,7 +190,7 @@ define_pdn_grid \
     -name macro \
     -starts_with POWER \
     -halo "$::env(PDN_HORIZONTAL_HALO) $::env(PDN_VERTICAL_HALO)"
- 
+
 add_pdn_connect \
     -grid macro \
     -layers "$::env(PDN_VERTICAL_LAYER) $::env(PDN_HORIZONTAL_LAYER)"
@@ -211,72 +207,11 @@ define_pdn_grid \
     -name sram_grid \
     -starts_with POWER \
     -halo "$::env(PDN_HORIZONTAL_HALO) $::env(PDN_VERTICAL_HALO)"
- 
+
 add_pdn_connect \
     -grid sram_grid \
     -layers "$::env(PDN_VERTICAL_LAYER) $::env(PDN_HORIZONTAL_LAYER)"
- 
+
 add_pdn_connect \
     -grid sram_grid \
     -layers "$::env(PDN_VERTICAL_LAYER) Metal3"
-
-# Add stripes on W/E edges of SRAM
-#add_pdn_stripe \
-    -grid sram_macros_NS \
-    -layer Metal4 \
-    -width 2.36 \
-    -offset 1.18 \
-    -spacing 0.28 \
-    -pitch 426.86 \
-    -starts_with GROUND \
-    -number_of_straps 2
-
-# Since the above stripes block the top level PDN at Metal4, add some more stripes
-# to improve the PDN's integrity and ensure a better connection for the macro.
-#add_pdn_stripe \
-    -grid sram_macros_NS \
-    -layer Metal4 \
-    -width 4.00 \
-    -offset 65.93 \
-    -spacing 0.28 \
-    -pitch 50 \
-    -starts_with GROUND \
-    -number_of_straps 7
-
-#define_pdn_grid \
-    -macro \
-    -instances i_chip_core.sram_1 \
-    -name sram_macros_WE \
-    -starts_with POWER \
-    -halo "$::env(PDN_HORIZONTAL_HALO) $::env(PDN_VERTICAL_HALO)"
-
-#add_pdn_connect \
-    -grid sram_macros_WE \
-    -layers "$::env(PDN_VERTICAL_LAYER) $::env(PDN_HORIZONTAL_LAYER)"
-
-#add_pdn_connect \
-    -grid sram_macros_WE \
-    -layers "$::env(PDN_VERTICAL_LAYER) Metal3"
-
-# Add stripes on W/E edges of SRAM
-#add_pdn_stripe \
-    -grid sram_macros_WE \
-    -layer Metal4 \
-    -width 2.36 \
-    -offset 1.18 \
-    -spacing 0.28 \
-    -pitch 479.88 \
-    -starts_with GROUND \
-    -number_of_straps 2
-
-# Since the above stripes block the top level PDN at Metal4, add some more stripes
-# to improve the PDN's integrity and ensure a better connection for the macro.
-#add_pdn_stripe \
-    -grid sram_macros_WE \
-    -layer Metal4 \
-    -width 4.00 \
-    -offset 46.48 \
-    -spacing 0.28 \
-    -pitch 48.48 \
-    -starts_with GROUND \
-    -number_of_straps 9

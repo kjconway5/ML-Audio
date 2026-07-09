@@ -64,7 +64,9 @@ jobs:
           remove-haskell: "true"
           remove-codeql: "true"
           remove-docker-images: "true"
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
       - name: Setup Nix
         uses: ./.github/actions/setup_nix
         with:
@@ -103,13 +105,13 @@ jobs:
           shasum final/gds/*
       - name: Upload GDS
         if: success() || failure()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.slot }}_${{ matrix.domain }}_gds
           path: final/gds/*
       - name: Upload image
         if: success() || failure()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.slot }}_${{ matrix.domain }}_image
           path: final/render/*.png
