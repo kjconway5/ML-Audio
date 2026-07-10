@@ -154,6 +154,7 @@ PL_RESIZER_HOLD_SLACK_MARGIN: 0.1
 GRT_RESIZER_HOLD_SLACK_MARGIN: 0.1
 
 # Insert more buffers for these vios
+DESIGN_REPAIR_MAX_SLEW_PCT: 45
 DESIGN_REPAIR_MAX_CAP_PCT: 45
 CTS_SINK_BUFFER_MAX_CAP_DERATE_PCT: 45
 
@@ -218,8 +219,11 @@ LVS_IGNORE_CELLS:
 - gf180mcu_fd_io__fill5
 - gf180mcu_fd_io__fill10
 - gf180mcu_fd_io__fillnc
-- gf180mcu_ws_ip__id
+- gf180mcu_ws_ip__qrcode_id
+- gf180mcu_ws_ip__shuttle_id
+- gf180mcu_ws_ip__project_id
 - gf180mcu_ws_ip__logo
+- gf180mcu_ws_ip__marker
 
 # Prevent false positive DRC errors in I/O cells
 MAGIC_GDS_FLATGLOB:
@@ -274,23 +278,23 @@ KLAYOUT_PROPERTIES: dir::gf180mcu_render.lyp
 # but can significantly improve the performance.
 # workers * threads should equal the available
 # hardware threads for a best possible utilization.
-KLAYOUT_DRC_THREADS: 16
+KLAYOUT_DRC_THREADS: 8
 
 # "max" equals max hardware threads
 KLAYOUT_DRC_OPTIONS:
   decks: "all,-antenna,-density,-cup" # disable CUP for now
   variant: ref::$PDK
-  workers: max
+  workers: 8
 
 KLAYOUT_DENSITY_OPTIONS:
   decks: "density"
   variant: ref::$PDK
-  workers: max
+  workers: 8
 
 KLAYOUT_ANTENNA_OPTIONS:
   decks: "antenna"
   variant: ref::$PDK
-  workers: max
+  workers: 8
 
 
 # Halo size around macros while cutting rows.
