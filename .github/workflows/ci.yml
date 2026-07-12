@@ -84,6 +84,7 @@ jobs:
       - name: Clone the PDK
         run: |
           nix develop --command make clone-pdk
+          nix develop --command make install-3v3-scl
       - name: Run RTL simulation
         run: |
           nix develop --command make sim
