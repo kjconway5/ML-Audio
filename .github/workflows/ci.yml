@@ -45,6 +45,7 @@ jobs:
   chip:
     runs-on: ubuntu-24.04
     name: Build the Chip
+    timeout-minutes: 1440
     needs:
       - prepare
     strategy:
