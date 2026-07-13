@@ -6,6 +6,13 @@
 `ifndef GF180MCU_FD_IO_V_SIM
 `define GF180MCU_FD_IO_V_SIM
 
+module gf180mcu_fd_io__dvdd (DVDD, DVSS, VSS);
+    inout DVDD, DVSS, VSS;
+endmodule
+
+module gf180mcu_fd_io__dvss (DVDD, DVSS, VDD);
+    inout DVDD, DVSS, VDD;
+endmodule
 
 module gf180mcu_fd_io__in_c (PU, PD, PAD, Y, DVDD, DVSS, VDD, VSS);
     input  PU, PD;
