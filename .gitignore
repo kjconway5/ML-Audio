@@ -15,6 +15,8 @@ dsp-venv/
 .venv/
 venv/
 
+gf180mcu/
+
 #old models
 src/ml/models/dscnn-32requant-v1/
 src/ml/models/dscnn-32requant-v10/

@@ -8,6 +8,14 @@ PDK ?= gf180mcuD
 PDK_COMMIT ?= d658698bd8bcf4e05fc7b5991a701247ba0d744c
 SCL ?= gf180mcu_as_sc_mcu7t3v3
 
+SRAM_REPO ?= https://github.com/RTimothyEdwards/gf180mcu_ocd_ip_sram.git
+SRAM_DIR ?= $(MAKEFILE_DIR)/gf180mcu_ocd_ip_sram
+SRAM_COMMIT ?= 5144de6dbe516c196acbe724d88e17b619fb1d42
+
+$(SRAM_DIR):
+	git clone $(SRAM_REPO) $(SRAM_DIR)
+	cd $(SRAM_DIR) && git checkout $(SRAM_COMMIT)
+
 AVAILABLE_SLOTS = 1x1 0p5x1 1x0p5 0p5x0p5
 DEFAULT_SLOT = 1x1
 
@@ -64,7 +72,7 @@ all: librelane ## Build the project (runs LibreLane)
 $(PDK_ROOT)/ciel/gf180mcu/versions/$(PDK_COMMIT)/$(PDK):
 	ciel enable $(PDK_COMMIT) --pdk-root $(PDK_ROOT) --pdk-family $(PDK) --include-libraries all
 
-clone-pdk: $(PDK_ROOT)/ciel/gf180mcu/versions/$(PDK_COMMIT)/$(PDK) ## Clone the GF180MCU PDK
+clone-pdk: $(PDK_ROOT)/ciel/gf180mcu/versions/$(PDK_COMMIT)/$(PDK) $(SRAM_DIR) ## Clone the GF180MCU PDK
 .PHONY: clone-pdk
 
 gen-defines:
