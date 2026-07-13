@@ -16,6 +16,10 @@ dsp-venv/
 venv/
 
 gf180mcu/
+final/
+*.zip
+verilator/
+src/rtl/top/verilator/
 
 #old models
 src/ml/models/dscnn-32requant-v1/
