@@ -11,6 +11,8 @@ accelerator with shared MAC array, re-quantization logic, and 29 KB of on-chip S
 Verification employs a bit-accurate Python reference model and Cocotb testbenches, with system-level validation
 confirming correct pipeline operation through .wav file comparsion of RTL and Golden Model.
 
+<img src="scripts/die.png" alt="Sized Image" width="500" height="500">
+
 ## Simulation & Verification
 
 ### Dependencies
